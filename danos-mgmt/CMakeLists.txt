@@ -10,9 +10,10 @@ add_library(danos-mgmt STATIC
   src/gnmi/model_routes.c
   src/gnmi/gnmi_grpc.c
   src/netconf/netconf.c
+  src/authz/authz.c
 )
 target_include_directories(danos-mgmt PUBLIC src)
-target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core)
+target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core danos-security)
 
 if(DANOS_BUILD_TESTS)
   add_subdirectory(tests)

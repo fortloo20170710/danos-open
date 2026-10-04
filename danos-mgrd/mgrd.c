@@ -24,6 +24,7 @@
 #include <danos/core/reconciler.h>
 #include <danos/dpa.h>
 #include "../danos-mgmt/src/gnmi/gnmi_grpc.h"
+#include "../danos-mgmt/src/authz/authz.h"
 #include "../danos-vpp/src/api/vpp_api.h"
 #include "../danos-netlink/danos_netlink.h"
 #include <danos/core/reconciler.h>
@@ -142,6 +143,20 @@ int main(int argc, char **argv)
         {"no-vpp",      no_argument,       0, 'n'},
         {0, 0, 0, 0},
     };
+    /* 0. authorization + audit. Must come up before any northbound
+     * interface accepts a request. There is still no authenticated identity
+     * (no TLS, token or peer-credential check on any listener), so the role
+     * is the configured default - see authz.h. */
+    const char *audit = getenv("DANOS_AUDIT_LOG");
+    if (danos_authz_init(audit) == 0) {
+        printf("mgrd: authorization active (default role %s, audit %s)\n",
+               danos_rbac_role_name(danos_authz_default_role()),
+               audit ? audit : "default");
+    } else {
+        fprintf(stderr, "mgrd: authorization init failed\n");
+        return 1;
+    }
+
     int c;
     while ((c = getopt_long(argc, argv, "p:m:w:sv:n", opts, NULL)) != -1) {
         switch (c) {

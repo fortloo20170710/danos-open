@@ -6,6 +6,7 @@
  */
 
 #include "gnmi_grpc.h"
+#include "../authz/authz.h"
 #include "gnmi_proto.h"
 #include "model_paths.h"
 #include "model_routes.h"
@@ -1441,6 +1442,35 @@ int danos_gnmi_grpc_serve_fd(int fd)
             if (n == -1) { headers_free(&h); rc = -1; break; }
             if (n == GRPC_READ_NO_MSG) { headers_free(&h); continue; }
             msg_len = (size_t)n;
+        }
+
+        /* Authorize before dispatch. Read paths map to READ, everything
+         * that can change state to UPDATE; Capabilities is a static
+         * description and needs no check. The role comes from authz, which
+         * has no credential to inspect yet - see authz.h. */
+        if (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") != 0 &&
+            !danos_authz_check(danos_authz_role_for_peer(NULL),
+                               DANOS_SEC_OBJ_ALL,
+                               (h.path && strcmp(h.path, "/gnmi.gNMI/Get") == 0)
+                                   ? DANOS_SEC_OP_READ : DANOS_SEC_OP_UPDATE,
+                               h.path ? h.path : "")) {
+            /* grpc-status 7 PERMISSION_DENIED (DANOS_ERR_PERMISSION) */
+            headers_free(&h);
+            uint8_t tbuf[96];
+            size_t tlen = 0;
+            int k = hpack_encode_literal(tbuf, sizeof(tbuf) - tlen,
+                                         ":status", "200");
+            tlen += k;
+            k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
+                                     "content-type", "application/grpc");
+            tlen += k;
+            k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
+                                     "grpc-status", "7");
+            tlen += k;
+            write_frame(fd, H2_F_HEADERS,
+                        H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
+                        fstream, tbuf, tlen);
+            continue;
         }
 
         /* dispatch on :path */

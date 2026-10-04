@@ -4,6 +4,7 @@
 
 #include "netconf.h"
 #include "../gnmi/model_paths.h"
+#include "../authz/authz.h"
 #include <danos/core/object_registry.h>
 #include <danos/dpa.h>
 #include <stdarg.h>
@@ -290,11 +291,35 @@ static char *edit_config_apply(const char *xml)
     return ok_reply();
 }
 
+/* edit-config mutates state, everything else is read-only. The role has no
+ * credential behind it yet (see authz.h); this check is what will deny once
+ * an identity source exists. */
+static bool netconf_authorized(netconf_rpc_type_t t)
+{
+    bool mutating = (t == NETCONF_RPC_EDIT_CONFIG);
+    return danos_authz_check(danos_authz_role_for_peer(NULL),
+                             DANOS_SEC_OBJ_ALL,
+                             mutating ? DANOS_SEC_OP_UPDATE : DANOS_SEC_OP_READ,
+                             "netconf");
+}
+
 char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
 {
     if (!xml) return error_reply("null input");
 
     netconf_rpc_type_t rpc_type = netconf_parse_rpc(xml);
+    if (!netconf_authorized(rpc_type)) {
+        /* RFC 6241 access-denied, reported as rpc-error. */
+        return strdup(
+            "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
+            "  <rpc-error>\n"
+            "    <error-type>protocol</error-type>\n"
+            "    <error-tag>access-denied</error-tag>\n"
+            "    <error-severity>error</error-severity>\n"
+            "    <error-message>authorization denied</error-message>\n"
+            "  </rpc-error>\n"
+            "</rpc-reply>\n");
+    }
     ctx->rpc_count++;
 
     switch (rpc_type) {

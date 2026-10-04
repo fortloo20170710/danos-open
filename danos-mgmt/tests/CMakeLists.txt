@@ -34,3 +34,8 @@ add_executable(frontends_consistent_test test_frontends_consistent.c)
 target_link_libraries(frontends_consistent_test PRIVATE danos-mgmt danos-core danos-dpa pthread)
 target_compile_options(frontends_consistent_test PRIVATE -UNDEBUG)
 add_test(NAME frontends_consistent COMMAND frontends_consistent_test)
+
+add_executable(authz_test test_authz.c)
+target_link_libraries(authz_test PRIVATE danos-mgmt danos-security pthread)
+target_compile_options(authz_test PRIVATE -UNDEBUG)
+add_test(NAME authz COMMAND authz_test)

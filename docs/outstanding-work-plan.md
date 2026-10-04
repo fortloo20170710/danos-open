@@ -11,7 +11,19 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## P0 — blocks any real deployment
 
-### [ ] 1. TLS transport and authentication on the management plane
+### [~] 1. TLS transport and authentication on the management plane
+
+Done so far: the enforcement layer exists and is wired. `danos-security` is
+linked into `danos-mgrd`, `danos-mgmt/src/authz/` performs one RBAC check per
+northbound RPC (gRPC returns `grpc-status 7`, NETCONF returns
+`access-denied`), every authorization decision and transaction lifecycle event
+goes to an append-only audit log, and the daemon initialises both before
+accepting a request. `DANOS_AUTHZ_DEFAULT_ROLE` can lock the daemon to
+operator/viewer before TLS exists. Covered by `authz_test`.
+
+What remains is the part that needs a decision: there is still no credential
+to authorize, so the role is the configured default (ADMIN). The audit trail
+is the only externally visible effect today.
 
 The daemon serves plaintext h2c on `INADDR_ANY:57400` with no authentication
 and no authorization. `danos_gnmi_grpc.h` states this outright. Every peer that
@@ -89,18 +101,24 @@ backend can program, so wiring it now would be truthful. Completing this needs:
 - keep `type_skipped()` and the capability table in agreement — ideally derive
   one from the other
 
-### [ ] 5. Reconciler must be driven by the daemon
+### [~] 5. Reconciler must be driven by the daemon
 
-Three gaps in `backend_ops.c`, all of which make the advertised
-DESIRED → PROGRAMMED → OPER model non-functional:
-- `danos_programming_sweep()` is never called by the daemon, so deleted config
-  is never withdrawn from the dataplane
+Done so far: `danos_reconciler_run_once()` now invokes the tombstone sweep,
+so deleting config actually withdraws it from the dataplane (previously only
+reachable from tests). `max_retries`, `backoff_*` and `antiflap_*` are handed
+to the programming pass and enforced through a bounded per-object retry table:
+exponential backoff capped at `backoff_max_ms`, an attempt limit, and
+anti-flap parking, so a route whose next hop has not been learned no longer
+retries every 50 ms forever. `total_runs` is counted in both reconciler modes
+(it was only counted when a state store existed, which the daemon does not
+use), and `reconcile_trigger()` marks state dirty so the next pass runs
+immediately. Two regression tests cover withdrawal and the retry limit.
+
+Still open:
 - `danos_state_diff_desired_programmed()` is stubbed and `diff_cb` is an empty
-  stub; production initialises the reconciler with `NULL` (no state store)
-- OPER does not exist — there is no path from backend state to an OPER view
-
-Also unwired: `max_retries`, `backoff_ms`, `antiflap_*` are read from config
-and never referenced, so a missing next-hop retries every 50 ms indefinitely.
+  stub — drift detection is reported, not repaired per-type
+- OPER does not exist: there is no path from backend state to an OPER view, so
+  `DANOS_ERR_VERIFY_FAIL` is unreachable
 
 ### [!] 6. HA and CoPP are duplicated and disconnected
 
@@ -172,7 +190,21 @@ encoder should be tested against bytes captured from a real VPP instance or
 generated from VPP's `.api` files, and every ZAPI frame against bytes recorded
 from a real FRR 10.3 zebra. Today both mocks reimplement the client's
 assumptions, which is precisely why three wire defects and a handshake bug
-survived a suite that passes 35/35.
+survived a suite that passed 35/35.
+
+This has now been got wrong in both directions, which is the argument for
+doing it properly. The `.api` declarations alone are not sufficient: they
+describe `string name [64]`, but the two legacy socket control messages are
+exchanged as raw structs with a fixed 64-byte name and no length prefix, which
+is only visible in `socket_client.c` and `socket_api.c`. Conversely the
+`.api` declaration *is* authoritative for regular API messages, where
+`admin_up_down` really is a `u8` and strings really are length-prefixed with
+no padding. Both facts are recorded in
+`docs/security-and-correctness-hardening-2026-10-04.md` §4.5.
+
+So the durable fix is byte-level fixtures generated from VPP itself, not
+reading declarations. Until that exists, treat any change to these encodings
+as requiring a live VPP run.
 
 ### [ ] 12. Test-suite honesty
 
@@ -211,15 +243,16 @@ Suggested: add a status marker to every box (implemented / partial / interface
 skeleton / empty) with `docs/project-status.md` as the single source of truth,
 and move Hardware Acceleration to a dashed optional layer.
 
-### [ ] 15. gRPC transport-layer defects
+### [x] 15. gRPC transport-layer defects
 
-Not yet triaged in detail. Known issues in `gnmi_grpc.c`:
-- connection-level and stream-level flow-control windows share one
-  `stream_window[stream % 64]` array; `SETTINGS_INITIAL_WINDOW_SIZE` overwrites
-  all 64 slots; `WINDOW_UPDATE` is read but never sent
-- the parked-frame queue is LIFO, so multi-frame gRPC messages are reassembled
-  out of order, and it is unbounded
-- the global subscription registry is unsynchronised between the event-callback
-  and HTTP handler threads; `unsubscribe` frees state that a live subscriber may
-  still be using
-- event-bus callbacks run while the registry read lock is held
+All fixed:
+- per-stream windows keyed by real stream id instead of `stream % 64`, and the
+  slot released when a stream ends
+- `SETTINGS_INITIAL_WINDOW_SIZE` applied as the RFC 7540 §6.9.2 delta rather
+  than overwriting live windows
+- `WINDOW_UPDATE` now returned as inbound DATA is consumed; previously any
+  request body over 64 KiB deadlocked the connection
+- parked-frame queue made FIFO and bounded at 64 entries
+- subscription registry and its queues guarded by a lock, with the ordering
+  against the event-bus lock documented; `unsubscribe` detaches, releases the
+  lock, then calls into the bus so the free is safe
