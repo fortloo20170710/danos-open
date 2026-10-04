@@ -63,13 +63,10 @@ static int test_transaction(void)
     uint32_t blen;
     mock_vpp_get_last_request(&mid, body, &blen, sizeof(body));
     assert(mid == MOCK_MSGID_SW_IF_SET_FLAGS);
-    /* body = client_index(4) + context(4) + sw_if_index(4) + admin_up(1).
-     * admin_up_down is a single byte in VPP's sw_interface_set_flags; this
-     * used to assert a 4-byte field, which is why an interface could never
-     * be brought admin-up against a real VPP. */
-    assert(blen == 13);
+    /* body = client_index(4) + context(4) + sw_if_index(4) + flags(4). */
+    assert(blen == 16);
     assert(body[8] == 0 && body[9] == 0 && body[10] == 0 && body[11] == 3);
-    assert(body[12] == 1);
+    assert(body[12] == 0 && body[13] == 0 && body[14] == 0 && body[15] == 1);
 
     danos_vpp_api_disconnect();
     mock_vpp_stop();

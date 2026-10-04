@@ -204,10 +204,12 @@ wrong layouts and could not have caught these.
 
 ### 4.1 `admin_up_down` width
 
-`sw_interface_set_flags` is `u32 sw_if_index; u8 admin_up_down;`. The encoder
-wrote the flag as a `u32`, putting a zero in the byte VPP actually reads, so
-**every interface came up admin-down regardless of what was requested.** Now
-written as `u8` (body is 5 bytes).
+Correction from the real Debian trixie VPP 26.10 runtime: the request uses
+`u32 sw_if_index; u32 flags` (after the standard client/context fields). The
+prior analysis incorrectly used the legacy `u8 admin_up_down` form. The one-byte
+encoder sent a 15-byte frame where VPP's generated message-size check requires
+18 bytes and VPP dropped it as truncated. The encoder now sends the 32-bit
+`IF_STATUS_API_FLAG_ADMIN_UP` value.
 
 ### 4.2 `string` representation
 
@@ -222,12 +224,15 @@ additionally rejects a declared length that cannot fit in the remaining buffer,
 so a `u8`-length field where a `u32` belongs fails loudly instead of
 desynchronising silently.
 
-### 4.3 Message table walk
+### 4.3 Socket client registration and message-table walk
 
-The `sockclnt_create_reply` message table stores each name as a VPP `string`.
-The client read it as a fixed `name[64]`, which desynchronised every following
-entry — after the first, the whole table was garbage and named lookups failed.
-Both the reply parse and the request's `client_name` now use the string codec.
+The legacy socket handshake uses fixed-width fields, not ordinary variable
+length API strings: `sockclnt_create` is `u32 context; u8 name[64]`, and each
+reply table entry is `u16 index; u8 name[64]`. The earlier dynamic-string
+encoding sent a 22-byte request where VPP requires 70 bytes, so the runtime
+dropped the registration before replying. The parser also treated table names
+as length-prefixed strings. Both now use the fixed wire layout; ordinary VPP
+`string` fields elsewhere remain length-prefixed and padded.
 
 ### 4.4 Stat segment alignment
 
@@ -242,10 +247,16 @@ field-relative padding, and `test_stat_segment` now passes under UBSan. The mock
 server was corrected to emit the same real encoding so it models VPP rather than
 the client's assumptions.
 
-**These fixes invalidate part of the recorded evidence.** All VPP protocol
-results were produced against `mock_vpp_server.c`, which encoded strings the same
-wrong way. A live lane against real VPP must be re-run before any "verified VPP
-forwarding/ECMP" claim stands — see the task list below.
+**These fixes invalidate part of the earlier mock-only VPP evidence.** A real
+runtime smoke was subsequently run against the local Debian trixie image
+`vpp v26.10-rc0~545-gad99177fe`. With two VPP loopbacks, the rebuilt client
+registered successfully, loaded 839 API message names, completed `control_ping`,
+set interface 1 admin-up, added and deleted a two-path IPv4 route, and queried
+`/sys/node/vectors` from the stats segment. `vpp_live_test` reported PASS and the
+post-check confirmed interface 1 up and the test route absent. The socket test
+also now validates the fixed-width request and reply layouts. This is real API
+and FIB-programming evidence, but not packet-forwarding, DPDK, or throughput
+qualification: this runtime used loopbacks and no DPDK devices.
 
 ## 5. Capability table honesty
 

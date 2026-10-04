@@ -67,7 +67,16 @@ static void serve_client(int fd)
     uint8_t frame[4096];
     if (recv_exact(fd, frame, frame_len) < 0) return;
     uint16_t msg_id = ((uint16_t)frame[0] << 8) | frame[1];
-    if (msg_id != 0x000F) return;
+    /* Real VPP requires the generated sockclnt_create layout:
+     * msg_id(2) + context(4) + fixed client name[64]. */
+    static const uint8_t expected_context[4] = {0xCE, 0xFA, 0xED, 0xFE};
+    static const char expected_name[] = "danos-open";
+    if (msg_id != 0x000F || frame_len != 70 ||
+        memcmp(frame + 2, expected_context, sizeof(expected_context)) != 0 ||
+        memcmp(frame + 6, expected_name, sizeof(expected_name) - 1) != 0)
+        return;
+    for (size_t i = sizeof(expected_name) - 1; i < 64; i++)
+        if (frame[6 + i] != 0) return;
 
     /* 2. reply: sockclnt_create_reply with message table */
     struct { const char *name; uint16_t id; } table[] = {
@@ -79,8 +88,6 @@ static void serve_client(int fd)
     };
     uint8_t body[1024];
     uint32_t n = 0;
-    uint32_t v;
-    v = 0x1234; memcpy(body + n, &((uint8_t[4]){0,0,0x12,0x34})[0], 0); /* placeholder */
     /* client_index u32 BE */
     body[n++] = 0; body[n++] = 0; body[n++] = 0; body[n++] = 0;
     /* context u32 BE */
@@ -95,21 +102,10 @@ static void serve_client(int fd)
         size_t len = strlen(table[i].name);
         body[n++] = (uint8_t)(table[i].id >> 8);
         body[n++] = (uint8_t)table[i].id;
-        /* name is a VPP `string`: u32 length, bytes, then zero padding to
-         * the next 4-byte boundary. Emitting a fixed 64-byte field here (as
-         * this mock used to) modelled the wrong protocol and let a matching
-         * client bug pass unnoticed. */
-        body[n++] = 0;
-        body[n++] = 0;
-        body[n++] = (uint8_t)(len >> 8);
-        body[n++] = (uint8_t)len;
+        memset(body + n, 0, 64);
         memcpy(body + n, table[i].name, len);
-        n += len;
-        /* pad relative to the field length, as VPP does */
-        size_t pad = (4 - (len & 3)) & 3;
-        for (size_t k = 0; k < pad; k++) body[n++] = 0;
+        n += 64;
     }
-    (void)v;
     send_frame(fd, 0x0010, body, n);
 
     /* 3. echo replies for subsequent requests */

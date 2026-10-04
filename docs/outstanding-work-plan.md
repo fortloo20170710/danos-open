@@ -57,20 +57,20 @@ retired, so this work no longer sits on top of a leak.
 
 ## P1 — correctness of the claims the project makes
 
-### [ ] 3. Re-run the VPP live lane against real VPP
+### [~] 3. Re-run the VPP live lane against real VPP
 
-The VPP wire-encoding fixes (string representation, message-table walk,
-`admin_up_down` width) mean all previously recorded VPP protocol results are
-unverified: they were produced against `mock_vpp_server.c`, which encoded
-strings the same wrong way, and the tests asserted those wrong layouts.
+The first real runtime smoke is now complete against
+`danos-vpp-runtime-recover:local` (`vpp v26.10-rc0~545-gad99177fe`). It passed
+socket registration/message-table parsing (839 entries), `control_ping`,
+interface admin-up, a two-path IPv4 route add/delete and stats-segment query.
+This exposed and corrected two additional incompatibilities missed by the mock:
+fixed 64-byte socket client/message-table names and the runtime's 32-bit
+interface flags. Earlier mock-only results remain unverified.
 
-Until a live lane runs against real VPP 26.10, the following must not be
-claimed as verified:
-- VPP binary-API handshake and message-table lookup
-- interface admin-up/down
-- VRF table programming
-- route add/withdraw, ECMP, FIB programming
-- any recorded VPP forwarding or ECMP traffic result
+Still required before closing this item: assert the created route in VPP FIB
+before deletion, exercise VRF table programming and NH withdraw/re-add, then
+run the corrected backend through the full QEMU FRR/VPP topology and recovery
+gate. The loopback smoke is not packet-forwarding, DPDK, or throughput evidence.
 
 `docs/project-status.md` marks the physical I211 forwarding/ECMP result as FAIL
 already, for independent reasons (single carrier, 1000/1000 loss).

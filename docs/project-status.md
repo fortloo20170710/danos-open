@@ -18,15 +18,17 @@ Sanitizer status moved from red to green on `main`:
 
 Seven new test functions were added, each verified to fail against the unfixed
 code. Notable corrections: routes are now durable across restart (previously no
-route was ever written to the WAL); interfaces can be brought admin-up on VPP
-(the flag was encoded one byte too wide, so VPP always read zero); and any gNMI
+route was ever written to the WAL); VPP binary-API operations now match the
+Debian trixie VPP 26.10 runtime; and any gNMI
 `Set` carrying a delete no longer crashes the server.
 
-**This pass invalidates part of the recorded evidence.** All VPP protocol
-results were produced against `mock_vpp_server.c`, which encoded strings the same
-wrong way as the client, and the tests asserted those wrong layouts. The live VPP
-lane must be re-run before any "verified VPP forwarding/ECMP" claim stands. The
-physical I211 forwarding/ECMP result was already FAIL for independent reasons.
+**This pass invalidated part of the earlier mock-only evidence.** A real VPP
+26.10-rc0 runtime smoke has now independently passed socket registration,
+control_ping, interface admin-up, ECMP route add/delete and stats-segment query;
+see `docs/security-and-correctness-hardening-2026-10-04.md`. This validates
+runtime API/FIB programming only, not packet forwarding/ECMP distribution or
+DPDK performance. The physical I211 forwarding/ECMP result remains unaccepted
+for the independent second-link/peer-topology failure.
 
 Remaining work is tracked in `docs/outstanding-work-plan.md`. The two items that
 gate any real deployment are TLS/authentication on the management plane, and

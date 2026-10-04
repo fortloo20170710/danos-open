@@ -158,15 +158,14 @@ int vpp_encode_sw_interface_set_flags(uint32_t sw_if_index, bool admin_up,
 {
     /* VPP's sw_interface_set_flags is:
      *     u32 sw_if_index;
-     *     u8  admin_up_down;
-     * The flag is a single byte. Writing it as a u32 put a zero in the byte
-     * VPP actually reads, so every interface came up admin-down no matter
-     * what was requested. */
-    if (!out || out_size < 5) return -1;
+     *     u32 flags;
+     * The interface API encodes IF_STATUS_API_FLAG_ADMIN_UP as a 32-bit
+     * flags enum in the target VPP runtime. */
+    if (!out || out_size < 8) return -1;
     vpp_buf_t b;
-    vpp_buf_init(&b, 5);
+    vpp_buf_init(&b, 8);
     vpp_buf_put_u32(&b, sw_if_index);
-    vpp_buf_put_u8(&b, admin_up ? 0x1 : 0x0);  /* IF_STATUS_API_FLAG_ADMIN_UP */
+    vpp_buf_put_u32(&b, admin_up ? 0x1u : 0u); /* ADMIN_UP status flag */
     memcpy(out, b.data, b.len);
     int n = (int)b.len;
     vpp_buf_free(&b);

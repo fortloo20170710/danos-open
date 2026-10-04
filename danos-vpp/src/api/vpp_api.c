@@ -183,13 +183,20 @@ static int vpp_handshake(void)
 {
     vpp_buf_t body;
     vpp_buf_init(&body, 96);
-    /* sockclnt_create is sent as the generated VPP struct: the message id
-     * is network order, while this legacy context is written in host order. */
-    const uint8_t context[4] = {0xce, 0xfa, 0xed, 0xfe};
-    vpp_buf_put_bytes(&body, context, sizeof(context));
-    /* Sockclnt_create's client_name is a VPP `string`, so it uses the
-     * u32 length + padding form rather than a raw 64-byte field. */
-    vpp_buf_put_string(&body, VPP_CLIENT_NAME);
+    /* VPP's socket registration schema is context(u32), name[64]. Unlike
+     * regular API `string` fields, this legacy control message uses a fixed
+     * 64-byte name array. A length-prefixed string produces a 22-byte frame,
+     * while VPP's generated size check requires 70 bytes (2-byte msg id +
+     * 4-byte context + 64-byte name). */
+    vpp_buf_put_u32(&body, 0xCEFAEDFEu);
+    uint8_t client_name[64] = {0};
+    size_t client_name_len = strlen(VPP_CLIENT_NAME);
+    if (client_name_len >= sizeof(client_name)) {
+        vpp_buf_free(&body);
+        return -1;
+    }
+    memcpy(client_name, VPP_CLIENT_NAME, client_name_len);
+    vpp_buf_put_bytes(&body, client_name, sizeof(client_name));
 
     int rc = vpp_wire_send_fd(g_ctx.msg_fd, VPP_MSG_ID_SOCKCLNT_CREATE,
                               body.data, body.len);
@@ -222,15 +229,13 @@ static int vpp_handshake(void)
     vpp_msg_table_init(&g_ctx.msg_table);
     for (uint16_t i = 0; i < count; i++) {
         uint16_t msg_id = vpp_rd_u16(&r);
-        /* The name is a VPP `string` (u32 length + bytes + 4-byte pad), not a
-         * fixed 64-byte array. Reading it as name[64] desynchronised every
-         * following entry, so after the first the whole table was garbage
-         * and named lookups failed. */
-        char *name = vpp_rd_string(&r, 256);
-        if (!name || !vpp_reader_ok(&r)) { free(name); break; }
+        /* sockclnt_create_reply's message_table_entry is { u16 index;
+         * u8 name[64]; }. It is fixed-width, unlike ordinary API strings. */
+        char name[65] = {0};
+        if (!vpp_rd_bytes(&r, name, 64) || !vpp_reader_ok(&r)) break;
+        name[64] = '\0';
         vpp_strip_crc_suffix(name);
-        vpp_msg_table_add(&g_ctx.msg_table, name, msg_id);
-        free(name);
+        if (name[0] != '\0') vpp_msg_table_add(&g_ctx.msg_table, name, msg_id);
     }
 
     g_ctx.client_index = index;
