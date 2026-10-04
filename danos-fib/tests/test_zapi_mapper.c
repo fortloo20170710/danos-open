@@ -380,6 +380,83 @@ int test_map_route_ecmp(void)
     return 0;
 }
 
+/* A ZAPI nexthop count larger than the DPA NHGroup capacity must be
+ * rejected. nh_count is a wire u8 (max 255) while nh_ids holds
+ * DANOS_NHGROUP_MAX_NH, so an oversized advertisement used to write up to
+ * ~190 entries past the end of the group.
+ *
+ * The decoder must also consume the advertised number of next-hops, so the
+ * payload below carries every entry it claims - otherwise the rejection
+ * would pass merely because the buffer ran out first. */
+int test_map_route_nh_overflow(void)
+{
+    danos_tx_t tx = {0};
+    assert(danos_tx_begin(&tx, "test-nh-overflow", NULL) == DANOS_OK);
+
+    enum { CLAIMED = 200 };
+    uint8_t payload[64 + CLAIMED * 13];
+    zapi_encoder_t enc;
+    zapi_encoder_init(&enc, payload, sizeof(payload));
+    zapi_encode_u32(&enc, 9);
+    zapi_encode_u8(&enc, 4);
+    zapi_encode_u8(&enc, 24);
+    uint8_t prefix[4] = { 10, 99, 0, 0 };
+    zapi_encode_bytes(&enc, prefix, 4);
+    zapi_encode_u8(&enc, 2);            /* protocol */
+    zapi_encode_u8(&enc, 20);           /* admin distance */
+    zapi_encode_u32(&enc, 10);          /* metric */
+    zapi_encode_u8(&enc, CLAIMED);      /* nh_count: over capacity */
+    for (int i = 0; i < CLAIMED; i++) {
+        zapi_encode_u8(&enc, 1);        /* nh type */
+        uint8_t gw[4] = { 192, 0, 2, (uint8_t)i };
+        zapi_encode_bytes(&enc, gw, 4);
+        zapi_encode_u32(&enc, (uint32_t)(100 + i));
+    }
+    assert(enc.pos <= sizeof(payload));
+
+    zapi_message_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.header.command = ZEBRA_ROUTE_ADD;
+    msg.payload = payload;
+    msg.payload_size = enc.pos;
+
+    /* Must be refused, and must not have created a group. */
+    assert(zapi_dispatch(&msg, &tx) == DANOS_ERR_INVALID_ARG);
+    assert(danos_tx_abort(&tx) == DANOS_OK);
+
+    /* Control: a count exactly at the capacity is accepted. */
+    assert(danos_tx_begin(&tx, "test-nh-max", NULL) == DANOS_OK);
+    uint8_t ok_payload[64 + DANOS_NHGROUP_MAX_NH * 13];
+    zapi_encoder_t enc2;
+    zapi_encoder_init(&enc2, ok_payload, sizeof(ok_payload));
+    zapi_encode_u32(&enc2, 10);
+    zapi_encode_u8(&enc2, 4);
+    zapi_encode_u8(&enc2, 24);
+    uint8_t p2[4] = { 10, 98, 0, 0 };
+    zapi_encode_bytes(&enc2, p2, 4);
+    zapi_encode_u8(&enc2, 2);
+    zapi_encode_u8(&enc2, 20);
+    zapi_encode_u32(&enc2, 10);
+    zapi_encode_u8(&enc2, DANOS_NHGROUP_MAX_NH);
+    for (int i = 0; i < DANOS_NHGROUP_MAX_NH; i++) {
+        zapi_encode_u8(&enc2, 1);
+        uint8_t gw[4] = { 198, 51, 100, (uint8_t)i };
+        zapi_encode_bytes(&enc2, gw, 4);
+        zapi_encode_u32(&enc2, (uint32_t)(200 + i));
+    }
+    assert(enc2.pos <= sizeof(ok_payload));
+    memset(&msg, 0, sizeof(msg));
+    msg.header.command = ZEBRA_ROUTE_ADD;
+    msg.payload = ok_payload;
+    msg.payload_size = enc2.pos;
+    assert(zapi_dispatch(&msg, &tx) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    printf("[PASS] test_map_route_nh_overflow: %d next-hops rejected, "
+           "%d accepted\n", CLAIMED, DANOS_NHGROUP_MAX_NH);
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -395,6 +472,7 @@ int main(void)
     if (test_map_nexthop_lookup_not_found() != 0) failed++;
     if (test_map_labels_add_delete() != 0) failed++;
     if (test_map_route_ecmp() != 0) failed++;
+    if (test_map_route_nh_overflow() != 0) failed++;
     printf("=== fib_test (zapi_mapper): %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

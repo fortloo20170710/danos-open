@@ -92,6 +92,10 @@ danos_status_t zapi_map_route(const zapi_message_t *msg, danos_tx_t *tx,
 
     /* Normalize all ZAPI next-hops into one DPA NHGroup. */
     if (nh_count > 0 && is_add) {
+        /* nh_count arrives as a wire u8 (up to 255) while nh_ids holds
+         * DANOS_NHGROUP_MAX_NH. Reject an oversized advertisement instead
+         * of writing past the array. */
+        if (nh_count > DANOS_NHGROUP_MAX_NH) return DANOS_ERR_INVALID_ARG;
         danos_nhgroup_t grp;
         memset(&grp, 0, sizeof(grp));
         grp.id = g_zapi_next_id++;
@@ -154,6 +158,11 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
     route.protocol = map_frr_protocol(in.type);
     if (!add) return danos_route_delete(tx, route.vrf_id, route.prefix, route.protocol);
     if (in.nexthop_count > 0) {
+        /* The parser bounds this to ZAPI_FRR_MAX_NEXTHOPS, which currently
+         * equals DANOS_NHGROUP_MAX_NH. Check here too so the mapper stays
+         * correct for any caller that fills the struct directly. */
+        if (in.nexthop_count > DANOS_NHGROUP_MAX_NH)
+            return DANOS_ERR_INVALID_ARG;
         danos_nhgroup_t grp;
         memset(&grp, 0, sizeof(grp));
         grp.id = g_zapi_next_id++;
