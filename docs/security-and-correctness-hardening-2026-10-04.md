@@ -242,10 +242,47 @@ vector inside it carry no alignment guarantee, so `uint64_t *` dereferences were
 undefined behaviour. UBSan trapped it. Entries and counter values are now read
 by `memcpy` into aligned locals.
 
-Test: `test_wire_layouts` was rewritten to assert the real layouts, including
-field-relative padding, and `test_stat_segment` now passes under UBSan. The mock
-server was corrected to emit the same real encoding so it models VPP rather than
-the client's assumptions.
+Test: `test_wire_layouts` now asserts the real layouts, and `test_stat_segment`
+passes under UBSan.
+
+### 4.5 Which upstream definitions govern which field
+
+Two different mechanisms are in play, and conflating them is what caused this
+to be got wrong twice. Both were settled by reading VPP's own code, not the
+`.api` declarations.
+
+**Regular API messages** go through vlapi's length-driven encoder:
+
+| Field | Encoding | Evidence |
+|---|---|---|
+| `sw_interface_set_flags.admin_up_down` | `u8` | `interface.api`: `u32 client_index; u32 context; u32 sw_if_index; u8 admin_up_down;` |
+| any `string` field (e.g. `ip_table_add_del.name`, policer `name`) | `u32` length + exactly that many bytes, **no padding** | `vl_api_to_api_string()` in `api_types.h` returns `len + sizeof(u32)` |
+
+An earlier revision padded strings to a 4-byte boundary. That was wrong and the
+padding has been removed.
+
+**The two legacy socket control messages** (`sockclnt_create` and
+`sockclnt_create_reply`'s message table) do *not* use vlapi's string encoding.
+VPP exchanges them as raw structs:
+
+- VPP's own reference client writes the name as a fixed, zero-padded 64-byte
+  buffer: `strncpy((char *) mp->name, client_name, sizeof(mp->name) - 1)`
+  (`socket_client.c`)
+- the server handler reads it as a plain C string: `format(0, "%s%c", mp->name, 0)`
+  (`socket_api.c`)
+- the reply's message table is filled with
+  `strncpy_s((char *)rp->message_table[i].name, 64, hp->key, 64-1)`
+  and no length field is ever written
+
+So `string name [64]` in `memclnt.api` describes the *abstract* type; the `[64]`
+is a capacity, and on this particular path the wire form is a fixed 64-byte
+buffer with no length prefix. Treating it as a length-prefixed string
+desynchronises the whole message table.
+
+`mock_vpp_server.c` validates the `sockclnt_create` request strictly (exact
+frame length of 70 bytes, context bytes, and the name zero-padded to 64), so a
+regression in either the structure or the length fails the suite rather than
+passing silently.
 
 **These fixes invalidate part of the earlier mock-only VPP evidence.** A real
 runtime smoke was subsequently run against the local Debian trixie image
