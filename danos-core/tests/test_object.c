@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <pthread.h>
+#include <stdatomic.h>
 
 int test_object(void)
 {
@@ -114,6 +116,145 @@ int test_object_size_bounds(void)
     danos_object_store_destroy(s);
     printf("[PASS] test_object_size_bounds: oversized payloads rejected, "
            "largest DPA type round-trips\n");
+    return 0;
+}
+
+/* Batch mutation: end state, mixed write+delete, and size enforcement.
+ *
+ * apply_batch exists so a transaction commit can publish a whole
+ * configuration in one step; applying mutations one at a time takes and
+ * releases the write lock per object, letting a reader - or the reconciler -
+ * observe half a configuration, such as a route installed before the
+ * interface it depends on.
+ *
+ * The guarantee is structural (one lock acquisition for the batch). A
+ * concurrent reader is run here as a smoke check, but see the note at the
+ * end of the function about what it can actually detect.
+ */
+/* Shared with the reader thread, so these must be real atomics: `volatile`
+ * only suppresses compiler optimisation and TSAN correctly reports it as a
+ * data race. */
+struct batch_reader {
+    danos_object_store_t *store;
+    atomic_int stop;
+    atomic_int torn;
+    atomic_uint expected_low, expected_high;
+};
+
+static void *batch_reader_thread(void *arg)
+{
+    struct batch_reader *r = arg;
+    while (!atomic_load_explicit(&r->stop, memory_order_relaxed)) {
+        uint64_t n = danos_object_count(r->store, DANOS_OBJ_IFACE);
+        unsigned lo = atomic_load_explicit(&r->expected_low,
+                                           memory_order_relaxed);
+        unsigned hi = atomic_load_explicit(&r->expected_high,
+                                           memory_order_relaxed);
+        if (n != lo && n != hi) atomic_store_explicit(&r->torn, 1,
+                                                      memory_order_relaxed);
+    }
+    return NULL;
+}
+
+int test_object_batch_atomic(void)
+{
+    danos_object_store_t *s = danos_object_store_create(64);
+    assert(s != NULL);
+
+    /* Seed 3 interfaces. */
+    danos_iface_t ifc;
+    for (uint32_t i = 1; i <= 3; i++) {
+        memset(&ifc, 0, sizeof(ifc));
+        ifc.ifindex = i;
+        snprintf(ifc.name, sizeof(ifc.name), "eth%u", i);
+        ifc.mtu = 1500;
+        assert(danos_object_create(s, DANOS_OBJ_IFACE, i, &ifc, sizeof(ifc))
+               == DANOS_OK);
+    }
+    assert(danos_object_count(s, DANOS_OBJ_IFACE) == 3);
+
+    struct batch_reader r;
+    memset(&r, 0, sizeof(r));
+    r.store = s;
+    atomic_init(&r.stop, 0);
+    atomic_init(&r.torn, 0);
+    atomic_init(&r.expected_low, 3);
+    atomic_init(&r.expected_high, 4);
+    pthread_t rd;
+    assert(pthread_create(&rd, NULL, batch_reader_thread, &r) == 0);
+
+    /* Replace 3 and add 1 in one batch: 3 -> 4. */
+    danos_iface_t next[4];
+    danos_object_mutation_t muts[4];
+    for (uint32_t i = 1; i <= 3; i++) {
+        memset(&next[i - 1], 0, sizeof(next[0]));
+        next[i - 1].ifindex = i;
+        snprintf(next[i - 1].name, sizeof(next[i - 1].name), "eth%u", i);
+        next[i - 1].mtu = 9000;
+        muts[i - 1].type = DANOS_OBJ_IFACE;
+        muts[i - 1].id = i;
+        muts[i - 1].data = &next[i - 1];
+        muts[i - 1].data_size = sizeof(next[0]);
+        muts[i - 1].remove = false;
+    }
+    memset(&next[3], 0, sizeof(next[0]));
+    next[3].ifindex = 4;
+    snprintf(next[3].name, sizeof(next[3].name), "eth4");
+    next[3].mtu = 1500;
+    muts[3] = muts[0];
+    muts[3].id = 4;
+    muts[3].data = &next[3];
+
+    assert(danos_object_apply_batch(s, muts, 4) == 4);
+    assert(danos_object_count(s, DANOS_OBJ_IFACE) == 4);
+
+    /* Mixed write + delete: drop eth1, so 4 -> 3. */
+    /* Reader still running: 4 -> 3 must also look atomic. */
+    atomic_store(&r.expected_low, 3);
+    atomic_store(&r.expected_high, 4);
+    uint8_t big[DANOS_MAX_OBJECT_BYTES + 1];
+    memset(big, 0, sizeof(big));
+    danos_object_mutation_t m2[2];
+    m2[0].type = DANOS_OBJ_IFACE; m2[0].id = 1;
+    m2[0].data = NULL; m2[0].data_size = 0; m2[0].remove = true;
+    m2[1] = muts[0];
+    m2[1].id = 2;              /* rewrite eth2, not the one we just deleted */
+    m2[1].data = &next[1];
+    assert(danos_object_apply_batch(s, m2, 2) == 2);
+    assert(danos_object_count(s, DANOS_OBJ_IFACE) == 3);
+
+    /* Oversized payload is refused rather than written. */
+    danos_object_mutation_t m3 = { .type = DANOS_OBJ_IFACE, .id = 2,
+                                   .data = big, .data_size = sizeof(big),
+                                   .remove = false };
+    assert(danos_object_apply_batch(s, &m3, 1) < 0);
+    /* eth2 untouched. */
+    uint8_t back[sizeof(danos_iface_t)];
+    size_t bsz = sizeof(back);
+    assert(danos_object_read(s, DANOS_OBJ_IFACE, 2, back, &bsz) == DANOS_OK);
+    assert(((danos_iface_t *)back)->mtu == 9000);
+
+    atomic_store(&r.stop, 1);
+    pthread_join(rd, NULL);
+
+    /* What this can and cannot show.
+     *
+     * The end-state assertions above are real: they prove the batch produces
+     * the intended store contents and that an oversized payload is refused
+     * without disturbing existing objects.
+     *
+     * The reader check is only a smoke test. Releasing the write lock per
+     * mutation leaves a window a few nanoseconds wide, and sampling from
+     * another thread does not reliably observe it - verified by rebuilding
+     * apply_batch with per-mutation locking, which this test still passes.
+     * The atomicity guarantee is structural: apply_batch takes the write lock
+     * once for the whole batch, so no reader can interleave. Do not read
+     * `torn` as proof of that; it catches gross violations only. */
+    assert(atomic_load(&r.torn) == 0);
+
+    danos_object_store_destroy(s);
+    printf("[PASS] test_object_batch_atomic: batch end state, mixed "
+           "write+delete, oversized refusal\n");
     return 0;
 }
 

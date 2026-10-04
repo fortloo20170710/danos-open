@@ -62,6 +62,64 @@ static danos_object_entry_t *find_entry(danos_object_store_t *s,
     return NULL;
 }
 
+/* Locked insert-or-replace. Caller holds the write lock. */
+static danos_status_t store_entry_locked(danos_object_store_t *s,
+                                         danos_obj_type_t type,
+                                         danos_obj_id_t id,
+                                         const void *data, size_t size)
+{
+    if (size > DANOS_MAX_OBJECT_BYTES) return DANOS_ERR_INVALID_ARG;
+
+    danos_object_entry_t *e = find_entry(s, type, id);
+    if (e) {
+        /* Replace in place: the id keeps its position in the chain. */
+        void *nd = malloc(size);
+        if (!nd) return DANOS_ERR_NO_MEMORY;
+        memcpy(nd, data, size);
+        free(e->data);
+        e->data = nd;
+        e->data_size = size;
+        return DANOS_OK;
+    }
+
+    e = calloc(1, sizeof(*e));
+    if (!e) return DANOS_ERR_NO_MEMORY;
+    e->data = malloc(size);
+    if (!e->data) { free(e); return DANOS_ERR_NO_MEMORY; }
+
+    e->type = type;
+    e->id = id;
+    e->data_size = size;
+    memcpy(e->data, data, size);
+
+    size_t h = danos_obj_hash(type, id, s->bucket_count);
+    e->next = s->buckets[h];
+    s->buckets[h] = e;
+    s->count++;
+    return DANOS_OK;
+}
+
+/* Locked delete. Caller holds the write lock. */
+static danos_status_t remove_entry_locked(danos_object_store_t *s,
+                                          danos_obj_type_t type,
+                                          danos_obj_id_t id)
+{
+    size_t h = danos_obj_hash(type, id, s->bucket_count);
+    danos_object_entry_t **pp = &s->buckets[h];
+    while (*pp) {
+        if ((*pp)->type == type && (*pp)->id == id) {
+            danos_object_entry_t *e = *pp;
+            *pp = e->next;
+            free(e->data);
+            free(e);
+            s->count--;
+            return DANOS_OK;
+        }
+        pp = &(*pp)->next;
+    }
+    return DANOS_ERR_NOT_FOUND;
+}
+
 danos_status_t danos_object_create(danos_object_store_t *s,
                                    danos_obj_type_t type,
                                    danos_obj_id_t id,
@@ -75,23 +133,9 @@ danos_status_t danos_object_create(danos_object_store_t *s,
         pthread_rwlock_unlock(&s->lock);
         return DANOS_ERR_EXISTS;
     }
-
-    danos_object_entry_t *e = calloc(1, sizeof(*e));
-    if (!e) { pthread_rwlock_unlock(&s->lock); return DANOS_ERR_NO_MEMORY; }
-    e->data = malloc(size);
-    if (!e->data) { free(e); pthread_rwlock_unlock(&s->lock); return DANOS_ERR_NO_MEMORY; }
-
-    e->type = type;
-    e->id = id;
-    e->data_size = size;
-    memcpy(e->data, data, size);
-
-    size_t h = danos_obj_hash(type, id, s->bucket_count);
-    e->next = s->buckets[h];
-    s->buckets[h] = e;
-    s->count++;
-
+    danos_status_t rc = store_entry_locked(s, type, id, data, size);
     pthread_rwlock_unlock(&s->lock);
+    if (rc != DANOS_OK) return rc;
     danos_persist_on_mutation(s, 1 /* WAL_OP_CREATE */, (int)type, id, data, size);
 
     danos_programming_mark_dirty();
@@ -258,6 +302,58 @@ danos_obj_id_t danos_object_max_id(danos_object_store_t *s,
  * Entries are deep-copied so a concurrent delete cannot free the memory
  * underneath a callback.
  */
+/* Apply mutations holding the write lock for the whole batch. See the header
+ * for the atomicity contract and its limits. */
+int danos_object_apply_batch(danos_object_store_t *store,
+                             const danos_object_mutation_t *muts, size_t n)
+{
+    if (!store || (!muts && n)) return DANOS_ERR_INVALID_ARG;
+    if (n == 0) return 0;
+
+    int applied = 0;
+    pthread_rwlock_wrlock(&store->lock);
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        if (m->data_size > DANOS_MAX_OBJECT_BYTES) {
+            pthread_rwlock_unlock(&store->lock);
+            return applied ? -DANOS_ERR_PARTIAL : -DANOS_ERR_INVALID_ARG;
+        }
+        if (m->remove) {
+            if (remove_entry_locked(store, m->type, m->id) != DANOS_OK) {
+                /* Removing something absent is not an error for a batch:
+                 * the desired end state is what matters. */
+                applied++;
+                continue;
+            }
+        } else if (store_entry_locked(store, m->type, m->id, m->data,
+                                      m->data_size)
+                   != DANOS_OK) {
+            pthread_rwlock_unlock(&store->lock);
+            return applied ? -DANOS_ERR_PARTIAL : -DANOS_ERR_EXISTS;
+        }
+        applied++;
+    }
+    pthread_rwlock_unlock(&store->lock);
+
+    /* Events carry no store state and would take the event-bus lock, so they
+     * are published after the store lock is released. Publishing them while
+     * holding it would invert the lock order against a subscriber that
+     * touches this store. */
+    for (size_t i = 0; i < (size_t)applied; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        if (!g_event_bus) break;
+        danos_event_t ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.type = m->remove ? DANOS_EVENT_OBJ_DELETED
+                            : DANOS_EVENT_OBJ_CREATED;
+        ev.obj_type = m->type;
+        ev.obj_id = m->id;
+        ev.timestamp_ns = (uint64_t)time(NULL) * 1000000000ULL;
+        danos_event_publish(&ev);
+    }
+    return applied;
+}
+
 void danos_object_iterate(danos_object_store_t *store,
                           danos_object_iter_cb_t cb, void *user)
 {

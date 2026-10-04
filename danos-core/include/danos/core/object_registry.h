@@ -72,6 +72,36 @@ uint64_t danos_object_count(danos_object_store_t *store, danos_obj_type_t type);
 danos_obj_id_t danos_object_max_id(danos_object_store_t *store,
                                    danos_obj_type_t type);
 
+/* ---- batch mutation ---------------------------------------------------- */
+
+/* One staged change. `data` must remain valid for the duration of the
+ * apply_batch call; the registry copies it. */
+typedef struct {
+    danos_obj_type_t type;
+    danos_obj_id_t   id;
+    void            *data;
+    size_t           data_size;
+    bool             remove;   /* delete instead of write */
+} danos_object_mutation_t;
+
+/* Apply a set of mutations as one atomic step.
+ *
+ * All the store's write lock is taken once for the whole batch, so a
+ * concurrent reader sees either none of the changes or all of them - never a
+ * partially applied set. That is the primitive transaction commit needs: the
+ * alternative, calling create/update/delete in a loop, takes and releases the
+ * lock per object, so a reader (or the reconciler) can observe half of a
+ * configuration.
+ *
+ * Mutations are applied in order. If one fails, the remainder is skipped and
+ * the store holds the changes applied so far - callers that need all-or-
+ * nothing must pre-validate. Returns the number applied, or a negative
+ * status on the first failure (the count applied is lost, so treat a
+ * non-zero return as "do not trust the batch"). */
+int danos_object_apply_batch(danos_object_store_t *store,
+                             const danos_object_mutation_t *muts,
+                             size_t n);
+
 /* Iterate all entries (all types) under a read lock. The callback must
  * not modify the store. */
 typedef void (*danos_object_iter_cb_t)(danos_object_entry_t *entry, void *user);

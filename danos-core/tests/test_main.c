@@ -1,6 +1,7 @@
 /* Core test runner: aggregates all core tests */
 extern int test_object(void);
 extern int test_object_size_bounds(void);
+extern int test_object_batch_atomic(void);
 extern int test_tunnel_crud(void);
 extern int test_evpn_crud(void);
 extern int test_mroute_crud(void);
@@ -16,6 +17,7 @@ int main(void)
     int failed = 0;
     if (test_object()       != 0) failed++;
     if (test_object_size_bounds() != 0) failed++;
+    if (test_object_batch_atomic() != 0) failed++;
     if (test_tunnel_crud()  != 0) failed++;
     if (test_evpn_crud()    != 0) failed++;
     if (test_mroute_crud()  != 0) failed++;

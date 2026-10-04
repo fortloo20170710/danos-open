@@ -58,7 +58,7 @@ Suggested sequence: decide identity source → add TLS to the gRPC accept path �
 link `danos-security` → enforce `danos_rbac_check` at every handler entry →
 audit-log mutations.
 
-### [ ] 2. Transaction engine must actually provide atomicity
+### [~] 2. Transaction engine must actually provide atomicity
 
 All 30+ DPA CRUD entry points begin with `(void)tx;`. The transaction is
 decorative: objects are written and fsynced immediately, before any commit.
@@ -71,11 +71,32 @@ Consequences:
 - The state machine, `prepare`/`validate`/`commit`/`verify` sequence and the
   `DANOS_ERR_TX_CONFLICT` code all exist but are unreachable.
 
-ADR-0005 specifies the intended design. Needs a staging area plus a single
-commit-time swap, and per-object version counters for conflict detection.
+ADR-0005 specifies the intended design.
 
-Note the recorder fix from this pass: transaction records are now correctly
-retired, so this work no longer sits on top of a leak.
+Done: the atomicity *primitive* now exists. `danos_object_apply_batch()`
+applies a set of mutations under a single store write-lock acquisition, so a
+concurrent reader or the reconciler sees either none or all of a change set -
+not a route installed before the interface it depends on. `store_entry` and
+`remove_entry` were factored into `*_locked` helpers so the batch path and the
+single-object paths share one implementation. Covered by
+`test_object_batch_atomic` (end state, mixed write+delete, oversized refusal).
+
+Still open - **this item is not done**, and the batch primitive is not yet on
+the commit path:
+- DPA CRUD still writes straight through to the store; nothing stages
+- `danos_tx_commit` still applies nothing, so behaviour is unchanged
+- no read-your-writes overlay, so a transaction cannot observe its own staged
+  state
+- no per-object version counters, so `DANOS_ERR_TX_CONFLICT` is unreachable
+- the batch is all-or-nothing only for the lock window: a mutation that fails
+  midway leaves the earlier ones applied. Pre-validation is the caller's job.
+
+The next step is to have the CRUD entry points stage into the transaction and
+apply via `apply_batch` at commit. That is a behavioural change to every
+write path and should land as its own series.
+
+Note the recorder fix from the earlier pass: transaction records are now
+correctly retired, so this work no longer sits on top of a leak.
 
 ---
 
