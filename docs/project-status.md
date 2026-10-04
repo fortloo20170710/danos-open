@@ -8,8 +8,16 @@ Latest general LIVE/polling runner (2026-10-04) remains r13:
 commit `88f4bed22f2490e8aaeb081d015243636f538cb6`. Embedded I211 profile validation,
 QEMU runtime ping-plugin query, USB keyboard/mgrd replay, ttyS0 shell and serial-capture PTY tests pass. The
 latest physical I211 traffic candidate is r4 from fix commit `9955ef7` (SHA256
-`311d63d0ce8c8b59c5448cdc7add742f185ddd9e49b61f8433ffe7a84afdef68`); it awaits USB transfer
-back from the target machine for physical retest. The
+`311d63d0ce8c8b59c5448cdc7add742f185ddd9e49b61f8433ffe7a84afdef68`); it has now booted on the
+physical host after USB write/read-back verification. Interactive UART confirmed the exact
+embedded commit/ISO/profile identity. `/run/dpdk-pci-bind.failed` is absent;
+`/tmp/dpdk-pci-bind.log` reports PASS for `0000:01:00.0` and `0000:02:00.0`, both bound to
+`uio_pci_generic`; `0000:03:00.0` and `0000:04:00.0` remain unbound. This closes the r3
+overbinding/bind-error defect on hardware. VPP exposes both I211 ports, but only port 1 has
+carrier (1 Gbps); port 2 is carrier-down. Boot traffic logs show 3/3 loss on each initial peer
+ping, 3/3 loss for ECMP probes, and 1000/1000 loss in the soak probe. Thus physical PCI binding
+is PASS, while physical packet forwarding/ECMP is not yet accepted; connect/configure both
+independent peer links and return routes before rerunning. This is not a throughput result. The
 previous USB media had LBA 0 write and unrecovered-read errors; it must not be reused.
 The 2026-10-04 physical LIVE traffic attempt reached the BusyBox root shell and started VPP;
 serial output included `LIVE-SHELL-READY` and `SERIAL-SHELL-READY`. Its identity markers
@@ -51,9 +59,9 @@ Fix `9955ef7` removes global `new_id` from the modern per-device path, fails clo
 the requested driver attached. Its ISO, r4 (`build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r4.iso`),
 SHA256 `311d63d0ce8c8b59c5448cdc7add742f185ddd9e49b61f8433ffe7a84afdef68`, passed profile and
 provenance validation and QEMU ttyS0 identity smoke; CTest is 35/35 and the full release gate
-on `9955ef7` passed (`build/v016-release-gate-9955ef7.env`). PCI remains OPEN. r4 has not yet
-been written to USB or tested on the physical host because the USB is currently with the target
-and is not visible on the development host.
+on `9955ef7` passed (`build/v016-release-gate-9955ef7.env`). Physical r4 now confirms the
+selected-device bind gate on the I211 host. PCI performance remains OPEN pending a valid
+connected peer topology and traffic measurement.
 
 The complete unified v0.16 release gate was rerun on clean commit `9955ef7` and passed:
 `build/v016-release-gate-9955ef7.env`. Backend contract, CTest 35/35, QEMU USB HID/mgrd
