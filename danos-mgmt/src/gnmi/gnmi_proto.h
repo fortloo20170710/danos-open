@@ -177,14 +177,32 @@ typedef struct {
 bool gnmi_decode_set_request(const uint8_t *data, size_t len,
                              gnmi_set_request_t *out);
 
+/* A SetRequest can carry up to GNMI_MAX_UPDATES updates plus the same
+ * number of replaces plus GNMI_MAX_ELEMS deletes, and the response holds
+ * one result per applied operation. Sizing the response like a single
+ * update list under-counted by up to 24 entries, each ~1.5 KiB. */
+#define GNMI_MAX_SET_OPS (GNMI_MAX_UPDATES * 2 + GNMI_MAX_ELEMS)
+
 /* SetResponse with one UpdateResult per operation */
 typedef struct {
     gnmi_path_t  prefix;
-    gnmi_path_t  result_paths[GNMI_MAX_UPDATES];
-    gnmi_op_t    ops[GNMI_MAX_UPDATES];
+    gnmi_path_t  result_paths[GNMI_MAX_SET_OPS];
+    gnmi_op_t    ops[GNMI_MAX_SET_OPS];
     uint32_t     result_count;
     uint64_t     timestamp;
 } gnmi_set_response_t;
+
+/* Append one applied-operation result. Bounds-checked so a caller can
+ * never write past the arrays, whatever the request decoder admits. */
+static inline void gnmi_set_response_add(gnmi_set_response_t *resp,
+                                         const gnmi_path_t *path,
+                                         gnmi_op_t op)
+{
+    if (!resp || !path || resp->result_count >= GNMI_MAX_SET_OPS) return;
+    uint32_t i = resp->result_count++;
+    resp->result_paths[i] = *path;
+    resp->ops[i] = op;
+}
 
 bool gnmi_encode_set_response(gnmi_pb_t *w, const gnmi_set_response_t *resp);
 

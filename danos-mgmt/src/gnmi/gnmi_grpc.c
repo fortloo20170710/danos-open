@@ -353,6 +353,25 @@ static danos_state_store_t *store_or_default(void)
     return g_store ? g_store : NULL;
 }
 
+/*
+ * Resolve the desired-state store the handlers read and mutate.
+ *
+ * The update paths wrote g_default_store directly while the delete paths
+ * used ss->desired, so a create-then-delete inside one SetRequest operated
+ * on two different stores. Worse, store_or_default() returns NULL when no
+ * state store is configured - the default in a daemon that never calls the
+ * setter - and the delete paths dereferenced it directly, killing the
+ * connection thread on any Set carrying a delete.
+ *
+ * One resolver, used by every path: the state store's desired set when one
+ * is configured, otherwise the global default store.
+ */
+static danos_object_store_t *desired_store(danos_state_store_t *ss)
+{
+    if (ss && ss->desired) return ss->desired;
+    return g_default_store;
+}
+
 /* Serialize one object as a JSON-ish value (we store DPA structs; emit
  * a compact JSON encoding per object type). */
 static int obj_to_json(danos_obj_type_t type, const void *data, size_t size,
@@ -414,12 +433,51 @@ static uint32_t collect_objects(danos_state_store_t *ss, danos_obj_type_t type,
 {
     /* No explicit store: read the DPA default store (the same store
      * danos_tx_commit writes to). */
-    danos_object_store_t *src = (ss && ss->desired) ? ss->desired : g_default_store;
+    danos_object_store_t *src = desired_store(ss);
     if (!src) return 0;
     collect_ctx_t c = { .type = type, .out = out, .out_size = elem_size,
                         .max = max, .count = 0 };
     danos_object_iterate(src, collect_cb, &c);
     return (uint32_t)c.count;
+}
+
+/*
+ * Look up one interface by name.
+ *
+ * The callers used to copy every interface of a type into a fixed array
+ * (16 or 64 entries) and then scan it by name. Once a store held more
+ * interfaces than the array, the wanted one was simply absent from the
+ * copy and the lookup reported NOT_FOUND even though the object existed -
+ * which aborted the whole SetRequest. Searching the store directly has no
+ * capacity limit and allocates nothing per call.
+ */
+typedef struct {
+    const char      *name;
+    danos_iface_t   *out;
+    bool             found;
+} find_iface_ctx_t;
+
+static void find_iface_cb(danos_object_entry_t *e, void *user)
+{
+    find_iface_ctx_t *c = user;
+    if (c->found) return;
+    if (e->type != DANOS_OBJ_IFACE || e->data_size < sizeof(danos_iface_t))
+        return;
+    const danos_iface_t *i = e->data;
+    if (strcmp(i->name, c->name) == 0) {
+        memcpy(c->out, i, sizeof(*c->out));
+        c->found = true;
+    }
+}
+
+static bool find_iface_by_name(danos_state_store_t *ss, const char *name,
+                               danos_iface_t *out)
+{
+    danos_object_store_t *src = desired_store(ss);
+    if (!src || !name || !out) return false;
+    find_iface_ctx_t c = { .name = name, .out = out, .found = false };
+    danos_object_iterate(src, find_iface_cb, &c);
+    return c.found;
 }
 
 /* Send response HEADERS for a streaming RPC (no END_STREAM) */
@@ -745,11 +803,11 @@ int gnmi_handle_get(danos_state_store_t *store,
                     }
                 }
             }
-            if (!obj) return DANOS_ERR_NOT_FOUND;
+            if (!obj) return -(int)DANOS_ERR_NOT_FOUND;
             gnmi_typed_value_t lv;
             if (gnmi_model_read_leaf(mb.obj_type, key, mb.field,
                                      obj, osz, &lv) != DANOS_OK)
-                return DANOS_ERR_INVALID_ARG;
+                return -(int)DANOS_ERR_INVALID_ARG;
             size_t us = gnmi_pb_begin_nested(&w, 4);
             gnmi_encode_path(&w, 1, p);
             gnmi_encode_typed_value(&w, 3, &lv);
@@ -893,11 +951,13 @@ int gnmi_handle_set(danos_state_store_t *store,
 
     danos_state_store_t *ss = store ? store : store_or_default();
 
-    gnmi_set_response_t out;
-    memset(&out, 0, sizeof(out));
+    /* gnmi_set_response_t is ~65 KiB (one gnmi_path_t per applied
+     * operation), so keep it off the connection thread's stack. */
+    gnmi_set_response_t *out = calloc(1, sizeof(*out));
+    if (!out) return -(int)DANOS_ERR_NO_MEMORY;
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    out.timestamp = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+    out->timestamp = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 
     danos_status_t status = DANOS_OK;
 
@@ -942,8 +1002,7 @@ int gnmi_handle_set(danos_state_store_t *store,
                     pst = gnmi_route_set((danos_vrf_id_t)vrf, &prefix, &gw, oif);
             }
             if (pst != DANOS_OK) { status = pst; break; }
-            out.result_paths[out.result_count++] = u->path;
-            out.ops[out.result_count - 1] = GNMI_OP_UPDATE;
+            gnmi_set_response_add(out, &u->path, GNMI_OP_UPDATE);
             continue;
         }
 
@@ -963,35 +1022,22 @@ int gnmi_handle_set(danos_state_store_t *store,
                 /* state tree is read-only */
                 if (!mb.config_tree) { status = DANOS_ERR_INVALID_ARG; break; }
             }
-            danos_iface_t all[1024];
-            uint32_t cnt = collect_objects(ss, DANOS_OBJ_IFACE, all,
-                                           sizeof(all[0]), 1024);
             const char *want = u->path.elems[1].key_value;
             danos_iface_t target;
-            bool found = false;
-            for (uint32_t j = 0; j < cnt; j++) {
-                if (strcmp(all[j].name, want) == 0) {
-                    target = all[j]; found = true; break;
-                }
+            if (!find_iface_by_name(ss, want, &target)) {
+                status = DANOS_ERR_NOT_FOUND; break;
             }
-            if (!found) { status = DANOS_ERR_NOT_FOUND; break; }
             danos_status_t ast = gnmi_model_apply_leaf(DANOS_OBJ_IFACE,
                                                        mb.field,
                                                        &target, sizeof(target),
                                                        &u->val);
             if (ast != DANOS_OK) { status = ast; break; }
-            if (ss && ss->desired) {
-                ast = danos_object_update(ss->desired, DANOS_OBJ_IFACE,
-                                          target.ifindex, &target,
-                                          sizeof(target));
-            } else {
-                ast = danos_object_update(g_default_store, DANOS_OBJ_IFACE,
-                                          target.ifindex, &target,
-                                          sizeof(target));
-            }
+            danos_object_store_t *dst = desired_store(ss);
+            if (!dst) { status = DANOS_ERR_NOT_FOUND; break; }
+            ast = danos_object_update(dst, DANOS_OBJ_IFACE,
+                                      target.ifindex, &target, sizeof(target));
             if (ast != DANOS_OK) { status = ast; break; }
-            out.result_paths[out.result_count++] = u->path;
-            out.ops[out.result_count - 1] = GNMI_OP_UPDATE;
+            gnmi_set_response_add(out, &u->path, GNMI_OP_UPDATE);
             continue;
         }
         const char *ifname = u->path.elems[1].key_value;
@@ -1000,14 +1046,15 @@ int gnmi_handle_set(danos_state_store_t *store,
         snprintf(iface.name, sizeof(iface.name), "%s", ifname);
         unsigned idx = (unsigned)strtoul(ifname, NULL, 10);
         if (idx == 0 && ifname[0] != '0') {
-            /* non-numeric name: allocate max(ifindex)+1 */
-            danos_iface_t all[64];
-            uint32_t cnt = collect_objects(ss, DANOS_OBJ_IFACE, all,
-                                           sizeof(all[0]), 64);
-            for (uint32_t k = 0; k < cnt; k++) {
-                if (all[k].ifindex >= idx) idx = all[k].ifindex;
-            }
-            idx++;
+            /* Non-numeric name: allocate max(ifindex)+1.
+             *
+             * This used to copy every interface into a fixed 64-entry
+             * array and take the max of that. Past 64 interfaces the scan
+             * saw only a prefix, so the chosen ifindex was already taken
+             * and the create failed with EXISTS - which aborted the whole
+             * SetRequest. Ask the store for the real maximum instead. */
+            idx = (unsigned)danos_object_max_id(desired_store(ss),
+                                                DANOS_OBJ_IFACE) + 1;
         }
         iface.ifindex = (danos_ifindex_t)idx;
         iface.mtu = 1500;
@@ -1035,8 +1082,7 @@ int gnmi_handle_set(danos_state_store_t *store,
             status = st;
             break;
         }
-        out.result_paths[out.result_count++] = u->path;
-        out.ops[out.result_count - 1] = GNMI_OP_UPDATE;
+        gnmi_set_response_add(out, &u->path, GNMI_OP_UPDATE);
     }
 
     /* delete: /routes/route[prefix=X] — composite cascade, or
@@ -1053,8 +1099,7 @@ int gnmi_handle_set(danos_state_store_t *store,
             if (pst != DANOS_OK) { status = pst; break; }
             pst = gnmi_route_delete(0, &prefix);
             if (pst != DANOS_OK) { status = pst; break; }
-            out.result_paths[out.result_count++] = *dp;
-            out.ops[out.result_count - 1] = GNMI_OP_DELETE;
+            gnmi_set_response_add(out, dp, GNMI_OP_DELETE);
             continue;
         }
         if (dp->elem_count < 2 ||
@@ -1072,27 +1117,19 @@ int gnmi_handle_set(danos_state_store_t *store,
                 status = DANOS_ERR_INVALID_ARG;
                 break;
             }
-            danos_iface_t ifaces[16];
-            uint32_t n = collect_objects(ss, DANOS_OBJ_IFACE, ifaces,
-                                         sizeof(ifaces[0]), 16);
-            bool found = false;
-            for (uint32_t j = 0; j < n; j++) {
-                if (strcmp(ifaces[j].name, dp->elems[1].key_value) == 0) {
-                    if (mb.field == GNMI_FIELD_IPV4_ADDRESS)
-                        memset(&ifaces[j].ipv4_address, 0, sizeof(ifaces[j].ipv4_address));
-                    else
-                        memset(&ifaces[j].ipv6_address, 0, sizeof(ifaces[j].ipv6_address));
-                    status = danos_object_update(ss->desired, DANOS_OBJ_IFACE,
-                                                 ifaces[j].ifindex, &ifaces[j],
-                                                 sizeof(ifaces[j]));
-                    found = true;
-                    break;
-                }
+            danos_iface_t ifc;
+            if (!find_iface_by_name(ss, dp->elems[1].key_value, &ifc)) {
+                status = DANOS_ERR_NOT_FOUND;
+                break;
             }
-            if (!found) status = DANOS_ERR_NOT_FOUND;
+            if (mb.field == GNMI_FIELD_IPV4_ADDRESS)
+                memset(&ifc.ipv4_address, 0, sizeof(ifc.ipv4_address));
+            else
+                memset(&ifc.ipv6_address, 0, sizeof(ifc.ipv6_address));
+            status = danos_object_update(desired_store(ss), DANOS_OBJ_IFACE,
+                                         ifc.ifindex, &ifc, sizeof(ifc));
             if (status != DANOS_OK) break;
-            out.result_paths[out.result_count++] = *dp;
-            out.ops[out.result_count - 1] = GNMI_OP_DELETE;
+            gnmi_set_response_add(out, dp, GNMI_OP_DELETE);
             continue;
         }
         const gnmi_path_t *p = &sr.deletes[i];
@@ -1103,34 +1140,32 @@ int gnmi_handle_set(danos_state_store_t *store,
             break;
         }
         {
-            /* find by name in the desired/default store */
-            danos_iface_t ifaces[16];
-            uint32_t n = collect_objects(ss, DANOS_OBJ_IFACE, ifaces,
-                                         sizeof(ifaces[0]), 16);
-            bool found = false;
-            for (uint32_t j = 0; j < n; j++) {
-                if (strcmp(ifaces[j].name, p->elems[1].key_value) == 0) {
-                    danos_object_delete(ss->desired, DANOS_OBJ_IFACE,
-                                        ifaces[j].ifindex);
-                    found = true;
-                    break;
-                }
+            danos_iface_t ifc;
+            if (find_iface_by_name(ss, p->elems[1].key_value, &ifc)) {
+                status = danos_object_delete(desired_store(ss), DANOS_OBJ_IFACE,
+                                             ifc.ifindex);
+            } else {
+                status = DANOS_ERR_NOT_FOUND;
             }
-            if (!found) status = DANOS_ERR_NOT_FOUND;
         }
         if (status == DANOS_OK) {
-            out.result_paths[out.result_count++] = *p;
-            out.ops[out.result_count - 1] = GNMI_OP_DELETE;
+            gnmi_set_response_add(out, p, GNMI_OP_DELETE);
         }
     }
 
-    if (status != DANOS_OK) return -(int)status;
+    if (status != DANOS_OK) {
+        int rc = -(int)status;
+        free(out);
+        return rc;
+    }
 
     /* encode into resp buffer */
     gnmi_pb_t w;
     gnmi_pb_init(&w, resp, resp_cap);
-    if (!gnmi_encode_set_response(&w, &out)) return -1;
-    return (int)w.len;
+    bool enc = gnmi_encode_set_response(&w, out);
+    int rc = enc ? (int)w.len : -1;
+    free(out);
+    return rc;
 }
 
 /* =========================================================================

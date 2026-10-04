@@ -7,6 +7,7 @@
  */
 
 #include <assert.h>
+#include "../src/gnmi/model_paths.h"
 #include "../src/gnmi/gnmi_grpc.h"
 #include "../src/gnmi/gnmi_proto.h"
 #include "../src/gnmi/hpack.h"
@@ -734,6 +735,140 @@ static int test_model_unknown_path(void)
     return 0;
 }
 
+/* A Set carrying the maximum operation count the handler can report must
+ * not overrun the response arrays.
+ *
+ * gnmi_set_response_t used to be sized like a single update list
+ * (GNMI_MAX_UPDATES), but one request can carry GNMI_MAX_UPDATES updates
+ * plus GNMI_MAX_ELEMS deletes, and the handler reports one result per
+ * applied operation. Each gnmi_path_t is ~1.5 KiB, so the overflow was
+ * ~12 KiB past the end of the struct. The struct was also a stack local.
+ *
+ * (`replace` is decoded but not applied, so it contributes no results and
+ * is not exercised here.)
+ */
+#define MAX_REPORTED_OPS (GNMI_MAX_UPDATES + GNMI_MAX_ELEMS)
+
+/* Count top-level `response` entries (SetResponse field 2) in an encoded
+ * SetResponse by walking the protobuf, rather than scanning for a byte
+ * pattern that payload bytes can imitate. */
+static int count_set_results(const uint8_t *buf, size_t len)
+{
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, buf, len);
+    uint32_t field, wire, n = 0;
+    while ((field = gnmi_pbr_tag(&r, &wire)) != 0) {
+        if (r.err) break;
+        if (field == 2 && wire == 2) {
+            const uint8_t *d; size_t dl;
+            if (!gnmi_pbr_bytes(&r, &d, &dl)) break;
+            n++;
+        } else {
+            gnmi_pbr_skip(&r, wire);
+            if (r.err) break;
+        }
+    }
+    return (int)n;
+}
+
+static int test_set_max_operations(void)
+{
+    uint8_t req[65536];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    char path[64];
+
+    /* Field 4 = update. Create GNMI_MAX_UPDATES interfaces. */
+    for (int i = 0; i < GNMI_MAX_UPDATES; i++) {
+        gnmi_update_t u;
+        memset(&u, 0, sizeof(u));
+        snprintf(path, sizeof(path), "interfaces/interface[name=eth%d]", i);
+        assert(gnmi_path_from_str(&u.path, path));
+        u.val.kind = GNMI_VAL_JSON_IETF;
+        snprintf(u.val.s, sizeof(u.val.s), "{\"mtu\":%d}", 1500 + i);
+        size_t us = gnmi_pb_begin_nested(&w, 4);
+        gnmi_encode_path(&w, 1, &u.path);
+        gnmi_encode_typed_value(&w, 3, &u.val);
+        gnmi_pb_end_nested(&w, us);
+    }
+    /* Field 2 = delete. Remove GNMI_MAX_ELEMS of them. */
+    for (int i = 0; i < GNMI_MAX_ELEMS; i++) {
+        gnmi_path_t p;
+        snprintf(path, sizeof(path), "interfaces/interface[name=eth%d]", i);
+        assert(gnmi_path_from_str(&p, path));
+        gnmi_encode_path(&w, 2, &p);
+    }
+    assert(!w.overflow);
+
+    client_hdrs_t h;
+    uint8_t resp[65536];
+    int n = client_rpc("/gnmi.gNMI/Set", req, w.len, resp, sizeof(resp), &h,
+                       NULL);
+    assert(n >= 0);
+    assert(strcmp(h.grpc_status, "0") == 0);
+
+    /* Every applied operation must be reported exactly once. */
+    int results = count_set_results(resp, (size_t)n);
+    assert(results == MAX_REPORTED_OPS);
+
+    printf("[PASS] test_set_max_operations (%d ops, no overflow)\n",
+           MAX_REPORTED_OPS);
+    return 0;
+}
+
+/* gnmi_handle_get returns a response *length*, with errors signalled as a
+ * negated danos_status_t. Two paths returned the status unnegated, so the
+ * dispatcher read the value as a length: a Get for a missing object
+ * answered grpc-status 200 with a two-byte body instead of NOT_FOUND.
+ *
+ * Tested at the handler boundary so the assertion is about the contract
+ * itself, not about how the HTTP/2 layer frames trailers.
+ */
+static int test_get_not_found_status(void)
+{
+    uint8_t greq[128];
+    gnmi_pb_t gw;
+    gnmi_pb_init(&gw, greq, sizeof(greq));
+    gnmi_path_t gp;
+
+    /* A leaf path naming an interface that does not exist. A subtree Get
+     * matching nothing is a successful empty result and must stay so. */
+    assert(gnmi_path_from_str(&gp,
+              "interfaces/interface[name=nosuchif99]/state/mtu"));
+    gnmi_model_binding_t mb;
+    assert(gnmi_model_resolve(&gp, &mb) == DANOS_OK);
+    assert(mb.kind == GNMI_MODEL_LEAF);
+    gnmi_encode_path(&gw, 2, &gp);
+
+    uint8_t resp[4096];
+    int n = gnmi_handle_get(NULL, greq, gw.len, resp, sizeof(resp));
+    assert(n < 0);
+    assert(n == -(int)DANOS_ERR_NOT_FOUND ||
+           n == -(int)DANOS_ERR_INVALID_ARG);
+
+    /* Control: an existing interface with the same leaf shape succeeds. */
+    gnmi_pb_t gw2;
+    uint8_t greq2[128];
+    gnmi_pb_init(&gw2, greq2, sizeof(greq2));
+    assert(gnmi_path_from_str(&gp,
+              "interfaces/interface[name=eth0]/state/mtu"));
+    gnmi_encode_path(&gw2, 2, &gp);
+    int n2 = gnmi_handle_get(NULL, greq2, gw2.len, resp, sizeof(resp));
+    assert(n2 > 0);
+
+    /* An unknown top-level path is still an error, not an empty success. */
+    gnmi_pb_t gw3;
+    uint8_t greq3[128];
+    gnmi_pb_init(&gw3, greq3, sizeof(greq3));
+    assert(gnmi_path_from_str(&gp, "bogus/thing[name=x]"));
+    gnmi_encode_path(&gw3, 2, &gp);
+    assert(gnmi_handle_get(NULL, greq3, gw3.len, resp, sizeof(resp)) < 0);
+
+    printf("[PASS] test_get_not_found_status (missing leaf -> error, "
+           "existing leaf -> success)\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -760,6 +895,11 @@ int main(void)
     if (test_concurrent_streams() != 0) failed++;
     if (test_model_leaf_get_set() != 0) failed++;
     if (test_model_unknown_path() != 0) failed++;
+
+    /* Kept last: test_set_max_operations creates and deletes interfaces,
+     * which would disturb the seeded state the tests above rely on. */
+    if (test_set_max_operations() != 0) failed++;
+    if (test_get_not_found_status() != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);
