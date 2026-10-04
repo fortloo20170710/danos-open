@@ -13,6 +13,8 @@ contributor needs lives here; everything else is an archive.
 | [Threading contract](threading.md) | Threads, shared state, lock rules |
 | [Release notes](release/) | Per-tag notes (v0.6.0+) |
 | [Project status](project-status.md) | Current assessment, roadmap and acceptance policy |
+| [Outstanding work plan](outstanding-work-plan.md) | Open defects and gaps, ordered by dependency (P0–P3) |
+| [Hardening pass 2026-10-04](security-and-correctness-hardening-2026-10-04.md) | Memory-safety, persistence and VPP wire-protocol fixes |
 | [v0.16 acceptance matrix](v0.16-acceptance-matrix.md) | Single current rc1 acceptance record |
 | [v0.16 performance schema](v0.16-performance-result-schema.md) | Machine-readable QEMU/VMware/PCI result fields |
 | [v0.16 PCI runner contract](v0.16-pci-runner-contract.md) | External real-DPDK runner prerequisites and first-pass contract |

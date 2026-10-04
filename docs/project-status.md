@@ -1,5 +1,37 @@
 # DANOS Open Project Status
 
+## 2026-10-04 hardening pass
+
+A P0 remediation pass closed the remotely reachable memory-safety defects, fixed
+a persistence path that silently dropped every route, and corrected three VPP
+binary-API wire encodings that did not match VPP's `.api` definitions. Full
+record, including the five further defects found while writing the regression
+tests: `docs/security-and-correctness-hardening-2026-10-04.md`.
+
+Sanitizer status moved from red to green on `main`:
+
+| Build | Before | After |
+|---|---|---|
+| Debug | 35/35 | 35/35 |
+| ASan + UBSan + LSan | 20/35 | **35/35** |
+| TSan | 32/35 | **35/35** |
+
+Seven new test functions were added, each verified to fail against the unfixed
+code. Notable corrections: routes are now durable across restart (previously no
+route was ever written to the WAL); interfaces can be brought admin-up on VPP
+(the flag was encoded one byte too wide, so VPP always read zero); and any gNMI
+`Set` carrying a delete no longer crashes the server.
+
+**This pass invalidates part of the recorded evidence.** All VPP protocol
+results were produced against `mock_vpp_server.c`, which encoded strings the same
+wrong way as the client, and the tests asserted those wrong layouts. The live VPP
+lane must be re-run before any "verified VPP forwarding/ECMP" claim stands. The
+physical I211 forwarding/ECMP result was already FAIL for independent reasons.
+
+Remaining work is tracked in `docs/outstanding-work-plan.md`. The two items that
+gate any real deployment are TLS/authentication on the management plane, and
+giving the transaction engine actual atomicity.
+
 ## Current assessment
 
 Latest general LIVE/polling runner (2026-10-04) remains r13:
