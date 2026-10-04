@@ -101,8 +101,10 @@ static void test_config_export(void)
     CHECK(fp != NULL, "open exported file");
     if (fp) {
         char buf[256];
-        fgets(buf, sizeof(buf), fp);
-        CHECK(strstr(buf, "DANOS-Open") != NULL, "export header");
+        if (fgets(buf, sizeof(buf), fp) != NULL)
+            CHECK(strstr(buf, "DANOS-Open") != NULL, "export header");
+        else
+            CHECK(0, "read exported header");
         fclose(fp);
         unlink(tmp);
     }

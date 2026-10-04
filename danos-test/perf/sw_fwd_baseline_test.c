@@ -59,13 +59,13 @@ static int create_veth(void)
     (void)ret;
 
     snprintf(cmd, sizeof(cmd), "ip link set %s up", VETH_NAME);
-    system(cmd);
+    if (system(cmd) != 0) return -1;
     snprintf(cmd, sizeof(cmd), "ip link set %s up", VETH_PEER);
-    system(cmd);
+    if (system(cmd) != 0) return -1;
     snprintf(cmd, sizeof(cmd), "ip addr add 10.99.0.1/24 dev %s", VETH_NAME);
-    system(cmd);
+    if (system(cmd) != 0) return -1;
     snprintf(cmd, sizeof(cmd), "ip addr add 10.99.0.2/24 dev %s", VETH_PEER);
-    system(cmd);
+    if (system(cmd) != 0) return -1;
     return 0;
 }
 
@@ -73,7 +73,8 @@ static void destroy_veth(void)
 {
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "ip link del %s 2>/dev/null", VETH_NAME);
-    system(cmd);
+    int ret = system(cmd);
+    (void)ret; /* best-effort stale-state cleanup */
 }
 
 int main(void)
