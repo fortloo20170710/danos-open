@@ -6,6 +6,7 @@
 #include "../gnmi/model_paths.h"
 #include <danos/core/object_registry.h>
 #include <danos/dpa.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,36 +92,131 @@ static char *error_reply(const char *msg)
 
 /* ---- model-layer wired config view + edit ------------------------------- */
 
-char g_nc_body[8192];
-int g_nc_off = 0;
+/*
+ * Growable response builder.
+ *
+ * The previous implementation accumulated into a fixed 8 KiB file-scope
+ * buffer with `g_nc_off += snprintf(buf + g_nc_off, sizeof - g_nc_off, ...)`.
+ * Once the offset passed the capacity, snprintf reports the length it
+ * *would* have written while `sizeof - g_nc_off` underflowed to a huge
+ * size_t, so a store holding a few hundred interfaces wrote past the end
+ * of the buffer. Being file-scope it was also shared across concurrent
+ * sessions, so two overlapping get-configs interleaved into one buffer.
+ *
+ * A per-call heap builder removes both problems: the offset can never
+ * exceed the allocation, and nothing is shared between sessions.
+ */
+typedef struct {
+    char  *buf;
+    size_t len;
+    size_t cap;
+    bool   oom;
+} nc_buf_t;
+
+static void nc_buf_init(nc_buf_t *b, size_t cap)
+{
+    b->buf = malloc(cap);
+    b->len = 0;
+    b->cap = b->buf ? cap : 0;
+    b->oom = (b->buf == NULL);
+    if (b->buf) b->buf[0] = '\0';
+}
+
+static bool nc_buf_reserve(nc_buf_t *b, size_t extra)
+{
+    if (b->oom) return false;
+    if (b->cap - b->len > extra) return true;   /* room for NUL included */
+
+    size_t want = b->len + extra + 1;
+    size_t cap = b->cap ? b->cap : 256;
+    while (cap < want) {
+        if (cap > (size_t)-1 / 2) { b->oom = true; return false; }
+        cap *= 2;
+    }
+    char *nb = realloc(b->buf, cap);
+    if (!nb) { b->oom = true; return false; }
+    b->buf = nb;
+    b->cap = cap;
+    return true;
+}
+
+static void nc_buf_addf(nc_buf_t *b, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+
+static void nc_buf_addf(nc_buf_t *b, const char *fmt, ...)
+{
+    if (b->oom) return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    if (n < 0) { b->oom = true; return; }
+
+    if (!nc_buf_reserve(b, (size_t)n)) return;
+
+    va_start(ap, fmt);
+    vsnprintf(b->buf + b->len, b->cap - b->len, fmt, ap);
+    va_end(ap);
+    b->len += (size_t)n;
+}
+
+/* XML-escape the five predefined entities so interface names cannot
+ * inject markup into the reply (RFC 6241 well-formedness). */
+static void nc_buf_add_escaped(nc_buf_t *b, const char *s)
+{
+    for (const char *p = s; *p && !b->oom; p++) {
+        switch (*p) {
+        case '&':  nc_buf_addf(b, "&amp;");  break;
+        case '<':  nc_buf_addf(b, "&lt;");   break;
+        case '>':  nc_buf_addf(b, "&gt;");   break;
+        case '"':  nc_buf_addf(b, "&quot;"); break;
+        case '\'': nc_buf_addf(b, "&apos;"); break;
+        default: {
+            char one[2] = { *p, '\0' };
+            nc_buf_addf(b, "%s", one);
+        }
+        }
+    }
+}
 
 static void nc_iface_xml_iter(danos_object_entry_t *e, void *user)
 {
-    (void)user;
+    nc_buf_t *b = user;
+    if (b->oom) return;
     if (e->type != DANOS_OBJ_IFACE || e->data_size < sizeof(danos_iface_t))
         return;
     const danos_iface_t *i = e->data;
-    g_nc_off += snprintf(g_nc_body + g_nc_off, sizeof(g_nc_body) - g_nc_off,
+
+    nc_buf_addf(b,
         "      <interface>\n"
-        "        <name>%s</name>\n"
+        "        <name>");
+    nc_buf_add_escaped(b, i->name);
+    nc_buf_addf(b,
+        "</name>\n"
         "        <mtu>%u</mtu>\n"
         "        <enabled>%s</enabled>\n"
         "      </interface>\n",
-        i->name, i->mtu, i->admin_up ? "true" : "false");
+        i->mtu, i->admin_up ? "true" : "false");
 }
 
 static char *get_config_reply(void)
 {
-    g_nc_off = snprintf(g_nc_body, sizeof(g_nc_body),
+    nc_buf_t b;
+    nc_buf_init(&b, 4096);
+
+    nc_buf_addf(&b,
         "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
         "  <data>\n"
         "    <interfaces xmlns=\"urn:danos:yang:danos-iface\">\n");
-    danos_object_iterate(g_default_store, nc_iface_xml_iter, NULL);
-    g_nc_off += snprintf(g_nc_body + g_nc_off, sizeof(g_nc_body) - g_nc_off,
+    danos_object_iterate(g_default_store, nc_iface_xml_iter, &b);
+    nc_buf_addf(&b,
         "    </interfaces>\n"
         "  </data>\n"
         "</rpc-reply>\n");
-    return strdup(g_nc_body);
+
+    if (b.oom) { free(b.buf); return error_reply("response too large"); }
+    return b.buf;   /* ownership transfers to the caller */
 }
 
 static void extract_text(const char *xml, const char *tag,
