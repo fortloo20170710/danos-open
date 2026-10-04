@@ -38,6 +38,13 @@ int danos_reconciler_init(danos_state_store_t *state,
     g_reconciler->config = config ? *config : kDefaultConfig;
     g_reconciler->state = state;
     g_reconciler->running = false;
+    /* Hand the retry / anti-flap policy to the programming pass. These
+     * fields were read into the config struct and then never referenced. */
+    danos_programming_set_policy(g_reconciler->config.max_retries,
+                                 g_reconciler->config.backoff_initial_ms,
+                                 g_reconciler->config.backoff_max_ms,
+                                 g_reconciler->config.antiflap_window_ms,
+                                 g_reconciler->config.antiflap_max_count);
     pthread_mutex_init(&g_reconciler->stats_lock, NULL);
     memset(&g_reconciler->stats, 0, sizeof(g_reconciler->stats));
     return 0;
@@ -65,35 +72,33 @@ static int diff_cb(danos_obj_type_t type, danos_obj_id_t id, void *user)
 uint64_t danos_reconciler_run_once(void)
 {
     if (!g_reconciler) return 0;
-    if (!g_reconciler->state) {
-        /* programming-only mode: no state store, drive the backend */
-        uint64_t attempted = 0, failed = 0;
-        uint64_t ok = danos_programming_run(&attempted, &failed);
-        pthread_mutex_lock(&g_reconciler->stats_lock);
-        g_reconciler->stats.total_repairs += attempted;
-        g_reconciler->stats.total_failures += failed;
-        pthread_mutex_unlock(&g_reconciler->stats_lock);
-        return ok;
-    }
 
     pthread_mutex_lock(&g_reconciler->stats_lock);
     g_reconciler->stats.total_runs++;
     pthread_mutex_unlock(&g_reconciler->stats_lock);
 
-    uint64_t diffs = danos_state_diff_desired_programmed(
-        g_reconciler->state, diff_cb, NULL);
+    uint64_t diffs = 0;
+    if (g_reconciler->state)
+        diffs = danos_state_diff_desired_programmed(g_reconciler->state,
+                                                    diff_cb, NULL);
 
-    /* v0.9: real programming pass against the installed backend ops */
+    /* Programming pass over desired state, then the tombstone sweep.
+     *
+     * The sweep is what withdraws config that has been deleted. It used to
+     * run only from tests, so removing an interface or a route left it
+     * programmed in the dataplane for the lifetime of the process. Both
+     * modes need it: without a state store the pass is programming-only,
+     * not sweep-free. */
     uint64_t attempted = 0, failed = 0;
     uint64_t programmed = danos_programming_run(&attempted, &failed);
+    uint64_t sweep_failed = 0;
+    uint64_t withdrawn = danos_programming_sweep(&sweep_failed);
 
     pthread_mutex_lock(&g_reconciler->stats_lock);
     g_reconciler->stats.total_diffs += diffs;
-    g_reconciler->stats.total_repairs += attempted;   /* real attempts */
-    g_reconciler->stats.total_failures += failed;     /* honest accounting */
+    g_reconciler->stats.total_repairs += attempted + withdrawn;
+    g_reconciler->stats.total_failures += failed + sweep_failed;
     pthread_mutex_unlock(&g_reconciler->stats_lock);
-
-    (void)programmed;
 
     /* Emit reconcile event */
     if (diffs > 0 && g_event_bus) {
@@ -103,7 +108,12 @@ uint64_t danos_reconciler_run_once(void)
         ev.message = "reconcile repaired drift";
         danos_event_publish(&ev);
     }
-    return diffs;
+    /* Return value follows the mode: with a state store it is the drift
+     * found, without one there is no desired-vs-programmed diff to report and
+     * it is the objects programmed. That split is pre-existing and callers
+     * (including the conformance tests) depend on it; the sweep runs either
+     * way, which is what actually matters here. */
+    return g_reconciler->state ? diffs : programmed;
 }
 
 /* Periodic reconcile thread — also wakes immediately when desired
@@ -148,8 +158,11 @@ void danos_reconciler_stop(void)
 danos_status_t danos_reconcile_trigger(danos_obj_type_t type)
 {
     (void)type;
-    uint64_t diffs = danos_reconciler_run_once();
-    return diffs > 0 ? DANOS_OK : DANOS_OK;
+    if (!g_reconciler) return DANOS_ERR_INVALID_ARG;
+    /* Force the next pass to run now rather than waiting for the period. */
+    danos_programming_mark_dirty();
+    danos_reconciler_run_once();
+    return DANOS_OK;
 }
 
 danos_status_t danos_reconcile_get_stats(danos_obj_type_t type,

@@ -88,6 +88,27 @@ uint64_t danos_programming_sweep(uint64_t *failed);
  * desired objects so the next programming pass replays the full FIB. */
 uint64_t danos_programming_forget_programmed(void);
 
+/* Retry / anti-flap policy applied when an object fails to program.
+ *
+ * Without it a permanently unprogrammable object - a route whose next hop has
+ * not appeared yet - is retried on every reconciler tick (50 ms when dirty),
+ * which is a retry storm against the backend. Failures now back off
+ * exponentially up to backoff_max_ms and stop after max_retries; an object
+ * that keeps failing and recovering inside antiflap_window_ms more than
+ * antiflop_max_count times is parked as flapping.
+ *
+ * max_retries of 0 disables the attempt limit (retry forever). */
+void danos_programming_set_policy(uint32_t max_retries,
+                                  uint32_t backoff_initial_ms,
+                                  uint32_t backoff_max_ms,
+                                  uint32_t antiflap_window_ms,
+                                  uint32_t antiflap_max_count);
+
+/* Objects currently in backoff, and those parked as flapping. Exposed for
+ * reconciler stats and tests. */
+void danos_programming_get_retry_stats(uint64_t *deferred, uint64_t *flapping,
+                                       uint64_t *exhausted);
+
 #ifdef __cplusplus
 }
 #endif

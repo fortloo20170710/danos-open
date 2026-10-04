@@ -15,6 +15,7 @@
 #include "../danos-netlink/danos_netlink.h"
 #include <danos/dpa.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -33,6 +34,123 @@ static void make_route(unsigned i, danos_route_t *r)
 }
 
 static int test_vpp_adapter_pipeline(void);
+
+/* The reconciler must withdraw deleted config on its own.
+ *
+ * The tombstone sweep used to be reachable only from tests, so
+ * danos_reconciler_run_once() never withdrew anything: deleting a route left
+ * it live in the dataplane for the lifetime of the process. This drives the
+ * reconciler thread's entry point rather than calling the sweep directly, so
+ * the daemon's actual path is what is covered. */
+static int test_reconciler_withdraws_deletes(void)
+{
+    /* Assert the delta caused by this test's own route: earlier steps in this
+     * binary leave routes in the desired store, and the ledger starts empty,
+     * so an absolute baseline says nothing about what this test did. */
+    danos_tx_t tx;
+    assert(danos_tx_begin(&tx, "wd", NULL) == DANOS_OK);
+    danos_route_t rt;
+    memset(&rt, 0, sizeof(rt));
+    rt.vrf_id = 0;
+    rt.prefix.addr.af = DANOS_AF_IPV4;
+    rt.prefix.addr.addr[0] = 198; rt.prefix.addr.addr[1] = 51;
+    rt.prefix.addr.addr[2] = 100; rt.prefix.addr.addr[3] = 0;
+    rt.prefix.prefix_len = 24;
+    rt.protocol = DANOS_ROUTE_PROTO_STATIC;
+    rt.nhgroup_id = 1;
+    assert(danos_route_create(&tx, &rt) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    assert(danos_reconciler_init(NULL, NULL) == 0);
+    (void)danos_reconciler_run_once();
+
+    uint64_t ledger1 = danos_programming_programmed_count(DANOS_OBJ_ROUTE);
+    unsigned mock1 = (unsigned)danos_netlink_mock_route_count();
+    assert(mock1 >= 1);
+
+    /* Delete the desired object; the reconciler alone must withdraw it.
+     * This requires danos_reconciler_run_once() to invoke the tombstone
+     * sweep - the sweep was previously only reachable from tests, so a
+     * deleted route stayed live in the dataplane. */
+    assert(danos_tx_begin(&tx, "wd", NULL) == DANOS_OK);
+    assert(danos_route_delete(&tx, 0, rt.prefix, DANOS_ROUTE_PROTO_STATIC)
+           == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    (void)danos_reconciler_run_once();
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == ledger1 - 1);
+    assert(danos_netlink_mock_route_count() == mock1 - 1);
+
+    danos_reconciler_fini();
+    printf("[PASS] test_reconciler_withdraws_deletes\n");
+    return 0;
+}
+
+/* A permanently unprogrammable object must not be retried on every tick.
+ *
+ * The reconciler ticks every 50 ms when desired state is dirty. A route whose
+ * next hop is missing returned DANOS_ERR_RETRY on every pass, hammering the
+ * backend indefinitely. Failures now back off and stop after max_retries.
+ * Verified by counting real backend attempts for one object. */
+static int test_retry_backoff_and_limit(void)
+{
+    /* Tight policy so the test does not have to wait seconds. */
+    danos_programming_set_policy(3, 1 /* initial ms */, 4 /* max ms */,
+                                 60000, 0 /* antiflap off */);
+
+    /* Route referencing a next-hop id that does not exist: the backend will
+     * refuse it, which is the failure being counted. */
+    danos_tx_t tx;
+    assert(danos_tx_begin(&tx, "rt", NULL) == DANOS_OK);
+    danos_route_t rt;
+    memset(&rt, 0, sizeof(rt));
+    rt.vrf_id = 0;
+    rt.prefix.addr.af = DANOS_AF_IPV4;
+    rt.prefix.addr.addr[0] = 203; rt.prefix.addr.addr[1] = 0;
+    rt.prefix.addr.addr[2] = 113; rt.prefix.addr.addr[3] = 99;
+    rt.prefix.prefix_len = 32;
+    rt.protocol = DANOS_ROUTE_PROTO_STATIC;
+    rt.nhgroup_id = 4242;          /* no such group */
+    assert(danos_route_create(&tx, &rt) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    /* First pass attempts it and records a failure. */
+    uint64_t attempted = 0, failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed >= 1);
+
+    /* Immediately re-running must not attempt it again: it is in backoff. */
+    uint64_t a2 = 0, f2 = 0;
+    (void)danos_programming_run(&a2, &f2);
+    uint64_t deferred = 0, flapping = 0, exhausted = 0;
+    danos_programming_get_retry_stats(&deferred, &flapping, &exhausted);
+    assert(deferred + exhausted >= 1);
+
+    /* Past the backoff and the attempt limit it stops entirely. */
+    usleep(200000);
+    for (int i = 0; i < 12; i++) {
+        uint64_t a = 0, f = 0;
+        (void)danos_programming_run(&a, &f);
+        usleep(20000);
+    }
+    danos_programming_get_retry_stats(&deferred, &flapping, &exhausted);
+    assert(exhausted >= 1);   /* hit max_retries and stopped */
+
+    /* Backoff is bounded, so the object is not retried forever. */
+    uint64_t before = 0, fbefore = 0;
+    (void)danos_programming_run(&before, &fbefore);
+    assert(before == 0);     /* exhausted: no further attempts */
+
+    /* Remove the offending object and restore a permissive policy. */
+    assert(danos_tx_begin(&tx, "rt", NULL) == DANOS_OK);
+    assert(danos_route_delete(&tx, 0, rt.prefix, DANOS_ROUTE_PROTO_STATIC)
+           == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    danos_programming_set_policy(5, 1000, 60000, 5000, 3);
+
+    printf("[PASS] test_retry_backoff_and_limit\n");
+    return 0;
+}
 
 int main(void)
 {
@@ -248,6 +366,8 @@ int main(void)
     assert(danos_nhgroup_create(&tx, &restored_grp) == DANOS_OK);
     danos_tx_commit(&tx);
 
+    assert(test_reconciler_withdraws_deletes() == 0);
+    assert(test_retry_backoff_and_limit() == 0);
     assert(test_vpp_adapter_pipeline() == 0);
     danos_netlink_shutdown();
 

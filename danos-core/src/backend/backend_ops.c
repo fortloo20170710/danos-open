@@ -203,6 +203,175 @@ static bool type_skipped(danos_obj_type_t t)
            t == DANOS_OBJ_NEXTHOP || t == DANOS_OBJ_NHGROUP;
 }
 
+/* ---- retry / anti-flap policy -------------------------------------------- */
+
+/*
+ * Per-object failure tracking.
+ *
+ * The reconciler ticks every 50 ms when desired state is dirty. An object
+ * that cannot be programmed - typically a route whose next hop has not been
+ * learned yet - returned DANOS_ERR_RETRY on every pass, so it hammered the
+ * backend indefinitely. Failures now back off exponentially and stop after
+ * max_retries, and an object that oscillates is parked.
+ *
+ * Bounded table: a full slot is replaced rather than growing, so the worst
+ * case is a lost backoff record (one retry storm) and never unbounded memory.
+ */
+#define RETRY_SLOTS 1024
+
+typedef struct {
+    bool            used;
+    danos_obj_type_t type;
+    danos_obj_id_t   id;
+    uint32_t        attempts;
+    uint64_t        next_attempt_ns;
+    uint64_t        last_success_ns;
+    uint32_t        flap_count;
+    bool            flapping;
+} retry_slot_t;
+
+static retry_slot_t g_retry[RETRY_SLOTS];
+static pthread_mutex_t g_retry_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t g_max_retries = 5;
+static uint32_t g_backoff_initial_ms = 1000;
+static uint32_t g_backoff_max_ms = 60000;
+static uint32_t g_antiflap_window_ms = 5000;
+static uint32_t g_antiflap_max_count = 3;
+
+static uint64_t mono_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+void danos_programming_set_policy(uint32_t max_retries,
+                                  uint32_t backoff_initial_ms,
+                                  uint32_t backoff_max_ms,
+                                  uint32_t antiflap_window_ms,
+                                  uint32_t antiflap_max_count)
+{
+    pthread_mutex_lock(&g_retry_lock);
+    g_max_retries = max_retries;
+    g_backoff_initial_ms = backoff_initial_ms;
+    g_backoff_max_ms = backoff_max_ms;
+    g_antiflap_window_ms = antiflap_window_ms;
+    g_antiflap_max_count = antiflap_max_count;
+    memset(g_retry, 0, sizeof(g_retry));
+    pthread_mutex_unlock(&g_retry_lock);
+}
+
+/* Hash of (type,id) into the retry table. */
+static unsigned retry_hash(danos_obj_type_t type, danos_obj_id_t id)
+{
+    uint64_t h = (uint64_t)type * 1099511628211ULL ^ (id * 2654435761ULL);
+    return (unsigned)(h & (RETRY_SLOTS - 1));
+}
+
+static retry_slot_t *retry_find(danos_obj_type_t type, danos_obj_id_t id)
+{
+    for (unsigned i = 0; i < 8; i++) {
+        retry_slot_t *s = &g_retry[(retry_hash(type, id) + i) & (RETRY_SLOTS - 1)];
+        if (s->used && s->type == type && s->id == id) return s;
+    }
+    return NULL;
+}
+
+/* Find or claim a slot, reusing an empty or evictable one. Caller holds the
+ * lock. */
+static retry_slot_t *retry_slot_for(danos_obj_type_t type, danos_obj_id_t id)
+{
+    retry_slot_t *s = retry_find(type, id);
+    if (s) return s;
+    unsigned base = retry_hash(type, id);
+    for (unsigned i = 0; i < RETRY_SLOTS; i++) {
+        retry_slot_t *cand = &g_retry[(base + i) & (RETRY_SLOTS - 1)];
+        if (!cand->used) {
+            memset(cand, 0, sizeof(*cand));
+            cand->used = true;
+            cand->type = type;
+            cand->id = id;
+            return cand;
+        }
+    }
+    /* Table full: evict the first probe, accepting a lost backoff record. */
+    retry_slot_t *cand = &g_retry[base];
+    memset(cand, 0, sizeof(*cand));
+    cand->used = true;
+    cand->type = type;
+    cand->id = id;
+    return cand;
+}
+
+/* Should this object be skipped this pass? Caller holds the lock. */
+static bool retry_defer(danos_obj_type_t type, danos_obj_id_t id, uint64_t now)
+{
+    retry_slot_t *s = retry_find(type, id);
+    if (!s) return false;
+    if (s->flapping) return true;
+    if (g_max_retries && s->attempts >= g_max_retries) return true;
+    return now < s->next_attempt_ns;
+}
+
+static void retry_clear(danos_obj_type_t type, danos_obj_id_t id,
+                        uint64_t now, bool success)
+{
+    pthread_mutex_lock(&g_retry_lock);
+    retry_slot_t *s = retry_find(type, id);
+    if (success && s) {
+        /* Count a flap if the object recovered inside the window. */
+        if (g_antiflap_max_count && s->attempts > 0) {
+            if (now - s->last_success_ns <= g_antiflap_window_ms * 1000000ULL)
+                s->flap_count++;
+            else
+                s->flap_count = 0;
+            if (s->flap_count >= g_antiflap_max_count && !s->flapping) {
+                s->flapping = true;
+            }
+        }
+        s->last_success_ns = now;
+    }
+    if (!s || !s->flapping) {
+        if (s) memset(s, 0, sizeof(*s));
+    }
+    pthread_mutex_unlock(&g_retry_lock);
+}
+
+static void retry_record_failure(danos_obj_type_t type, danos_obj_id_t id,
+                                 uint64_t now)
+{
+    pthread_mutex_lock(&g_retry_lock);
+    retry_slot_t *s = retry_slot_for(type, id);
+    s->attempts++;
+    uint64_t delay = (uint64_t)g_backoff_initial_ms * 1000000ULL;
+    for (uint32_t i = 1; i < s->attempts && delay < g_backoff_max_ms; i++)
+        delay *= 2;
+    if (delay > (uint64_t)g_backoff_max_ms * 1000000ULL)
+        delay = (uint64_t)g_backoff_max_ms * 1000000ULL;
+    s->next_attempt_ns = now + delay;
+    /* A recovered object starts a fresh flap window. */
+    if (now - s->last_success_ns > (uint64_t)g_antiflap_window_ms * 1000000ULL)
+        s->flap_count = 0;
+    pthread_mutex_unlock(&g_retry_lock);
+}
+
+void danos_programming_get_retry_stats(uint64_t *deferred, uint64_t *flapping,
+                                       uint64_t *exhausted)
+{
+    uint64_t d = 0, f = 0, e = 0;
+    pthread_mutex_lock(&g_retry_lock);
+    for (unsigned i = 0; i < RETRY_SLOTS; i++) {
+        if (!g_retry[i].used) continue;
+        if (g_retry[i].flapping) f++;
+        else if (g_max_retries && g_retry[i].attempts >= g_max_retries) e++;
+        else d++;
+    }
+    pthread_mutex_unlock(&g_retry_lock);
+    if (deferred)   *deferred = d;
+    if (flapping)   *flapping = f;
+    if (exhausted)  *exhausted = e;
+}
+
 /* ---- desired-state pass -------------------------------------------------- */
 
 typedef struct {
@@ -235,9 +404,19 @@ static void program_entry(danos_object_entry_t *e, void *user)
         uint64_t last_dep;
         memcpy(&last_dep, last, 8);
         if (last_dep == dep &&
-            memcmp(last + 8, e->data, e->data_size) == 0)
+            memcmp(last + 8, e->data, e->data_size) == 0) {
+            /* Healthy: drop any accumulated backoff so a later failure
+             * starts from a clean slate. */
+            retry_clear(e->type, e->id, mono_ns(), true);
             return;   /* in sync */
+        }
     }
+
+    /* Backed off, attempt limit reached, or parked as flapping. */
+    pthread_mutex_lock(&g_retry_lock);
+    bool defer = retry_defer(e->type, e->id, mono_ns());
+    pthread_mutex_unlock(&g_retry_lock);
+    if (defer) return;
 
     c->attempted++;
     if (e->type == DANOS_OBJ_IFACE && have_last && lsz == e->data_size + 8 &&
@@ -257,6 +436,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     danos_status_t st = program_one(e->type, e->id, e->data, e->data_size);
     if (st != DANOS_OK) {
         c->failed++;
+        retry_record_failure(e->type, e->id, mono_ns());
         /* v0.11: a previously-programmed route whose next hop became
          * unusable must be WITHDRAWN, not left forwarding via a stale
          * gateway. */
@@ -274,6 +454,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
         return;
     }
     c->ok++;
+    retry_clear(e->type, e->id, mono_ns(), true);
 
     uint8_t rec[LEDGER_REC_MAX];
     memcpy(rec, &dep, 8);
