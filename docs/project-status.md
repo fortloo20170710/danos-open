@@ -2,11 +2,14 @@
 
 ## Current assessment
 
-Latest hardware-runner artifact (2026-10-04) is r13:
+Latest general LIVE/polling runner (2026-10-04) remains r13:
 `build/danos-open-v0.16.0-rc1-i211-dpdk-polling-runner-r13.iso`, SHA256
 `2e19f2a26314222251bbd2a01545837207407e4d1190f594199007fd03e9720e`, clean source
 commit `88f4bed22f2490e8aaeb081d015243636f538cb6`. Embedded I211 profile validation,
 QEMU runtime ping-plugin query, USB keyboard/mgrd replay, ttyS0 shell and serial-capture PTY tests pass. The
+latest physical I211 traffic candidate is r4 from fix commit `9955ef7` (SHA256
+`311d63d0ce8c8b59c5448cdc7add742f185ddd9e49b61f8433ffe7a84afdef68`); it awaits USB transfer
+back from the target machine for physical retest. The
 previous USB media had LBA 0 write and unrecovered-read errors; it must not be reused.
 The 2026-10-04 physical LIVE traffic attempt reached the BusyBox root shell and started VPP;
 serial output included `LIVE-SHELL-READY` and `SERIAL-SHELL-READY`. Its identity markers
@@ -24,25 +27,41 @@ independent peer links at 10.10.0.2/24 and 10.20.0.2/24, peer responses/routes f
 30.30.30.2–.5 and return path to 30.30.30.1, and carrier on both I211 ports. A fresh serial
 cold-boot capture with build identity is required to qualify the exact image.
 
-Latest physical follow-up: traffic-runner r3 (`6287fba`, SHA256
+Initial passive capture for traffic-runner r3 (`6287fba`, SHA256
 `0715ebacfd9bb76f4ec822793b6d551f805311b44bf732abf031db20a4c638fb`) was written to USB by
 the user and the I211 machine was rebooted successfully. The passive CH340 capture did not
 produce a usable cold-boot transcript: it contained repeated BusyBox prompt/banner fragments
 and ANSI `ESC[6n`, but no `DANOS-INIT-ENTER`, `DANOS-BUILD`, PCI bind diagnostics, or traffic
-result markers. The recorder reports `SKIP`, `identity_status=UNVERIFIED`; the noisy raw
-capture was discarded after preserving that result. This is not evidence that r3 passed or
-failed PCI bind or forwarding. Do not conflate the earlier r1 bind failure with r3. Next
-physical step is to verify the UART TX/RX/GND path, target UART port, and terminal/echo setup,
-then capture before a cold boot. If serial remains unusable, VGA output is auxiliary evidence
-only and cannot bind the run to an ISO digest/commit.
+result markers. That passive recorder result was `SKIP`, `identity_status=UNVERIFIED`; the noisy
+raw capture was discarded. A later interactive, read-only UART session recovered the embedded
+identity and decisive diagnostics: commit `6287fba`, `/run/dpdk-pci-bind.failed` present, and
+`/tmp/dpdk-pci-bind.log` reports `bind=0000:01:00.0 ... rc=1` even though that BDF is attached
+to `uio_pci_generic`. All four I211 BDFs (`01:00.0`–`04:00.0`) were attached to UIO although
+the ISO selected only `01:00.0` and `02:00.0`. VPP exposed both ports; port 1 was carrier-up at
+1 Gbps, port 2 was carrier-down. The traffic test was intentionally SKIPped because the bind
+failure marker existed; no packet/ECMP result was produced. This is a physical **FAIL** of the
+r3 PCI binding gate, not a dataplane PASS/FAIL. Root cause was adding the PCI ID globally via
+`uio_pci_generic/new_id` after setting per-device `driver_override`: kernel auto-probe attached
+matching devices, then the explicit bind returned an error. The official DPDK bind helper uses
+`driver_override` instead of global `new_id` when available
+([dpdk-devbind.py](https://github.com/DPDK/dpdk/blob/main/usertools/dpdk-devbind.py)).
 
-The complete unified v0.16 release gate was rerun on clean commit `9fbb48f` and passed:
-`build/v016-release-gate-9fbb48f.env`. Backend contract, CTest 35/35, QEMU USB HID/mgrd
+Fix `9955ef7` removes global `new_id` from the modern per-device path, fails closed when
+`driver_override` is unavailable, and treats a bind write error as success only if sysfs proves
+the requested driver attached. Its ISO, r4 (`build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r4.iso`),
+SHA256 `311d63d0ce8c8b59c5448cdc7add742f185ddd9e49b61f8433ffe7a84afdef68`, passed profile and
+provenance validation and QEMU ttyS0 identity smoke; CTest is 35/35 and the full release gate
+on `9955ef7` passed (`build/v016-release-gate-9955ef7.env`). PCI remains OPEN. r4 has not yet
+been written to USB or tested on the physical host because the USB is currently with the target
+and is not visible on the development host.
+
+The complete unified v0.16 release gate was rerun on clean commit `9955ef7` and passed:
+`build/v016-release-gate-9955ef7.env`. Backend contract, CTest 35/35, QEMU USB HID/mgrd
 recovery, ttyS0 root shell/runtime plugin, topology-140 FRR/VPP lifecycle and four-flow ECMP
 (4000/4000, 0% loss, bucket deltas 3000/1000), and VMware VMXNET3 two-path packets
 (2000/2000, 0% loss) all passed. PCI preflight correctly returned structured `SKIP` /
 `ENVIRONMENT-OPEN` because this development host has no target PCI runner. This gate does not
-change the unqualified status of the physical r3 run.
+change the physical r3 binding failure or qualify physical r4.
 
 The subsequent controlled cold boot captured the complete r1 identity and all four I211 BDFs.
 It exposed an earlier blocker: binding the first target (`0000:01:00.0`) to `uio_pci_generic`
@@ -58,9 +77,9 @@ Diagnostic traffic ISO r2 (`ccb71fc`, SHA256
 context at bind failure. Follow-up r3 (`6287fba46c54eb38edf21f0ffc4628e612a8efab`, SHA256
 `0715ebacfd9bb76f4ec822793b6d551f805311b44bf732abf031db20a4c638fb`) also skips the long traffic
 sequence after PCI bind failure. r3 profile/provenance and QEMU ttyS0 shell/runtime plugin checks
-pass; CTest is 35/35. The user subsequently wrote r3 to USB and reported a successful physical
-reboot, but the attempted UART capture was malformed and yielded only a structured `SKIP`; no
-physical r3 bind or packet-forwarding result is yet qualified.
+pass; CTest is 35/35. Subsequent interactive UART inspection of physical r3 recovered its
+identity and showed the bind failure/overbinding documented above; no r3 traffic qualification
+was run. The fix is in commit `9955ef7`; physical r4 retest is pending USB transfer.
 
 The full unified gate on clean commit `ed8b4b5` passed and is recorded in
 `build/v016-release-gate-ed8b4b5.env`: CTest 35/35, backend contract, r13 and traffic ISO
