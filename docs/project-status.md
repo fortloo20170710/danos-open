@@ -1,5 +1,68 @@
 # DANOS Open Project Status
 
+## 2026-10-04 second pass: transport, reconciler, authorization
+
+Follow-on work against `docs/outstanding-work-plan.md`. CTest is now 36 tests,
+green under Debug, ASan+UBSan+LSan and TSan.
+
+**gRPC transport (`a90d87b`).** Five defects in `gnmi_grpc.c`:
+flow-control windows were kept in `stream_window[stream % 64]`, so stream 1 and
+stream 65 shared one budget; `SETTINGS_INITIAL_WINDOW_SIZE` was applied as an
+absolute value instead of the RFC 7540 §6.9.2 delta; `WINDOW_UPDATE` was read but
+never sent, so any request body over 64 KiB deadlocked the connection; the
+parked-frame queue was LIFO and unbounded, reversing multi-frame gRPC messages;
+and the subscription registry and its queues were shared with the event-callback
+thread without a lock, so poll raced the producer and `unsubscribe` freed an
+entry a callback was still writing to.
+
+**Reconciler (`d8dc21c`).** `danos_reconciler_run_once()` never called the
+tombstone sweep, so deleting an interface or route left it live in the dataplane
+for the lifetime of the process. Failed objects were retried on every 50 ms
+tick, so a route whose next hop had not been learned hammered the backend
+forever. The sweep now runs in both reconciler modes, and failures back off
+exponentially up to `backoff_max_ms`, stop after `max_retries`, and park an
+oscillating object — `max_retries`, `backoff_*` and `antiflap_*` were previously
+read into the config struct and never referenced. `total_runs` is now counted in
+both modes; the daemon runs without a state store, so the exported reconciler
+counters had been zero in production.
+
+**Authorization (`3e58c6a`).** `danos-security` is linked into `danos-mgrd` for
+the first time. `danos-mgmt/src/authz` authorizes once per northbound RPC
+(gRPC `grpc-status 7`, NETCONF `access-denied`) and appends every decision and
+transaction lifecycle event to the audit log. The daemon initializes both before
+accepting a request. **This is not authentication**: there is still no credential
+to authorize, so the role is the configured default and
+`DANOS_AUTHZ_DEFAULT_ROLE=operator|viewer` can lock the daemon down ahead of
+TLS. What it buys is that adding an identity source is a change to one function
+rather than to every handler.
+
+**VPP wire formats (`d8e231b`).** Corrected against VPP's own implementation
+after an external commit (`7bc91a3`) had reverted part of the earlier work. Two
+distinct mechanisms were being conflated:
+
+- Regular API messages use vlapi's length-driven encoder. `admin_up_down` is a
+  `u8` (a 4-byte field puts a zero in the byte VPP reads, so an interface could
+  never come admin-up), and a `string` is a `u32` length plus exactly that many
+  bytes with **no padding** — `vl_api_to_api_string()` returns `len + sizeof(u32)`.
+- The two legacy socket control messages are exchanged as raw structs. VPP's own
+  client writes the client name as a fixed zero-padded 64-byte buffer, the server
+  reads it with `%s`, and the reply's message table is filled with
+  `strncpy_s(..., 64, ...)` with no length ever written.
+
+`string name [64]` in `memclnt.api` states the abstract type; the `[64]` is a
+capacity, and on the socket-control path the wire form is fixed-width. This has
+been got wrong in both directions, which is the argument for plan item 11
+(byte-level fixtures generated from VPP itself). Both facts are recorded in
+`docs/security-and-correctness-hardening-2026-10-04.md` §4.5.
+
+**Verification status of the recorded VPP evidence is unchanged and still open.**
+`docs/security-and-correctness-hardening-2026-10-04.md` records a live smoke
+against `vpp v26.10-rc0~545-gad99177fe` reporting PASS, but no artefact from that
+run is in the repository (ISO digest, serial capture, or log), so it cannot be
+reproduced or checked from here — VPP is not installed in this environment. Until
+a run leaves a verifiable artefact, VPP protocol and FIB claims should be read as
+mock-only. Plan item 3 covers this.
+
 ## 2026-10-04 hardening pass
 
 A P0 remediation pass closed the remotely reachable memory-safety defects, fixed

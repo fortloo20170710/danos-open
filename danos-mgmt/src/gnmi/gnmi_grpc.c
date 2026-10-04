@@ -1263,6 +1263,7 @@ typedef struct {
     char *method;
     char *content_type;
     char *te;
+    char *authorization;
 } req_headers_t;
 
 static bool header_cb(const char *name, const char *value, void *user)
@@ -1273,12 +1274,15 @@ static bool header_cb(const char *name, const char *value, void *user)
     else if (strcmp(name, "content-type") == 0 && !h->content_type)
         h->content_type = strdup(value);
     else if (strcmp(name, "te") == 0 && !h->te) h->te = strdup(value);
+    else if (strcmp(name, "authorization") == 0 && !h->authorization)
+        h->authorization = strdup(value);
     return true;
 }
 
 static void headers_free(req_headers_t *h)
 {
     free(h->path); free(h->method); free(h->content_type); free(h->te);
+    free(h->authorization);
     memset(h, 0, sizeof(*h));
 }
 
@@ -1444,13 +1448,47 @@ int danos_gnmi_grpc_serve_fd(int fd)
             msg_len = (size_t)n;
         }
 
+        /* Authenticate, then authorize.
+         *
+         * Once a credential source is configured (bearer token, or
+         * SO_PEERCRED on a unix socket) an unauthenticated request is
+         * rejected outright. With no source configured the daemon is open,
+         * which is only acceptable because configure() then reports false
+         * and the startup path is expected to refuse serving. */
+        bool rpc_open = (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") == 0);
+        danos_sec_role_t role = DANOS_ROLE_ADMIN;
+        bool authed = true;
+        if (!rpc_open && danos_authz_configured()) {
+            long uid = -1;
+            authed = (danos_authz_authenticate(h.authorization, uid, -1,
+                                               &role) == DANOS_AUTH_OK);
+            if (!authed) {
+                /* grpc-status 16 UNAUTHENTICATED */
+                headers_free(&h);
+                uint8_t tbuf[96];
+                size_t tlen = 0;
+                int k = hpack_encode_literal(tbuf, sizeof(tbuf) - tlen,
+                                             ":status", "200");
+                tlen += k;
+                k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
+                                         "content-type", "application/grpc");
+                tlen += k;
+                k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
+                                         "grpc-status", "16");
+                tlen += k;
+                write_frame(fd, H2_F_HEADERS,
+                            H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
+                            fstream, tbuf, tlen);
+                danos_authz_audit_auth("gRPC", false, "unauthenticated RPC");
+                continue;
+            }
+        }
+
         /* Authorize before dispatch. Read paths map to READ, everything
          * that can change state to UPDATE; Capabilities is a static
-         * description and needs no check. The role comes from authz, which
-         * has no credential to inspect yet - see authz.h. */
-        if (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") != 0 &&
-            !danos_authz_check(danos_authz_role_for_peer(NULL),
-                               DANOS_SEC_OBJ_ALL,
+         * description and needs no check. */
+        if (!rpc_open &&
+            !danos_authz_check(role, DANOS_SEC_OBJ_ALL,
                                (h.path && strcmp(h.path, "/gnmi.gNMI/Get") == 0)
                                    ? DANOS_SEC_OP_READ : DANOS_SEC_OP_UPDATE,
                                h.path ? h.path : "")) {

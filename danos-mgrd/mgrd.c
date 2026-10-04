@@ -157,6 +157,35 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* Credential source: DANOS_AUTHZ_TOKEN_FILE (bearer) and/or
+     * DANOS_AUTHZ_PEERCRED (unix socket only). A token file that exists but
+     * cannot be used is fatal - falling back to open access would be worse
+     * than not starting.
+     *
+     * DANOS_AUTHZ_REQUIRE_AUTH forces a credential source to be present.
+     * Without it the daemon still starts open, which is the pre-existing
+     * behaviour and is only appropriate for a lab. */
+    const char *token_file = getenv("DANOS_AUTHZ_TOKEN_FILE");
+    bool peercred = getenv("DANOS_AUTHZ_PEERCRED") != NULL;
+    if (danos_authz_configure(token_file, peercred) != 0) {
+        fprintf(stderr, "mgrd: credential configuration failed\n");
+        return 1;
+    }
+    if (getenv("DANOS_AUTHZ_REQUIRE_AUTH") && !danos_authz_configured()) {
+        fprintf(stderr,
+                "mgrd: DANOS_AUTHZ_REQUIRE_AUTH set but no credential source "
+                "configured (DANOS_AUTHZ_TOKEN_FILE / DANOS_AUTHZ_PEERCRED)\n");
+        return 1;
+    }
+    if (danos_authz_configured()) {
+        printf("mgrd: authentication required (%s%s)\n",
+               token_file ? "bearer-token" : "",
+               (token_file && peercred) ? "+" : (peercred ? "peer-cred" : ""));
+    } else {
+        printf("mgrd: WARNING no credential source configured - the "
+               "management interface accepts unauthenticated requests\n");
+    }
+
     int c;
     while ((c = getopt_long(argc, argv, "p:m:w:sv:n", opts, NULL)) != -1) {
         switch (c) {

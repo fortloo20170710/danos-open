@@ -21,9 +21,21 @@ goes to an append-only audit log, and the daemon initialises both before
 accepting a request. `DANOS_AUTHZ_DEFAULT_ROLE` can lock the daemon to
 operator/viewer before TLS exists. Covered by `authz_test`.
 
-What remains is the part that needs a decision: there is still no credential
-to authorize, so the role is the configured default (ADMIN). The audit trail
-is the only externally visible effect today.
+Authentication now exists. `danos_authz_configure()` accepts a bearer-token
+file (RFC 6750 `Bearer`, constant-time compare, must be mode 0600 or a
+world-readable token is refused) and/or `SO_PEERCRED` on a unix socket
+(uid 0 → admin, any other uid → the configured default role). gNMI
+authenticates per RPC from the `authorization` header and answers
+`grpc-status 16` when it is missing or wrong; NETCONF captures the credential
+from `<hello>` and rejects the session. mgrd refuses to start if a configured
+token file cannot be used, and `DANOS_AUTHZ_REQUIRE_AUTH` makes a missing
+credential source fatal instead of defaulting to open.
+
+What remains: there is **no transport security**, so a bearer token crosses
+the wire in cleartext and must not be used on an untrusted network. mTLS is the
+remaining work, and it is why the token path exists behind a switch rather than
+being the only option. `danos_gnmi_grpc.h` still describes the listener as
+plaintext h2c; that remains true.
 
 The daemon serves plaintext h2c on `INADDR_ANY:57400` with no authentication
 and no authorization. `danos_gnmi_grpc.h` states this outright. Every peer that

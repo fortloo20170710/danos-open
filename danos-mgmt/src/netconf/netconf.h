@@ -23,6 +23,10 @@ typedef struct {
     uint16_t port;          /* SSH port (default 830) */
     uint64_t rpc_count;
     uint64_t error_count;
+    /* Credential presented in <hello>; NETCONF authenticates per session
+     * rather than per request. */
+    char    *authorization;
+    uint64_t session_id;    /* non-zero once logged in */
 } netconf_ctx_t;
 
 /* NETCONF RPC types */
@@ -37,11 +41,15 @@ typedef enum {
     NETCONF_RPC_DISCARD       = 8,
     NETCONF_RPC_LOCK          = 9,
     NETCONF_RPC_UNLOCK        = 10,
+    NETCONF_RPC_HELLO         = 11,
     NETCONF_RPC_UNKNOWN       = 0,
 } netconf_rpc_type_t;
 
 /* Initialize NETCONF server */
 void netconf_init(netconf_ctx_t *ctx, uint16_t port);
+
+/* Release per-session resources (the credential captured at login). */
+void netconf_fini(netconf_ctx_t *ctx);
 
 /* Parse a NETCONF RPC XML message and identify the RPC type.
  * Returns RPC type, or NETCONF_RPC_UNKNOWN on parse failure. */

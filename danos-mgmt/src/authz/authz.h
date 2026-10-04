@@ -30,6 +30,7 @@
 #include <danos/security/audit.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,11 +50,46 @@ bool danos_authz_ready(void);
 /* Release resources (closes the audit log). */
 void danos_authz_shutdown(void);
 
-/* Role to apply to a peer.
+/* Result of authenticating a request. */
+typedef enum {
+    DANOS_AUTH_OK = 0,      /* credential accepted */
+    DANOS_AUTH_NONE,        /* no credential presented */
+    DANOS_AUTH_BAD,         /* credential presented but rejected */
+    DANOS_AUTH_DISABLED     /* authentication not configured */
+} danos_auth_result_t;
+
+/* Configure credential sources. Call once, before serving.
  *
- * There is no authenticated identity yet, so this ignores the address and
- * returns default_role. It is the single place that must change once TLS,
- * bearer tokens or SO_PEERCRED are introduced. */
+ * token_file:   file whose first line is the bearer token. Required to be
+ *               mode 0600 or stricter; a world-readable token file is
+ *               refused, because a token that any local user can read is not
+ *               a credential. NULL disables token authentication.
+ * allow_peercred: accept SO_PEERCRED on a unix socket and map uid 0 to ADMIN
+ *               and any other uid to the default (non-admin) role. Ignored for
+ *               TCP listeners, which have no peer credentials.
+ *
+ * Returns 0 on success, -1 if a token file was configured but unusable - in
+ * which case the daemon must not serve rather than fall back to open access. */
+int danos_authz_configure(const char *token_file, bool allow_peercred);
+
+/* True once a credential source is configured. When false, callers should
+ * refuse service rather than accept unauthenticated requests. */
+bool danos_authz_configured(void);
+
+/* Authenticate one request.
+ *
+ * authorization: value of the HTTP/2 `authorization` header, or NULL.
+ * peer_uid/pid:  SO_PEERCRED result, or -1 when unavailable (TCP).
+ *
+ * On DANOS_AUTH_OK, *role_out carries the authenticated role. On any other
+ * result the request must be rejected with UNAUTHENTICATED (gRPC 16) /
+ * access-denied, and *role_out is left untouched. */
+danos_auth_result_t danos_authz_authenticate(const char *authorization,
+                                             long peer_uid, long peer_pid,
+                                             danos_sec_role_t *role_out);
+
+/* Role to apply to a peer that authenticated successfully, or to fall back on
+ * when authentication is not configured. */
 danos_sec_role_t danos_authz_role_for_peer(const char *peer_addr);
 
 /* Role assumed for peers with no authenticated identity. Defaults to ADMIN

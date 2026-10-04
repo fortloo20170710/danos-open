@@ -18,6 +18,13 @@ void netconf_init(netconf_ctx_t *ctx, uint16_t port)
     ctx->port = port ? port : 830;
 }
 
+void netconf_fini(netconf_ctx_t *ctx)
+{
+    if (!ctx) return;
+    free(ctx->authorization);
+    ctx->authorization = NULL;
+}
+
 /* Simple XML tag extraction */
 static const char *find_tag(const char *xml, const char *tag)
 {
@@ -32,6 +39,7 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml)
 
     /* Look for RPC operation tags */
     if (find_tag(xml, "get-config"))     return NETCONF_RPC_GET_CONFIG;
+    if (find_tag(xml, "hello"))         return NETCONF_RPC_HELLO;
     if (find_tag(xml, "edit-config"))    return NETCONF_RPC_EDIT_CONFIG;
     if (find_tag(xml, "get") && !strstr(xml, "get-config"))
                                          return NETCONF_RPC_GET;
@@ -303,11 +311,66 @@ static bool netconf_authorized(netconf_rpc_type_t t)
                              "netconf");
 }
 
+/* NETCONF carries its credential in the <hello> message, not a per-request
+ * header, so a session authenticates once at login. Unauthenticated sessions
+ * are rejected from here on. */
+static bool netconf_authenticate(netconf_ctx_t *ctx)
+{
+    if (!danos_authz_configured()) return true;
+    if (ctx->session_id != 0) return true;   /* already logged in */
+    long uid = -1;
+    return danos_authz_authenticate(ctx->authorization, uid, -1, NULL)
+           == DANOS_AUTH_OK;
+}
+
 char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
 {
     if (!xml) return error_reply("null input");
 
     netconf_rpc_type_t rpc_type = netconf_parse_rpc(xml);
+
+    /* Capture the credential from <hello> and remember the session. */
+    if (rpc_type == NETCONF_RPC_HELLO && ctx->authorization == NULL) {
+        const char *m = strstr(xml, "authorization");
+        if (m) {
+            const char *open = strchr(m, '>');
+            const char *close = open ? strchr(open, '<') : NULL;
+            if (open && close && close > open + 1) {
+                size_t n = (size_t)(close - open - 1);
+                char *tok = malloc(n + 1);
+                if (tok) {
+                    memcpy(tok, open + 1, n);
+                    tok[n] = '\0';
+                    /* store as an RFC 6750 credential so one code path
+                     * serves both NETCONF and gRPC */
+                    size_t pre = strlen("Bearer ");
+                    char *hdr = malloc(pre + n + 1);
+                    if (hdr) {
+                        memcpy(hdr, "Bearer ", pre);
+                        memcpy(hdr + pre, tok, n + 1);
+                        free(tok);
+                        ctx->authorization = hdr;
+                    } else {
+                        free(tok);
+                    }
+                }
+            }
+        }
+    }
+
+    if (!netconf_authenticate(ctx)) {
+        ctx->error_count++;
+        return strdup(
+            "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
+            "  <rpc-error>\n"
+            "    <error-type>protocol</error-type>\n"
+            "    <error-tag>access-denied</error-tag>\n"
+            "    <error-severity>error</error-severity>\n"
+            "    <error-message>authentication required</error-message>\n"
+            "  </rpc-error>\n"
+            "</rpc-reply>\n");
+    }
+
     if (!netconf_authorized(rpc_type)) {
         /* RFC 6241 access-denied, reported as rpc-error. */
         return strdup(

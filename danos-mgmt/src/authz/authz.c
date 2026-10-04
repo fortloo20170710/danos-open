@@ -3,9 +3,116 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <time.h>
 
 static bool g_ready;
+
+/* ---- credential sources -------------------------------------------------- */
+
+static char    *g_token;          /* bearer token, NUL-terminated */
+static size_t   g_token_len;
+static bool     g_peercred_enabled;
+
+int danos_authz_configure(const char *token_file, bool allow_peercred)
+{
+    free(g_token);
+    g_token = NULL;
+    g_token_len = 0;
+    g_peercred_enabled = allow_peercred;
+
+    if (!token_file || !*token_file) return 0;   /* tokens disabled */
+
+    /* A token any local user can read is not a credential. Refuse rather
+     * than warn: serving with a readable token is worse than not serving. */
+    struct stat st;
+    if (stat(token_file, &st) != 0) {
+        fprintf(stderr, "authz: token file %s: %s\n", token_file,
+                strerror(errno));
+        return -1;
+    }
+    if (st.st_mode & (S_IRWXG | S_IRWXO)) {
+        fprintf(stderr,
+                "authz: token file %s is group/other accessible (mode %04o); "
+                "refusing\n", token_file, (unsigned)(st.st_mode & 07777));
+        return -1;
+    }
+
+    FILE *f = fopen(token_file, "r");
+    if (!f) {
+        fprintf(stderr, "authz: cannot open token file %s: %s\n", token_file,
+                strerror(errno));
+        return -1;
+    }
+    char line[512];
+    if (!fgets(line, sizeof(line), f)) { fclose(f); return -1; }
+    fclose(f);
+    size_t n = strcspn(line, "\r\n");
+    line[n] = '\0';
+    if (n == 0) {
+        fprintf(stderr, "authz: token file %s is empty\n", token_file);
+        return -1;
+    }
+    g_token = strdup(line);
+    if (!g_token) return -1;
+    g_token_len = n;
+    return 0;
+}
+
+bool danos_authz_configured(void)
+{
+    return g_token != NULL || g_peercred_enabled;
+}
+
+/* Length-independent, content-constant-time compare. */
+static bool token_equal(const char *a, size_t alen, const char *b, size_t blen)
+{
+    /* Compare lengths without an early return, then bytes. */
+    unsigned diff = (unsigned)(alen ^ blen);
+    size_t n = alen > blen ? alen : blen;
+    for (size_t i = 0; i < n; i++) {
+        unsigned char x = i < alen ? (unsigned char)a[i] : 0;
+        unsigned char y = i < blen  ? (unsigned char)b[i] : 0;
+        diff |= (unsigned)(x ^ y);
+    }
+    return diff == 0;
+}
+
+danos_auth_result_t danos_authz_authenticate(const char *authorization,
+                                             long peer_uid, long peer_pid,
+                                             danos_sec_role_t *role_out)
+{
+    (void)peer_pid;
+
+    if (authorization && *authorization) {
+        /* RFC 6750: "Bearer <token>". Scheme match is case-insensitive. */
+        const char *v = authorization;
+        while (*v == ' ') v++;
+        if (strncasecmp(v, "Bearer ", 7) != 0) return DANOS_AUTH_BAD;
+        const char *tok = v + 7;
+        while (*tok == ' ') tok++;
+        if (!g_token) return DANOS_AUTH_BAD;      /* no token source: reject */
+        if (!token_equal(tok, strlen(tok), g_token, g_token_len))
+            return DANOS_AUTH_BAD;
+        /* A token authenticates the client but carries no role of its own,
+         * so it gets the configured default - which may be lowered. */
+        if (role_out) *role_out = danos_authz_default_role();
+        return DANOS_AUTH_OK;
+    }
+
+    if (g_peercred_enabled && peer_uid >= 0) {
+        if (role_out) *role_out = (peer_uid == 0)
+            ? DANOS_ROLE_ADMIN
+            : danos_authz_default_role();
+        return DANOS_AUTH_OK;
+    }
+
+    return g_token || g_peercred_enabled ? DANOS_AUTH_NONE
+                                         : DANOS_AUTH_DISABLED;
+}
 
 int danos_authz_init(const char *audit_path)
 {

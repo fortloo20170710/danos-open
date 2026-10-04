@@ -12,9 +12,11 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 int main(void)
 {
+    danos_sec_role_t role = DANOS_ROLE_ADMIN;
     char tmpl[] = "/tmp/danos-authz-test-XXXXXX";
     int fd = mkstemp(tmpl);
     assert(fd >= 0);
@@ -94,6 +96,74 @@ int main(void)
     assert(strstr(buf, "tester") != NULL);
 
     unlink(tmpl);
+
+    /* --- authentication ---------------------------------------------------- */
+    /* With no credential source configured, authentication is disabled and
+     * the daemon is open (pre-existing behaviour). */
+    assert(danos_authz_configure(NULL, false) == 0);
+    assert(!danos_authz_configured());
+    assert(danos_authz_authenticate(NULL, -1, -1, &role) ==
+           DANOS_AUTH_DISABLED);
+
+    /* A token file that is group/other readable must be refused: a token any
+     * local user can read is not a credential, and silently accepting one
+     * would be worse than not starting. */
+    char loose[] = "/tmp/danos-authz-loose-XXXXXX";
+    int lfd = mkstemp(loose);
+    assert(lfd >= 0);
+    assert(write(lfd, "s3cret-token\n", 12) == 12);
+    close(lfd);
+    assert(chmod(loose, 0644) == 0);
+    assert(danos_authz_configure(loose, false) == -1);
+    assert(!danos_authz_configured());   /* not silently enabled */
+    unlink(loose);
+
+    /* A properly restricted token file is accepted and enforced. */
+    char tf[] = "/tmp/danos-authz-tok-XXXXXX";
+    int tfd = mkstemp(tf);
+    assert(tfd >= 0);
+    assert(write(tfd, "s3cret-token\n", 12) == 12);
+    close(tfd);
+    assert(chmod(tf, 0600) == 0);
+    assert(danos_authz_configure(tf, false) == 0);
+    assert(danos_authz_configured());
+
+    /* Missing credential is rejected, not treated as anonymous-ok. */
+    assert(danos_authz_authenticate(NULL, -1, -1, &role) == DANOS_AUTH_NONE);
+    /* Wrong token rejected. */
+    assert(danos_authz_authenticate("Bearer wrong", -1, -1, &role) ==
+           DANOS_AUTH_BAD);
+    assert(danos_authz_authenticate("Basic s3cret-token", -1, -1, &role) ==
+           DANOS_AUTH_BAD);
+    /* A correct token authenticates, and takes the configured role. */
+    setenv("DANOS_AUTHZ_DEFAULT_ROLE", "operator", 1);
+    assert(danos_authz_authenticate("Bearer s3cret-token", -1, -1, &role) ==
+           DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_OPERATOR);
+    /* The scheme is case-insensitive per RFC 7235. */
+    assert(danos_authz_authenticate("bearer s3cret-token", -1, -1, &role) ==
+           DANOS_AUTH_OK);
+    /* A prefix of the token must not authenticate. */
+    assert(danos_authz_authenticate("Bearer s3cret-toke", -1, -1, &role) ==
+           DANOS_AUTH_BAD);
+    /* Nor the token with trailing junk. */
+    assert(danos_authz_authenticate("Bearer s3cret-tokenX", -1, -1, &role) ==
+           DANOS_AUTH_BAD);
+    unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
+
+    /* Peer credentials: uid 0 is admin, any other uid is the default role. */
+    assert(danos_authz_configure(NULL, true) == 0);
+    assert(danos_authz_configured());
+    assert(danos_authz_authenticate(NULL, 0, 42, &role) == DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_ADMIN);
+    setenv("DANOS_AUTHZ_DEFAULT_ROLE", "viewer", 1);
+    assert(danos_authz_authenticate(NULL, 1000, 42, &role) == DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_VIEWER);
+    /* And with a token source present, peercred alone is not enough. */
+    assert(danos_authz_configure(tf, true) == 0);
+    unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
+    assert(danos_authz_configure(NULL, false) == 0);
+    unlink(tf);
 
     printf("=== authz_test: ALL PASSED ===\n");
     return 0;
