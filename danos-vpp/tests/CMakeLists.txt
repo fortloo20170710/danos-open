@@ -14,3 +14,10 @@ add_executable(vpp_proto_test test_vpp_proto.c mock_vpp_server.c)
 target_link_libraries(vpp_proto_test PRIVATE danos-vpp danos-dpa pthread)
 target_compile_options(vpp_proto_test PRIVATE -UNDEBUG)
 add_test(NAME vpp_proto COMMAND vpp_proto_test)
+
+# Golden-bytes conformance: encoders transcribed from upstream VPP, not
+# literals, so the production codecs cannot agree with a shared assumption.
+add_executable(vpp_golden_test test_vpp_golden.c)
+target_link_libraries(vpp_golden_test PRIVATE danos-vpp danos-dpa pthread)
+target_compile_options(vpp_golden_test PRIVATE -UNDEBUG)
+add_test(NAME vpp_golden COMMAND vpp_golden_test)
