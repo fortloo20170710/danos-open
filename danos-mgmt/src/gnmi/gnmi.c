@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -716,9 +717,25 @@ void danos_gnmi_stop(danos_gnmi_ctx_t *ctx)
 typedef struct danos_gnmi_sub_entry {
     danos_gnmi_sub_t      meta;
     danos_gnmi_queue_t    queue;
+    bool                  dead;   /* unlinked; callback must not enqueue */
     struct danos_gnmi_sub_entry *next;
 } danos_gnmi_sub_entry_t;
 
+/*
+ * Guards the subscription list and every entry's queue.
+ *
+ * The event bus invokes callbacks on its own thread while holding the bus
+ * read lock, and the HTTP handler thread creates, polls and tears down
+ * subscriptions. Without this lock, poll() drained a queue the callback was
+ * concurrently pushing, and unsubscribe() freed an entry (and its queue
+ * entries) that a running callback was still writing to.
+ *
+ * Lock ordering: a callback runs under the event-bus read lock and then takes
+ * this lock, so this lock is the inner one. Code that holds this lock must
+ * never call into the event bus - unsubscribe deliberately drops it first.
+ * That ordering is what keeps the two from deadlocking.
+ */
+static pthread_mutex_t g_subs_lock = PTHREAD_MUTEX_INITIALIZER;
 static danos_gnmi_sub_entry_t *g_subs = NULL;
 static bool g_subs_inited = false;
 
@@ -822,7 +839,12 @@ static void gnmi_event_cb(const danos_event_t *event, void *user)
         obj_type_name(event->obj_type),
         (unsigned long long)event->obj_id,
         (unsigned long long)event->timestamp_ns);
-    queue_push(&e->queue, json);
+    pthread_mutex_lock(&g_subs_lock);
+    /* A torn-down entry stays allocated until the bus confirms no callback is
+     * running, so `e` is always dereferenceable here. */
+    if (!e->dead) queue_push(&e->queue, json);
+    else free(json);
+    pthread_mutex_unlock(&g_subs_lock);
 }
 
 void danos_gnmi_subscribe_init(void)
@@ -866,39 +888,68 @@ uint64_t danos_gnmi_subscribe(danos_obj_type_t obj_type, uint32_t mask)
         return 0;
     }
 
-    /* Link into list */
+    /* Link into list. Registered before linking so a concurrent publish
+     * cannot miss the entry; the callback does not need the list. */
+    pthread_mutex_lock(&g_subs_lock);
     e->next = g_subs;
     g_subs = e;
+    pthread_mutex_unlock(&g_subs_lock);
     return e->meta.id;
 }
 
 void danos_gnmi_unsubscribe(uint64_t sub_id)
 {
+    danos_gnmi_sub_entry_t *e = NULL;
+
+    /* Detach under the registry lock. The entry is deliberately not freed
+     * yet: a callback may already be inside the event bus holding the entry
+     * pointer. */
+    pthread_mutex_lock(&g_subs_lock);
     danos_gnmi_sub_entry_t **pp = &g_subs;
     while (*pp) {
         if ((*pp)->meta.id == sub_id) {
-            danos_gnmi_sub_entry_t *e = *pp;
+            e = *pp;
             *pp = e->next;
-            danos_event_unsubscribe(e->meta.id);
-            for (size_t i = 0; i < DANOS_GNMI_QUEUE_SIZE; i++) {
-                free(e->queue.entries[i]);
-            }
-            free(e);
-            return;
+            e->next = NULL;
+            e->dead = true;
+            break;
         }
         pp = &(*pp)->next;
     }
+    pthread_mutex_unlock(&g_subs_lock);
+    if (!e) return;
+
+    /* Outside the registry lock: this takes the event-bus write lock, which
+     * waits for any in-flight callback on this subscription to finish.
+     * Holding the registry lock across it would invert the order used by
+     * gnmi_event_cb (bus read lock, then registry lock) and deadlock. */
+    danos_event_unsubscribe(e->meta.id);
+
+    /* Safe now: no callback for this id is running or can start. */
+    pthread_mutex_lock(&g_subs_lock);
+    for (size_t i = 0; i < DANOS_GNMI_QUEUE_SIZE; i++)
+        free(e->queue.entries[i]);
+    pthread_mutex_unlock(&g_subs_lock);
+    free(e);
 }
 
 char *danos_gnmi_subscribe_poll(uint64_t sub_id)
 {
+    pthread_mutex_lock(&g_subs_lock);
     danos_gnmi_sub_entry_t *e = sub_find(sub_id);
-    if (!e) return strdup("{\"error\": \"invalid subscription\"}");
+    if (!e) {
+        pthread_mutex_unlock(&g_subs_lock);
+        return strdup("{\"error\": \"invalid subscription\"}");
+    }
 
-    /* Drain queue into a JSON array */
+    /* Drain queue into a JSON array while still holding the registry lock:
+     * the callback may be pushing concurrently. */
     size_t buf_size = 256;
     char *buf = malloc(buf_size);
-    if (!buf) return NULL;
+    if (!buf) {
+        pthread_mutex_unlock(&g_subs_lock);
+        return NULL;
+    }
     size_t pos = 0;
     buf[pos++] = '[';
 
@@ -910,7 +961,12 @@ char *danos_gnmi_subscribe_poll(uint64_t sub_id)
         if (needed >= buf_size) {
             buf_size = needed * 2;
             char *new_buf = realloc(buf, buf_size);
-            if (!new_buf) { free(json); free(buf); return NULL; }
+            if (!new_buf) {
+                free(json);
+                free(buf);
+                pthread_mutex_unlock(&g_subs_lock);
+                return NULL;
+            }
             buf = new_buf;
         }
         if (!first) buf[pos++] = ',';
@@ -921,6 +977,7 @@ char *danos_gnmi_subscribe_poll(uint64_t sub_id)
     }
     buf[pos++] = ']';
     buf[pos] = '\0';
+    pthread_mutex_unlock(&g_subs_lock);
     return buf;
 }
 

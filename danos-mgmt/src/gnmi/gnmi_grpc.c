@@ -44,7 +44,11 @@ enum {
 #define MAX_MSG (256 * 1024)
 
 /* Frames read out of order (e.g. another stream's DATA while we are
- * window-blocked on a response) are parked here. */
+ * window-blocked on a response) are parked here.
+ *
+ * The queue is FIFO. It used to push at the head and pop from the head,
+ * which reversed frames belonging to the same stream, so a gRPC message
+ * split across several DATA frames was reassembled in the wrong order. */
 typedef struct pending_frame {
     uint8_t type, flags;
     uint32_t stream;
@@ -53,14 +57,32 @@ typedef struct pending_frame {
     struct pending_frame *next;
 } pending_frame_t;
 
+/* Per-stream flow-control state.
+ *
+ * Windows were kept in `stream_window[stream % 64]`, so stream 1 and stream
+ * 65 shared one budget and could starve each other. HTTP/2 stream
+ * identifiers increase monotonically, so any connection running more than a
+ * few dozen concurrent RPCs aliased. Keyed by the real identifier here. */
+typedef struct {
+    uint32_t id;
+    bool     used;
+    int64_t  window;        /* how much the peer still allows us to send */
+} h2_stream_t;
+
+#define H2_MAX_TRACKED_STREAMS 256
+/* Bound on parked frames: a peer that floods frames while we are
+ * window-blocked must not be able to grow this without limit. */
+#define H2_MAX_PENDING 64
+
 typedef struct {
     int fd;
     hpack_dyn_table_t dyn_dec;   /* decoder-side dynamic table */
     /* HTTP/2 flow control (our send side) */
     int64_t conn_window;         /* stream-0 budget */
-    int64_t stream_window[64];   /* indexed by (stream % 64) */
+    h2_stream_t streams[H2_MAX_TRACKED_STREAMS];
     uint32_t peer_initial_window;
-    pending_frame_t *pending;
+    pending_frame_t *pending, *pending_tail;
+    uint32_t pending_count;
 } h2_conn_t;
 
 #define H2_DEFAULT_WINDOW 65535
@@ -120,9 +142,41 @@ static int write_frame(int fd, uint8_t type, uint8_t flags, uint32_t stream,
  * Frame receive with pending queue + flow-control state machine
  * ========================================================================= */
 
+static h2_stream_t *stream_find(h2_conn_t *c, uint32_t id)
+{
+    for (int i = 0; i < H2_MAX_TRACKED_STREAMS; i++)
+        if (c->streams[i].used && c->streams[i].id == id)
+            return &c->streams[i];
+    return NULL;
+}
+
+/* Window for `id`, creating the entry on first use. Returns NULL only if
+ * every slot is taken, in which case the caller treats the stream as
+ * unusable rather than aliasing someone else's budget. */
+static h2_stream_t *stream_get(h2_conn_t *c, uint32_t id)
+{
+    h2_stream_t *s = stream_find(c, id);
+    if (s) return s;
+    for (int i = 0; i < H2_MAX_TRACKED_STREAMS; i++) {
+        if (c->streams[i].used) continue;
+        c->streams[i].used = true;
+        c->streams[i].id = id;
+        c->streams[i].window = c->peer_initial_window;
+        return &c->streams[i];
+    }
+    return NULL;
+}
+
+static void stream_forget(h2_conn_t *c, uint32_t id)
+{
+    h2_stream_t *s = stream_find(c, id);
+    if (s) s->used = false;
+}
+
 static void pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
                          uint32_t stream, const uint8_t *payload, uint32_t len)
 {
+    if (c->pending_count >= H2_MAX_PENDING) return;   /* bounded */
     pending_frame_t *pf = malloc(sizeof(*pf));
     if (!pf) return;
     pf->type = type;
@@ -135,8 +189,12 @@ static void pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
         return;
     }
     if (len) memcpy(pf->payload, payload, len);
-    pf->next = c->pending;
-    c->pending = pf;
+    pf->next = NULL;
+    /* FIFO: append at the tail so frames on one stream stay in order. */
+    if (c->pending_tail) c->pending_tail->next = pf;
+    else c->pending = pf;
+    c->pending_tail = pf;
+    c->pending_count++;
 }
 
 static bool pending_pop(h2_conn_t *c, uint8_t *type, uint8_t *flags,
@@ -145,6 +203,8 @@ static bool pending_pop(h2_conn_t *c, uint8_t *type, uint8_t *flags,
     pending_frame_t *pf = c->pending;
     if (!pf) return false;
     c->pending = pf->next;
+    if (!c->pending) c->pending_tail = NULL;
+    if (c->pending_count) c->pending_count--;
     *type = pf->type;
     *flags = pf->flags;
     *stream = pf->stream;
@@ -163,6 +223,8 @@ static void pending_free_all(h2_conn_t *c)
         free(pf->payload);
         free(pf);
     }
+    c->pending_tail = NULL;
+    c->pending_count = 0;
 }
 
 /* Read one frame from the wire, handling connection-level housekeeping
@@ -198,9 +260,17 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
                                      ((uint32_t)fbuf[i + 3] << 16) |
                                      ((uint32_t)fbuf[i + 4] << 8) | fbuf[i + 5];
                         if (id == 0x4) {
+                            /* RFC 7540 6.9.2: a change to
+                             * INITIAL_WINDOW_SIZE is a *delta* applied to
+                             * every stream's current window, not an
+                             * absolute reset. Assigning it overwrote live
+                             * windows and desynchronised the accounting. */
+                            int64_t delta = (int64_t)v -
+                                             (int64_t)c->peer_initial_window;
                             c->peer_initial_window = v;
-                            for (int w = 0; w < 64; w++)
-                                c->stream_window[w] = v;
+                            for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
+                                if (c->streams[w].used)
+                                    c->streams[w].window += delta;
                         }
                     }
                 }
@@ -219,7 +289,8 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
             if (fstream == 0) {
                 c->conn_window += inc;
             } else {
-                c->stream_window[fstream % 64] += inc;
+                h2_stream_t *s = stream_get(c, fstream);
+                if (s) s->window += inc;
             }
             return 1;   /* caller may be unblocked */
         }
@@ -234,14 +305,33 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
     }
 }
 
+/* Replenish our receive window after consuming `n` bytes of DATA.
+ *
+ * Without this the peer exhausts its 65535-byte send window and blocks
+ * forever: it will not send a WINDOW_UPDATE until we have consumed data and
+ * told it there is room again. Any request body over 64 KiB deadlocked the
+ * connection. Emitted once the consumed amount reaches half a window rather
+ * than per frame. */
+static void send_window_update(h2_conn_t *c, uint32_t stream, uint32_t n)
+{
+    uint32_t inc = (n + 3) & ~3u;   /* WINDOW_UPDATE increment must be >0 */
+    uint8_t p[4];
+    p[0] = (uint8_t)(inc >> 24); p[1] = (uint8_t)(inc >> 16);
+    p[2] = (uint8_t)(inc >> 8);  p[3] = (uint8_t)inc;
+    (void)write_frame(c->fd, H2_F_WINDOW, 0, 0, p, 4);
+    if (stream) (void)write_frame(c->fd, H2_F_WINDOW, 0, stream, p, 4);
+}
+
 /* Send `len` bytes as DATA frames respecting peer flow-control windows.
  * While blocked on window budget, incoming frames are queued. */
 static int send_data_windowed(h2_conn_t *c, uint32_t stream,
                               const uint8_t *data, size_t len)
 {
     size_t sent = 0;
+    h2_stream_t *s = stream_get(c, stream);
+    if (!s) return -1;
     while (sent < len) {
-        int64_t budget = c->stream_window[stream % 64];
+        int64_t budget = s->window;
         if (budget > c->conn_window) budget = c->conn_window;
         if (budget > H2_MAX_FRAME_LEN) budget = H2_MAX_FRAME_LEN;
 
@@ -263,7 +353,7 @@ static int send_data_windowed(h2_conn_t *c, uint32_t stream,
         if (write_frame(c->fd, H2_F_DATA, 0, stream,
                         data + sent, (uint32_t)chunk) < 0) return -1;
         sent += chunk;
-        c->stream_window[stream % 64] -= (int64_t)chunk;
+        s->window -= (int64_t)chunk;
         c->conn_window -= (int64_t)chunk;
     }
     return 0;
@@ -781,15 +871,10 @@ int gnmi_handle_get(danos_state_store_t *store,
             danos_vrf_t vrf;
             const void *obj = NULL; size_t osz = 0;
             if (mb.obj_type == DANOS_OBJ_IFACE) {
-                danos_iface_t all[1024];
-                uint32_t cnt = collect_objects(ss, DANOS_OBJ_IFACE, all,
-                                               sizeof(all[0]), 1024);
-                const char *want = p->elems[1].key_value;
-                for (uint32_t j = 0; j < cnt; j++) {
-                    if (strcmp(all[j].name, want) == 0) {
-                        ifc = all[j]; obj = &ifc; osz = sizeof(ifc);
-                        break;
-                    }
+                /* Streaming lookup: a bounded copy would report NOT_FOUND
+                 * once the store held more interfaces than the array. */
+                if (find_iface_by_name(ss, p->elems[1].key_value, &ifc)) {
+                    obj = &ifc; osz = sizeof(ifc);
                 }
             } else if (mb.obj_type == DANOS_OBJ_VRF) {
                 danos_vrf_t all[64];
@@ -1209,6 +1294,9 @@ static int read_grpc_message(h2_conn_t *c, uint32_t stream,
     bool hdr_done = false;
     size_t need = 0;
     size_t got = 0;
+    /* Bytes consumed since the last WINDOW_UPDATE, so we return the credit
+     * in batches instead of a frame per DATA frame. */
+    uint32_t consumed = 0;
 
     for (;;) {
         uint8_t ftype, fflags;
@@ -1233,6 +1321,12 @@ static int read_grpc_message(h2_conn_t *c, uint32_t stream,
 
         const uint8_t *p = frame;
         uint32_t n = flen;
+        /* Return receive credit for this frame's payload. */
+        if (flen) consumed += flen;
+        if (consumed >= H2_DEFAULT_WINDOW / 2) {
+            send_window_update(c, stream, consumed);
+            consumed = 0;
+        }
         while (n > 0 || (hdr_done && got == need)) {
             if (!hdr_done) {
                 if (n == 0) break;
@@ -1248,7 +1342,10 @@ static int read_grpc_message(h2_conn_t *c, uint32_t stream,
                 if (need == 0) return 0;   /* empty message */
                 continue;
             }
-            if (got == need) return (int)got;
+            if (got == need) {
+                if (consumed) { send_window_update(c, stream, consumed); }
+                return (int)got;
+            }
             if (n == 0) break;
             size_t take = need - got;
             if (take > n) take = n;
@@ -1257,8 +1354,10 @@ static int read_grpc_message(h2_conn_t *c, uint32_t stream,
             p += take;
             n -= take;
         }
-        if (fflags & H2_FLAG_END_STREAM)
+        if (fflags & H2_FLAG_END_STREAM) {
+            if (consumed) send_window_update(c, stream, consumed);
             return hdr_done ? (int)got : GRPC_READ_NO_MSG;
+        }
     }
 }
 
@@ -1269,7 +1368,7 @@ int danos_gnmi_grpc_serve_fd(int fd)
     c.fd = fd;
     c.conn_window = H2_DEFAULT_WINDOW;
     c.peer_initial_window = H2_DEFAULT_WINDOW;
-    for (int i = 0; i < 64; i++) c.stream_window[i] = H2_DEFAULT_WINDOW;
+    /* Stream windows are created on demand at peer_initial_window. */
     hpack_dyn_init(&c.dyn_dec);
 
     /* 1. client preface */
@@ -1418,6 +1517,10 @@ int danos_gnmi_grpc_serve_fd(int fd)
                         fstream, tbuf, tlen);
         }
         headers_free(&h);
+        /* The response always carries END_STREAM, so the stream is done:
+         * release its flow-control slot so a long-lived connection running
+         * many sequential RPCs cannot exhaust the table. */
+        if (end_stream) stream_forget(&c, fstream);
     }
 out:
     pending_free_all(&c);
