@@ -29,19 +29,49 @@ static danos_route_proto_t map_protocol(uint8_t zapi_proto)
     }
 }
 
-/* FRR route_types.h values are not the compact values used by the legacy
- * clean-room test payload. Keep the mappings separate. */
+/* ZEBRA_ROUTE_* numeric values, taken from FRR 10.3 lib/route_types.txt (the
+ * canonical registry that generates route_types.h). Declaration order in that
+ * file *is* the numeric value, so the mapping is positional:
+ *
+ *   1 KERNEL   2 CONNECT  3 LOCAL     4 STATIC   5 RIP      6 RIPNG
+ *   7 OSPF     8 OSPF6    9 ISIS     10 BGP     11 PIM     12 EIGRP
+ *  13 NHRP    14 HSLS     15 OLSR     16 TABLE    17 LDP     18 VNC
+ *  ...
+ *
+ * The previous table mapped 8 to ISIS and 11 to OSPF. 8 is OSPF6 (IPv6-only
+ * per the registry) and 11 is PIM, so both were wrong, and ISIS (9) and OSPF
+ * (7) were not mapped at all - every IS-IS and OSPF route decoded as UNSPEC
+ * and was dropped at the next stage.
+ */
+#define ZEBRA_ROUTE_KERNEL     1
+#define ZEBRA_ROUTE_CONNECT   2
+#define ZEBRA_ROUTE_LOCAL     3
+#define ZEBRA_ROUTE_STATIC    4
+#define ZEBRA_ROUTE_RIP       5
+#define ZEBRA_ROUTE_RIPNG     6
+#define ZEBRA_ROUTE_OSPF      7
+#define ZEBRA_ROUTE_OSPF6     8
+#define ZEBRA_ROUTE_ISIS      9
+#define ZEBRA_ROUTE_BGP      10
+#define ZEBRA_ROUTE_PIM      11
+
+/* FRR route types for the compact model, kept separate from the ZAPI
+ * numbering above because the legacy clean-room test payload uses its own
+ * compact values. */
 static danos_route_proto_t map_frr_protocol(uint8_t type)
 {
     switch (type) {
-    case 1:  return DANOS_ROUTE_PROTO_KERNEL;
-    case 2:  return DANOS_ROUTE_PROTO_CONNECTED;
-    case 4:  return DANOS_ROUTE_PROTO_STATIC;
-    case 6:  return DANOS_ROUTE_PROTO_OSPF;
-    case 8:  return DANOS_ROUTE_PROTO_ISIS;
-    case 10: return DANOS_ROUTE_PROTO_BGP;
-    case 11: return DANOS_ROUTE_PROTO_OSPF;
-    default: return DANOS_ROUTE_PROTO_UNSPEC;
+    case ZEBRA_ROUTE_KERNEL:   return DANOS_ROUTE_PROTO_KERNEL;
+    case ZEBRA_ROUTE_CONNECT:  return DANOS_ROUTE_PROTO_CONNECTED;
+    case ZEBRA_ROUTE_LOCAL:    return DANOS_ROUTE_PROTO_CONNECTED;
+    case ZEBRA_ROUTE_STATIC:   return DANOS_ROUTE_PROTO_STATIC;
+    case ZEBRA_ROUTE_OSPF:     return DANOS_ROUTE_PROTO_OSPF;
+    case ZEBRA_ROUTE_OSPF6:    return DANOS_ROUTE_PROTO_OSPF;
+    case ZEBRA_ROUTE_ISIS:     return DANOS_ROUTE_PROTO_ISIS;
+    case ZEBRA_ROUTE_BGP:      return DANOS_ROUTE_PROTO_BGP;
+    /* RIP/RIPNG/PIM have no DANOS counterpart. Mapping them to a nearby
+     * protocol would misattribute the route, so they stay UNSPEC. */
+    default:                   return DANOS_ROUTE_PROTO_UNSPEC;
     }
 }
 

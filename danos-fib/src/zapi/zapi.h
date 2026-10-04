@@ -83,7 +83,25 @@ typedef struct {
     uint32_t ifindex;
     uint8_t gateway[16];
     bool has_gateway;
+    bool blackhole;      /* NEXTHOP_TYPE_BLACKHOLE: drop silently */
 } zapi_frr_nexthop_t;
+
+/* enum nexthop_types_t, verbatim from FRR lib/nexthop.h. */
+#define ZAPI_NH_IFINDEX      1
+#define ZAPI_NH_IPV4         2
+#define ZAPI_NH_IPV4_IFINDEX 3
+#define ZAPI_NH_IPV6         4
+#define ZAPI_NH_IPV6_IFINDEX 5
+#define ZAPI_NH_BLACKHOLE    6
+
+/* ZAPI nexthop flags, verbatim from FRR lib/zclient.h. */
+#define ZAPI_NH_FLAG_ONLINK     0x01
+#define ZAPI_NH_FLAG_LABEL      0x02
+#define ZAPI_NH_FLAG_WEIGHT     0x04
+#define ZAPI_NH_FLAG_HAS_BACKUP 0x08
+#define ZAPI_NH_FLAG_SEG6       0x10
+#define ZAPI_NH_FLAG_SEG6LOCAL  0x20
+#define ZAPI_NH_FLAG_EVPN       0x40
 
 typedef struct {
     uint8_t type;

@@ -114,6 +114,88 @@ int test_frr_route_decode(void)
     return 0;
 }
 
+/* Two IPv4 nexthops must both decode.
+ *
+ * The decoder previously read the trailing ifindex only for nexthop type 3,
+ * while zserv_encode_nexthop() writes it for type 2 as well. The first
+ * nexthop therefore left four bytes unread and the second was decoded from
+ * the wrong offset - silently, because the payload still had bytes left.
+ * This test passes a type-2 nexthop followed by another, which is the
+ * smallest case that exposes the desynchronisation.
+ */
+int test_frr_route_two_ipv4_nexthops(void)
+{
+    /* prefix 10.0.0.0/24, nexthop_count = 2
+     * nh1: vrf 0, type 2 (IPV4), flags 0, gw 192.0.2.1, ifindex 2
+     * nh2: vrf 0, type 2 (IPV4), flags 0, gw 192.0.2.2, ifindex 3
+     * Correct order is vrf, type, flags, gateway, ifindex - the ifindex is
+     * present for type 2 as well as type 3. */
+    /* Header: type=2, instance=0, flags=0, message=NEXTHOP(1), safi=1,
+     * family=AF_INET(2), prefix_len=24, prefix=10.0.0. */
+    uint8_t payload[] = {
+        2, 0,0, 0,0,0,0, 0,0,0,1, 1, 2, 24, 10,0,0,
+        0, 2,                                  /* nexthop_count = 2 */
+        0,0,0,0,  2, 0,  192,0,2,1,  0,0,0,2,
+        0,0,0,0,  2, 0,  192,0,2,2,  0,0,0,3,
+    };
+    zapi_message_t msg = { .header = {0, 0xFE, 6, 7},
+                           .payload = payload, .payload_size = sizeof(payload) };
+    zapi_frr_route_t route;
+    assert(zapi_decode_frr_route(&msg, &route) == 0);
+    assert(route.nexthop_count == 2);
+    assert(route.nexthops[0].has_gateway && route.nexthops[1].has_gateway);
+    assert(route.nexthops[0].gateway[0] == 192 &&
+           route.nexthops[0].gateway[3] == 1);
+    assert(route.nexthops[1].gateway[3] == 2);   /* would be 0 if desynced */
+    assert(route.nexthops[0].ifindex == 2);
+    assert(route.nexthops[1].ifindex == 3);
+    printf("[PASS] test_frr_route_two_ipv4_nexthops: ifindex consumed for "
+           "type 2, second nexthop intact\n");
+    return 0;
+}
+
+/* IPv6 and blackhole nexthops, previously skipped without consuming their
+ * payload. Type 4 is a 16-byte address plus ifindex; type 6 carries none. */
+int test_frr_route_ipv6_and_blackhole(void)
+{
+    /* Header: family=AF_INET6(10), prefix_len=64, prefix=2001:db8::/64. */
+    uint8_t payload[] = {
+        2, 0,0, 0,0,0,0, 0,0,0,1, 1, 10, 64,
+        0x20,0x01,0x0d,0xb8, 0,0,0,0,         /* prefix: (64+7)/8 = 8 bytes */
+        0, 2,                                  /* nexthop_count = 2 */
+        0,0,0,0,  4, 0,                        /* type 4 = IPV6 */
+        0x20,0x01,0x0d,0xb8, 0,0,0,0, 0,0,0,0, 0,0,0,1,   0,0,0,7,
+        0,0,0,0,  6, 0,                        /* type 6 = BLACKHOLE, no payload */
+    };
+    zapi_message_t msg = { .header = {0, 0xFE, 6, 7},
+                           .payload = payload, .payload_size = sizeof(payload) };
+    zapi_frr_route_t route;
+    assert(zapi_decode_frr_route(&msg, &route) == 0);
+    assert(route.nexthop_count == 2);
+    assert(route.nexthops[0].type == ZAPI_NH_IPV6 && route.nexthops[0].has_gateway);
+    assert(route.nexthops[0].gateway[0] == 0x20 && route.nexthops[0].gateway[15] == 1);
+    assert(route.nexthops[0].ifindex == 7);
+    assert(route.nexthops[1].type == ZAPI_NH_BLACKHOLE);
+    assert(route.nexthops[1].blackhole);
+    assert(!route.nexthops[1].has_gateway);
+
+    /* An unknown type must be rejected: its length is unknowable, so
+     * continuing would decode the rest of the message as garbage. */
+    uint8_t bad[] = {
+        2, 0,0, 0,0,0,0, 0,0,0,1, 1, 2, 24, 10,0,0,
+        0, 1,                                  /* nexthop_count = 1 */
+        0,0,0,0,  9, 0,                        /* type 9 does not exist */
+    };
+    zapi_message_t bmsg = { .header = {0, 0xFE, 6, 7},
+                            .payload = bad, .payload_size = sizeof(bad) };
+    zapi_frr_route_t broute;
+    assert(zapi_decode_frr_route(&bmsg, &broute) != 0);
+
+    printf("[PASS] test_frr_route_ipv6_and_blackhole: v6/blackhole decoded, "
+           "unknown type rejected\n");
+    return 0;
+}
+
 int test_zapi_invalid(void)
 {
     /* Too short */
@@ -136,6 +218,8 @@ int main(void)
     if (test_zapi_parse_serialize() != 0) failed++;
     if (test_frr_v6_header() != 0) failed++;
     if (test_frr_route_decode() != 0) failed++;
+    if (test_frr_route_two_ipv4_nexthops() != 0) failed++;
+    if (test_frr_route_ipv6_and_blackhole() != 0) failed++;
     if (test_zapi_decoder() != 0) failed++;
     if (test_zapi_invalid() != 0) failed++;
     printf("=== fib_test (zapi_parse): %s ===\n",

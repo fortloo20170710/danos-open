@@ -106,24 +106,54 @@ int zapi_decode_frr_route(const zapi_message_t *msg, zapi_frr_route_t *out)
                 zapi_decode_u8(&d, &nh->type) != 0 ||
                 zapi_decode_u8(&d, &nh->flags) != 0) return -6;
             nh->family = out->family;
-            /* FRR 10.3 uses type 1 for an ifindex-only nexthop.  The
-             * previous decoder treated it as an IPv4 gateway and consumed
-             * the ifindex as a gateway, producing values such as 0.0.0.2.
-             * Type 3 is the IPv4+ifindex form. */
-            if (nh->type == 1) {
+            /* enum nexthop_types_t (lib/nexthop.h):
+             *   1 IFINDEX        ifindex
+             *   2 IPV4           address + ifindex
+             *   3 IPV4_IFINDEX   address + ifindex
+             *   4 IPV6           16-byte address + ifindex
+             *   5 IPV6_IFINDEX   16-byte address + ifindex
+             *   6 BLACKHOLE      no payload
+             *
+             * zserv_encode_nexthop() writes the ifindex for *both* IPv4
+             * forms and for both IPv6 forms. This decoder previously read it
+             * only for type 3, so every type-2 nexthop - the common case for
+             * an IPv4 route with a gateway - left four bytes unread and
+             * desynchronised every nexthop after it. Types 4-6 were skipped
+             * entirely without consuming their payload, which corrupts the
+             * rest of the message rather than cleanly rejecting it.
+             *
+             * The address width follows the nexthop type, not the route
+             * family: an IPv4 route may legitimately carry a v6 nexthop when
+             * the v6 nexthop is a translated/v4-mapped form. */
+            switch (nh->type) {
+            case ZAPI_NH_IFINDEX:
                 if (zapi_decode_u32(&d, &nh->ifindex) != 0) return -8;
-            } else if (nh->type == 2 || nh->type == 3) {
-                size_t gw = out->family == AF_INET ? 4 : 16;
-                if (zapi_decode_bytes(&d, nh->gateway, gw) != 0) return -7;
+                break;
+            case ZAPI_NH_IPV4:
+            case ZAPI_NH_IPV4_IFINDEX:
+                if (zapi_decode_bytes(&d, nh->gateway, 4) != 0) return -7;
                 nh->has_gateway = true;
-                if (nh->type == 3 && zapi_decode_u32(&d, &nh->ifindex) != 0)
-                    return -8;
+                if (zapi_decode_u32(&d, &nh->ifindex) != 0) return -8;
+                break;
+            case ZAPI_NH_IPV6:
+            case ZAPI_NH_IPV6_IFINDEX:
+                if (zapi_decode_bytes(&d, nh->gateway, 16) != 0) return -7;
+                nh->has_gateway = true;
+                if (zapi_decode_u32(&d, &nh->ifindex) != 0) return -8;
+                break;
+            case ZAPI_NH_BLACKHOLE:
+                nh->blackhole = true;   /* no payload follows */
+                break;
+            default:
+                /* Unknown type: we cannot know its length, so continuing
+                 * would decode the remainder of the message as garbage. */
+                return -10;
             }
             /* FRR emits a u32 weight immediately after the nexthop when
              * ZAPI_NEXTHOP_FLAG_WEIGHT (0x04) is set.  It is not part of
              * the gateway model, but must be consumed before the next
              * ECMP member is decoded. */
-            if (nh->flags & 0x04) {
+            if (nh->flags & ZAPI_NH_FLAG_WEIGHT) {
                 uint64_t weight;
                 if (zapi_decode_u64(&d, &weight) != 0) return -9;
                 (void)weight;
