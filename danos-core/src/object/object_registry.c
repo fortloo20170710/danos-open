@@ -68,6 +68,7 @@ danos_status_t danos_object_create(danos_object_store_t *s,
                                    const void *data, size_t size)
 {
     if (!s || !data || size == 0) return DANOS_ERR_INVALID_ARG;
+    if (size > DANOS_MAX_OBJECT_BYTES) return DANOS_ERR_INVALID_ARG;
 
     pthread_rwlock_wrlock(&s->lock);
     if (find_entry(s, type, id)) {
@@ -140,6 +141,7 @@ danos_status_t danos_object_update(danos_object_store_t *s,
                                    const void *data, size_t size)
 {
     if (!s || !data || size == 0) return DANOS_ERR_INVALID_ARG;
+    if (size > DANOS_MAX_OBJECT_BYTES) return DANOS_ERR_INVALID_ARG;
 
     pthread_rwlock_wrlock(&s->lock);
     danos_object_entry_t *e = find_entry(s, type, id);
@@ -221,15 +223,94 @@ uint64_t danos_object_count(danos_object_store_t *s, danos_obj_type_t type)
     return cnt;
 }
 
+danos_obj_id_t danos_object_max_id(danos_object_store_t *s,
+                                   danos_obj_type_t type)
+{
+    if (!s) return 0;
+    danos_obj_id_t max = 0;
+    pthread_rwlock_rdlock(&s->lock);
+    for (size_t i = 0; i < s->bucket_count; i++) {
+        for (danos_object_entry_t *e = s->buckets[i]; e; e = e->next)
+            if (e->type == type && e->id > max) max = e->id;
+    }
+    pthread_rwlock_unlock(&s->lock);
+    return max;
+}
+
+/*
+ * Iterate a snapshot of the store.
+ *
+ * Callbacks run with the store lock *released*. Holding the rwlock across
+ * the callback was wrong in two ways:
+ *
+ *  - A callback that reads the same store re-enters the rwlock for read.
+ *    POSIX read locks are not reentrant-safe: if a writer queues between
+ *    the two acquisitions the second rdlock blocks behind it while the
+ *    first is still held, deadlocking the caller. TSAN flags this as a
+ *    lock-order inversion, and it is reachable today:
+ *    danos_programming_sweep() iterates the ledger while sweep_collect()
+ *    calls danos_object_read() on that same ledger.
+ *
+ *  - Callbacks do real work. The programming pass reaches netlink and a
+ *    VPP socket, so holding the lock blocked every concurrent CRUD for
+ *    the duration of a backend round trip.
+ *
+ * Entries are deep-copied so a concurrent delete cannot free the memory
+ * underneath a callback.
+ */
 void danos_object_iterate(danos_object_store_t *store,
                           danos_object_iter_cb_t cb, void *user)
 {
     if (!store || !cb) return;
+
+    size_t n = 0;
     pthread_rwlock_rdlock(&store->lock);
-    for (size_t i = 0; i < store->bucket_count; i++) {
-        for (danos_object_entry_t *e = store->buckets[i]; e; e = e->next) {
-            cb(e, user);
+    n = store->count;
+    pthread_rwlock_unlock(&store->lock);
+    if (n == 0) return;
+
+    /*
+     * Over-allocate: a writer may add objects between the count read and
+     * the snapshot. Growing is handled below, and one extra slot keeps
+     * the common case (no concurrent writes) allocation-free.
+     */
+    size_t cap = n + 8;
+    struct snap {
+        danos_obj_type_t type;
+        danos_obj_id_t   id;
+        void             *data;
+        size_t            data_size;
+    } *arr = calloc(cap, sizeof(*arr));
+    if (!arr) return;   /* iteration is advisory; skip rather than fail */
+
+    size_t k = 0;
+    pthread_rwlock_rdlock(&store->lock);
+    for (size_t i = 0; i < store->bucket_count && k < cap; i++) {
+        for (danos_object_entry_t *e = store->buckets[i]; e && k < cap;
+             e = e->next) {
+            void *copy = malloc(e->data_size);
+            if (!copy) goto done;          /* partial snapshot: drop the rest */
+            memcpy(copy, e->data, e->data_size);
+            arr[k].type = e->type;
+            arr[k].id = e->id;
+            arr[k].data = copy;
+            arr[k].data_size = e->data_size;
+            k++;
         }
     }
+done:
     pthread_rwlock_unlock(&store->lock);
+
+    for (size_t i = 0; i < k; i++) {
+        danos_object_entry_t e = {
+            .type = arr[i].type,
+            .id = arr[i].id,
+            .data = arr[i].data,
+            .data_size = arr[i].data_size,
+        };
+        cb(&e, user);
+    }
+
+    for (size_t i = 0; i < k; i++) free(arr[i].data);
+    free(arr);
 }

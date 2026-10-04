@@ -132,6 +132,20 @@ typedef enum {
     DANOS_OBJ_MAX
 } danos_obj_type_t;
 
+/*
+ * Upper bound on the serialized size of a single DPA object payload.
+ *
+ * Every object in the public model is a flat C struct stored verbatim by
+ * the object registry, so the largest type (danos_nhgroup_t) sets the
+ * floor. The margin absorbs future field growth without a redesign.
+ *
+ * This is the single authoritative limit: the registry rejects oversized
+ * payloads on the way in, and consumers (notably the PROGRAMMED ledger
+ * in danos-core) size their buffers from it instead of hard-coding a
+ * literal. Exceeding it is a programming error, not a runtime condition.
+ */
+#define DANOS_MAX_OBJECT_BYTES 1024
+
 /* Capability descriptor for one object type */
 typedef struct {
     danos_obj_type_t type;
@@ -226,6 +240,16 @@ danos_status_t danos_tx_abort(danos_tx_t *tx);
 /* Rollback: undo a committed transaction (best-effort, logged). */
 danos_status_t danos_tx_rollback(danos_tx_t *tx);
 
+/* Release a finished transaction back to the internal record pool.
+ *
+ * verify/abort/rollback retire the record automatically. This exists for
+ * the commit-is-the-last-step pattern the management plane uses, where a
+ * successful transaction is never followed by verify. Without it every
+ * begin() leaked its record, so a long-lived daemon grew without bound
+ * under remote gNMI/CLI traffic. Safe to call more than once, and safe
+ * on a transaction that was never begun. */
+void danos_tx_release(danos_tx_t *tx);
+
 /* Get current transaction state. */
 danos_status_t danos_tx_get_state(const danos_tx_t *tx, danos_tx_state_t *out);
 
@@ -318,10 +342,15 @@ danos_status_t danos_nh_read(danos_tx_t *tx, danos_obj_id_t id, danos_nexthop_t 
  * 8. Object: NextHop Group (ECMP / weighted ECMP / backup)
  * ========================================================================= */
 
+/* Maximum next-hops in one group. Protocol decoders must reject a larger
+ * advertised count rather than trusting it: the wire field is a u8, so a
+ * peer could otherwise claim up to 255 and overrun nh_ids. */
+#define DANOS_NHGROUP_MAX_NH 64
+
 typedef struct {
     danos_obj_id_t  id;              /* key */
     uint32_t        nh_count;
-    danos_obj_id_t  nh_ids[64];      /* up to 64 NHs per group */
+    danos_obj_id_t  nh_ids[DANOS_NHGROUP_MAX_NH];
     uint32_t        flags;           /* future: resilient hashing, etc. */
 } danos_nhgroup_t;
 

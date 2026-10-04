@@ -63,6 +63,15 @@ danos_status_t danos_object_delete(danos_object_store_t *store,
 /* Count objects of a given type */
 uint64_t danos_object_count(danos_object_store_t *store, danos_obj_type_t type);
 
+/* Highest id in use for a type, or 0 when the type has no objects.
+ *
+ * Lets callers allocate a fresh id without copying every object into a
+ * fixed-size array first: a bounded scan silently returns the max of only
+ * the first N entries, so the caller can then pick an id that is already
+ * taken. This walks the store directly, so it is correct at any size. */
+danos_obj_id_t danos_object_max_id(danos_object_store_t *store,
+                                   danos_obj_type_t type);
+
 /* Iterate all entries (all types) under a read lock. The callback must
  * not modify the store. */
 typedef void (*danos_object_iter_cb_t)(danos_object_entry_t *entry, void *user);

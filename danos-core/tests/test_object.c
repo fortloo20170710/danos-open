@@ -51,6 +51,72 @@ int test_object(void)
     return 0;
 }
 
+/* Oversized payload rejection.
+ *
+ * The programming pipeline keeps fixed-size ledger buffers derived from
+ * DANOS_MAX_OBJECT_BYTES, so the registry must refuse anything larger at
+ * the boundary. Before this bound existed, any object larger than the
+ * buffer smashed the reconciler stack. Two directions are checked:
+ * rejection above the limit, and acceptance of the largest real DPA type
+ * (danos_nhgroup_t, 536 bytes) which is wider than the old 512-byte read
+ * buffer and must therefore still round-trip. */
+int test_object_size_bounds(void)
+{
+    danos_object_store_t *s = danos_object_store_create(8);
+    assert(s != NULL);
+
+    /* Largest real object type must be accepted at full size. */
+    assert(sizeof(danos_nhgroup_t) <= DANOS_MAX_OBJECT_BYTES);
+    danos_nhgroup_t grp;
+    memset(&grp, 0, sizeof(grp));
+    grp.id = 7;
+    grp.nh_count = 64;
+    for (uint32_t i = 0; i < 64; i++) grp.nh_ids[i] = i + 1;
+
+    danos_status_t st = danos_object_create(s, DANOS_OBJ_NHGROUP, 7,
+                                            &grp, sizeof(grp));
+    assert(st == DANOS_OK);
+
+    /* Read it back through a buffer that is not oversized, i.e. exactly
+     * the object size, matching how the ledger reads entries. */
+    static_assert(sizeof(danos_nhgroup_t) <= DANOS_MAX_OBJECT_BYTES,
+                  "ledger buffer must cover the largest DPA type");
+    uint8_t buf[DANOS_MAX_OBJECT_BYTES];
+    size_t sz = sizeof(buf);
+    st = danos_object_read(s, DANOS_OBJ_NHGROUP, 7, buf, &sz);
+    assert(st == DANOS_OK);
+    assert(sz == sizeof(grp));
+    assert(memcmp(buf, &grp, sizeof(grp)) == 0);
+
+    /* Exactly at the limit is still accepted. */
+    static uint8_t at_limit[DANOS_MAX_OBJECT_BYTES];
+    memset(at_limit, 0xA5, sizeof(at_limit));
+    st = danos_object_create(s, DANOS_OBJ_TUNNEL, 1,
+                             at_limit, DANOS_MAX_OBJECT_BYTES);
+    assert(st == DANOS_OK);
+
+    /* One byte over the limit is rejected on create... */
+    st = danos_object_create(s, DANOS_OBJ_TUNNEL, 2,
+                             at_limit, DANOS_MAX_OBJECT_BYTES + 1);
+    assert(st == DANOS_ERR_INVALID_ARG);
+    assert(danos_object_count(s, DANOS_OBJ_TUNNEL) == 1);
+
+    /* ...and on update of an existing entry, which must leave the
+     * original payload intact rather than half-written. */
+    st = danos_object_update(s, DANOS_OBJ_TUNNEL, 1,
+                             at_limit, DANOS_MAX_OBJECT_BYTES + 64);
+    assert(st == DANOS_ERR_INVALID_ARG);
+    sz = sizeof(buf);
+    assert(danos_object_read(s, DANOS_OBJ_TUNNEL, 1, buf, &sz) == DANOS_OK);
+    assert(sz == DANOS_MAX_OBJECT_BYTES);
+    assert(buf[0] == 0xA5 && buf[DANOS_MAX_OBJECT_BYTES - 1] == 0xA5);
+
+    danos_object_store_destroy(s);
+    printf("[PASS] test_object_size_bounds: oversized payloads rejected, "
+           "largest DPA type round-trips\n");
+    return 0;
+}
+
 /* v0.2: Tunnel CRUD via DPA public API */
 int test_tunnel_crud(void)
 {
@@ -95,7 +161,9 @@ int test_tunnel_crud(void)
     st = danos_tunnel_read(&tx, 1, &out);
     assert(st == DANOS_ERR_NOT_FOUND);
 
-    danos_tx_commit(&tx);
+    /* Full lifecycle, and assert it: commit alone would fail its state
+     * precondition (OPEN != VALIDATE) and leave the record unretired. */
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_tunnel_crud: Tunnel create/read/update/delete\n");
     return 0;
 }
@@ -144,7 +212,9 @@ int test_evpn_crud(void)
     st = danos_evpn_evi_read(&tx, 100, &out);
     assert(st == DANOS_ERR_NOT_FOUND);
 
-    danos_tx_commit(&tx);
+    /* Full lifecycle, and assert it: commit alone would fail its state
+     * precondition (OPEN != VALIDATE) and leave the record unretired. */
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_evpn_crud: EVPN EVI create/read/update/delete\n");
     return 0;
 }
@@ -197,7 +267,9 @@ int test_mroute_crud(void)
     st = danos_mroute_read(&tx, 0, &mr.group, &out);
     assert(st == DANOS_ERR_NOT_FOUND);
 
-    danos_tx_commit(&tx);
+    /* Full lifecycle, and assert it: commit alone would fail its state
+     * precondition (OPEN != VALIDATE) and leave the record unretired. */
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_mroute_crud: mroute create/read/update/delete\n");
     return 0;
 }

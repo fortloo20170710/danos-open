@@ -210,15 +210,24 @@ typedef struct {
 } program_ctx_t;
 
 /* ledger record layout: [u64 dep_digest][object bytes] */
+#define LEDGER_REC_MAX (DANOS_MAX_OBJECT_BYTES + 8)
+
 static void program_entry(danos_object_entry_t *e, void *user)
 {
     program_ctx_t *c = user;
     if (type_skipped(e->type)) return;
 
+    /* The registry caps payloads at DANOS_MAX_OBJECT_BYTES, so this is
+     * unreachable via the public API; the check keeps the fixed buffers
+     * below safe if an entry is ever injected by another path. Count it
+     * as a failure rather than skipping silently, so an unprogrammable
+     * object is visible in the reconciler stats (ADR-0007). */
+    if (e->data_size + 8 > LEDGER_REC_MAX) { c->attempted++; c->failed++; return; }
+
     uint64_t dep = dep_digest(e->type, e->data, e->data_size);
 
     /* in sync with ledger (object bytes AND dependency digest)? */
-    uint8_t last[512];
+    uint8_t last[LEDGER_REC_MAX];
     size_t lsz = sizeof(last);
     bool have_last = danos_object_read(ledger(), e->type, e->id,
                                        last, &lsz) == DANOS_OK;
@@ -266,7 +275,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     }
     c->ok++;
 
-    uint8_t rec[520];
+    uint8_t rec[LEDGER_REC_MAX];
     memcpy(rec, &dep, 8);
     memcpy(rec + 8, e->data, e->data_size);
     if (have_last && lsz == e->data_size + 8)
@@ -327,13 +336,13 @@ static void sweep_collect(danos_object_entry_t *e, void *user)
     (void)user;
     if (g_sweep_n >= SWEEP_MAX) return;
 
-    uint8_t last[512];
+    uint8_t last[LEDGER_REC_MAX];
     size_t lsz = sizeof(last);
     if (danos_object_read(ledger(), e->type, e->id, last, &lsz) != DANOS_OK)
         return;   /* not ours */
 
     /* still desired? */
-    uint8_t probe[512];
+    uint8_t probe[LEDGER_REC_MAX];
     size_t psz = sizeof(probe);
     if (!user && g_default_store &&
         danos_object_read(g_default_store, e->type, e->id,
@@ -359,11 +368,13 @@ uint64_t danos_programming_sweep(uint64_t *failed)
         danos_obj_type_t type = g_sweep_ids[i].type;
         danos_obj_id_t id = g_sweep_ids[i].id;
 
-        uint8_t last[520];
+        uint8_t last[LEDGER_REC_MAX];
         size_t lsz = sizeof(last);
         if (danos_object_read(ledger(), type, id, last, &lsz) != DANOS_OK)
             continue;
-        if (lsz < 8 + sizeof(danos_route_t)) continue;
+        /* No blanket minimum here: each withdraw branch below range-checks
+         * its own type. A blanket route-sized guard would skip the ledger
+         * delete for every smaller object type and leak the entry. */
 
         if (type == DANOS_OBJ_ROUTE && g_ops && g_ops->route_del &&
             lsz >= 8 + sizeof(danos_route_t)) {
@@ -384,9 +395,9 @@ uint64_t danos_programming_sweep(uint64_t *failed)
             lsz >= 8 + sizeof(danos_iface_t)) {
             /* withdraw = admin down (we never delete kernel ifaces we
              * did not create) */
-            danos_iface_t i;
-            memcpy(&i, last + 8, sizeof(i));
-            (void)g_ops->iface_up(i.ifindex, false, g_ops->user);
+            danos_iface_t ifc;
+            memcpy(&ifc, last + 8, sizeof(ifc));
+            (void)g_ops->iface_up(ifc.ifindex, false, g_ops->user);
         }
         /* VRF: registration-only backend ops — ledger drop suffices */
         danos_object_delete(ledger(), type, id);
