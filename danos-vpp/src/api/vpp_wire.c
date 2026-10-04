@@ -84,12 +84,24 @@ void vpp_buf_put_bytes(vpp_buf_t *b, const void *p, uint32_t n)
     }
 }
 
+/*
+ * Write a VPP `string`.
+ *
+ * In VPP's vl_api a string is a u32 length followed by that many bytes,
+ * padded with zeroes to the next 4-byte boundary. It is not a u8 length:
+ * encoding it that way shifted every following field and desynchronised
+ * the message, which is why interface and VRF names never arrived intact.
+ */
 void vpp_buf_put_string(vpp_buf_t *b, const char *s)
 {
     uint32_t n = s ? (uint32_t)strlen(s) : 0;
-    if (n > 255) n = 255;  /* u8 length prefix */
-    vpp_buf_put_u8(b, (uint8_t)n);
+    vpp_buf_put_u32(b, n);
     vpp_buf_put_bytes(b, s, n);
+    /* VPP pads to a 4-byte boundary relative to the *field length*, not to
+     * the offset within the message, so the following field's position
+     * depends only on this string's length. */
+    while (n & 3)
+        vpp_buf_put_u8(b, 0), n++;
 }
 
 /* =========================================================================
@@ -151,10 +163,17 @@ bool vpp_rd_bytes(vpp_reader_t *r, void *out, uint32_t n)
     return rd_take(r, n, out) == n;
 }
 
+/* Read a VPP `string`: u32 length, that many bytes, then zero padding to a
+ * 4-byte boundary of the field length. Mirrors vpp_buf_put_string. */
 char *vpp_rd_string(vpp_reader_t *r, uint32_t max_len)
 {
-    uint8_t n = vpp_rd_u8(r);
+    uint32_t n = vpp_rd_u32(r);
     if (!vpp_reader_ok(r)) return NULL;
+    /* Pad is derived from n, so the total field size is known up front and
+     * must fit in what is left. A length beyond that means the stream is
+     * desynchronised (e.g. a u8 length where a u32 belongs). */
+    uint32_t pad = (4 - (n & 3)) & 3;
+    if ((uint64_t)n + pad > r->len) return NULL;
     uint32_t copy = n;
     if (copy > max_len) copy = max_len;
     char *s = malloc(copy + 1);
@@ -164,8 +183,12 @@ char *vpp_rd_string(vpp_reader_t *r, uint32_t max_len)
         return NULL;
     }
     s[copy] = '\0';
-    /* consume any remainder */
+    /* consume any remainder of the declared length, then the padding */
     if (n > copy && !vpp_rd_bytes(r, NULL, n - copy)) {
+        free(s);
+        return NULL;
+    }
+    if (pad && !vpp_rd_bytes(r, NULL, pad)) {
         free(s);
         return NULL;
     }

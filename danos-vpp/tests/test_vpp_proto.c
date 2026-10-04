@@ -63,10 +63,13 @@ static int test_transaction(void)
     uint32_t blen;
     mock_vpp_get_last_request(&mid, body, &blen, sizeof(body));
     assert(mid == MOCK_MSGID_SW_IF_SET_FLAGS);
-    /* body = client_index(4) + context(4) + sw_if_index(4) + flags(4) BE */
-    assert(blen == 16);
+    /* body = client_index(4) + context(4) + sw_if_index(4) + admin_up(1).
+     * admin_up_down is a single byte in VPP's sw_interface_set_flags; this
+     * used to assert a 4-byte field, which is why an interface could never
+     * be brought admin-up against a real VPP. */
+    assert(blen == 13);
     assert(body[8] == 0 && body[9] == 0 && body[10] == 0 && body[11] == 3);
-    assert(body[12] == 0 && body[15] == 1);
+    assert(body[12] == 1);
 
     danos_vpp_api_disconnect();
     mock_vpp_stop();
@@ -76,15 +79,26 @@ static int test_transaction(void)
 
 static int test_wire_layouts(void)
 {
-    /* ip_table_add_del: is_add(1) + table_id(4) + is_ip6(1) + name(u8len+n) */
+    /* ip_table_add_del: is_add(1) + table_id(4) + is_ip6(1) + name(string).
+     * A VPP string is u32 length + bytes + zero padding to 4 bytes, so
+     * "danos-vrf100" (12 bytes) occupies 4 + 12 = 16 with no padding. */
     uint8_t b[512];
     int n = vpp_encode_ip_table_add_del(1, 100, false, "danos-vrf100",
                                         b, sizeof(b));
-    assert(n == 1 + 4 + 1 + 1 + 12);
+    assert(n == 1 + 4 + 1 + 4 + 12);
     assert(b[0] == 1);
     assert(b[1] == 0 && b[2] == 0 && b[3] == 0 && b[4] == 100);
     assert(b[5] == 0);
-    assert(b[6] == 12 && memcmp(b + 7, "danos-vrf100", 12) == 0);
+    assert(b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 12);
+    assert(memcmp(b + 10, "danos-vrf100", 12) == 0);
+
+    /* A name whose length is not a multiple of 4 is padded relative to the
+     * field, so the message length is a multiple of 4 overall. */
+    n = vpp_encode_ip_table_add_del(1, 100, false, "vrf77", b, sizeof(b));
+    assert(n == 1 + 4 + 1 + 4 + 5 + 3);
+    assert(b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 5);
+    assert(memcmp(b + 10, "vrf77", 5) == 0);
+    assert(b[15] == 0 && b[16] == 0 && b[17] == 0);   /* pad to 4 */
 
     /* ip_route_add_del single path IPv4 */
     vpp_prefix_t p = { .addr = { .is_ipv6 = false, .addr = {10,0,0,0} },
@@ -137,19 +151,21 @@ static int test_wire_layouts(void)
     assert(b[7] == 0xaa);                /* mac[0] after hdr */
     assert(b[13] == 1);                  /* af = IP6 */
 
-    /* policer_add_del (CoPP): is_add(1) + name(u8len+5) + cir(4) + eir(4)
-     * + cb(8) + eb(8) + rate(1) + round(1) + type(1) + color(1) + 3*action(2) */
+    /* policer_add_del (CoPP): is_add(1) + name(string) + cir(4) + eir(4)
+     * + cb(8) + eb(8) + rate(1) + round(1) + type(1) + color(1) + 3*action(2)
+     * "cop10" is 5 bytes, so the name field is 4 + 5 + 3 pad = 12. */
     uint8_t pb[128];
     n = vpp_encode_policer_add_del(1, "cop10", 1000000, 2000000, 16000, 32000,
                                    2, 46, 1, 0, 0, 0, pb, sizeof(pb));
-    assert(n == 1 + 1 + 5 + 4 + 4 + 8 + 8 + 1 + 1 + 1 + 1 + 6);
+    assert(n == 1 + 12 + 4 + 4 + 8 + 8 + 1 + 1 + 1 + 1 + 6);
     assert(pb[0] == 1);                       /* is_add */
-    assert(pb[1] == 5);                       /* name len */
-    assert(memcmp(pb + 2, "cop10", 5) == 0);
-    /* cir = 1000000 KBPS big-endian at offset 7 (after is_add+len+name) */
-    assert(pb[7] == 0x00 && pb[8] == 0x0F && pb[9] == 0x42 && pb[10] == 0x40);
-    /* type = 2R3C RFC2698 (eir > 0): offset 7+4+4+8+8+2 = 33 */
-    assert(pb[33] == 2);
+    assert(pb[1] == 0 && pb[4] == 5);          /* name length u32 BE */
+    assert(memcmp(pb + 5, "cop10", 5) == 0);
+    assert(pb[10] == 0 && pb[11] == 0 && pb[12] == 0);   /* name pad */
+    /* cir = 1000000 KBPS big-endian at offset 13 (after is_add + name) */
+    assert(pb[13] == 0x00 && pb[14] == 0x0F && pb[15] == 0x42 && pb[16] == 0x40);
+    /* type = 2R3C RFC2698 (eir > 0): offset 13+4+4+8+8+2 = 39 */
+    assert(pb[39] == 2);
     printf("[PASS] test_wire_layouts: vl_api struct encoding + policer\n");
     return 0;
 }

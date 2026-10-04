@@ -187,9 +187,9 @@ static int vpp_handshake(void)
      * is network order, while this legacy context is written in host order. */
     const uint8_t context[4] = {0xce, 0xfa, 0xed, 0xfe};
     vpp_buf_put_bytes(&body, context, sizeof(context));
-    uint8_t name[64] = {0};
-    memcpy(name, VPP_CLIENT_NAME, strlen(VPP_CLIENT_NAME));
-    vpp_buf_put_bytes(&body, name, sizeof(name)); /* fixed string name[64] */
+    /* Sockclnt_create's client_name is a VPP `string`, so it uses the
+     * u32 length + padding form rather than a raw 64-byte field. */
+    vpp_buf_put_string(&body, VPP_CLIENT_NAME);
 
     int rc = vpp_wire_send_fd(g_ctx.msg_fd, VPP_MSG_ID_SOCKCLNT_CREATE,
                               body.data, body.len);
@@ -222,11 +222,15 @@ static int vpp_handshake(void)
     vpp_msg_table_init(&g_ctx.msg_table);
     for (uint16_t i = 0; i < count; i++) {
         uint16_t msg_id = vpp_rd_u16(&r);
-        uint8_t name[64] = {0};
-        if (!vpp_rd_bytes(&r, name, sizeof(name)) || !vpp_reader_ok(&r)) break;
-        name[sizeof(name) - 1] = 0;
-        vpp_strip_crc_suffix((char *)name);
-        vpp_msg_table_add(&g_ctx.msg_table, (char *)name, msg_id);
+        /* The name is a VPP `string` (u32 length + bytes + 4-byte pad), not a
+         * fixed 64-byte array. Reading it as name[64] desynchronised every
+         * following entry, so after the first the whole table was garbage
+         * and named lookups failed. */
+        char *name = vpp_rd_string(&r, 256);
+        if (!name || !vpp_reader_ok(&r)) { free(name); break; }
+        vpp_strip_crc_suffix(name);
+        vpp_msg_table_add(&g_ctx.msg_table, name, msg_id);
+        free(name);
     }
 
     g_ctx.client_index = index;

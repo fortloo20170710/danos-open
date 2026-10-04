@@ -207,14 +207,22 @@ void danos_vpp_stat_disconnect(void)
  * Directory walk + value read
  * ========================================================================= */
 
-static const stat_dir_entry_t *dir_first(uint32_t *count)
+/*
+ * Return a pointer to the raw directory bytes plus its entry count.
+ *
+ * The directory lives inside VPP's shared-memory segment at an offset VPP
+ * chooses, so it carries no 8-byte alignment guarantee even though the
+ * mapping itself is page aligned. Callers therefore copy each entry into a
+ * local stat_dir_entry_t with memcpy instead of dereferencing it in place.
+ */
+static const char *dir_first(uint32_t *count)
 {
     const stat_shared_header_t *hdr = g_stat.base;
-    const stat_dir_entry_t *dir = seg_ptr(hdr->directory_offset, 0);
+    const char *dir = seg_ptr(hdr->directory_offset, 0);
     if (!dir) return NULL;
     /* the directory is a clib vector: [u32 len][entries...] */
     uint32_t len;
-    memcpy(&len, (const char *)dir - 4, 4);  /* header directly precedes data */
+    memcpy(&len, dir - 4, 4);  /* header directly precedes data */
     if (len == 0 || len > STAT_DIR_MAX) return NULL;
     if (!seg_ptr(hdr->directory_offset + (uint64_t)len * sizeof(stat_dir_entry_t), 0))
         return NULL;
@@ -248,16 +256,23 @@ static bool read_simple_counter(const stat_dir_entry_t *e, uint64_t *out)
     memcpy(&n, vec - 4, 4);
     if (n > 4096) return false;
 
-    const uint64_t *offsets = (const uint64_t *)vec;
+    /* The offset vector is a clib vector of u64s at whatever offset VPP
+     * placed it, so it carries no alignment guarantee. Reading it through a
+     * uint64_t pointer is undefined behaviour on a strict-alignment target
+     * (and UBSan traps it even on x86), so read each entry by memcpy. */
     if (!seg_ptr(e->offset_vector + (uint64_t)n * 8, 0)) return false;
 
     uint64_t idx = e->value;
     uint64_t sum = 0;
     for (uint32_t i = 0; i < n; i++) {
-        if (offsets[i] == 0) continue;
-        const uint64_t *cnt = seg_ptr(offsets[i], (size_t)(idx + 1) * 8);
+        uint64_t off;
+        memcpy(&off, vec + (size_t)i * 8, sizeof(off));
+        if (off == 0) continue;
+        const char *cnt = seg_ptr(off, (size_t)(idx + 1) * 8);
         if (!cnt) continue;
-        sum += cnt[idx];
+        uint64_t v;
+        memcpy(&v, cnt + (size_t)idx * 8, sizeof(v));
+        sum += v;
     }
     *out = sum;
     return true;
@@ -275,11 +290,14 @@ static bool stat_read(const char *name, uint64_t *out)
         uint64_t epoch = hdr->epoch;
 
         uint32_t count = 0;
-        const stat_dir_entry_t *dir = dir_first(&count);
+        const char *dir = dir_first(&count);
         bool found = false;
         if (dir) {
             for (uint32_t i = 0; i < count; i++) {
-                const stat_dir_entry_t *e = &dir[i];
+                stat_dir_entry_t scratch;
+                memcpy(&scratch, dir + (size_t)i * sizeof(scratch),
+                       sizeof(scratch));
+                const stat_dir_entry_t *e = &scratch;
                 if (e->type != STAT_DIR_TYPE_SCALAR &&
                     e->type != STAT_DIR_TYPE_SIMPLE_COUNTER &&
                     e->type != STAT_DIR_TYPE_COMBINED_COUNTER)
@@ -318,12 +336,14 @@ int danos_vpp_stat_list_real(const char **names, uint64_t *values, int max_entri
     if (hdr->in_progress != 0) return -1;
 
     uint32_t count = 0;
-    const stat_dir_entry_t *dir = dir_first(&count);
+    const char *dir = dir_first(&count);
     if (!dir) return -1;
 
     int n = 0;
     for (uint32_t i = 0; i < count && n < max_entries; i++) {
-        const stat_dir_entry_t *e = &dir[i];
+        stat_dir_entry_t scratch;
+        memcpy(&scratch, dir + (size_t)i * sizeof(scratch), sizeof(scratch));
+        const stat_dir_entry_t *e = &scratch;
         const char *nm = entry_name(e);
         if (!nm) continue;
         uint64_t v = 0;

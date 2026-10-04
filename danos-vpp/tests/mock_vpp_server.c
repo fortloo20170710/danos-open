@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/mman.h>
@@ -21,7 +22,10 @@
 static struct {
     int listen_fd;
     pthread_t thread;
-    bool running;
+    /* Written by the stopper thread, polled by the server thread: must be
+     * atomic, otherwise TSAN correctly reports a data race and the loop
+     * exit is undefined. */
+    atomic_bool running;
     uint16_t last_msg_id;
     uint8_t last_body[4096];
     uint32_t last_body_len;
@@ -91,9 +95,19 @@ static void serve_client(int fd)
         size_t len = strlen(table[i].name);
         body[n++] = (uint8_t)(table[i].id >> 8);
         body[n++] = (uint8_t)table[i].id;
-        memset(body + n, 0, 64);
+        /* name is a VPP `string`: u32 length, bytes, then zero padding to
+         * the next 4-byte boundary. Emitting a fixed 64-byte field here (as
+         * this mock used to) modelled the wrong protocol and let a matching
+         * client bug pass unnoticed. */
+        body[n++] = 0;
+        body[n++] = 0;
+        body[n++] = (uint8_t)(len >> 8);
+        body[n++] = (uint8_t)len;
         memcpy(body + n, table[i].name, len);
-        n += 64;
+        n += len;
+        /* pad relative to the field length, as VPP does */
+        size_t pad = (4 - (len & 3)) & 3;
+        for (size_t k = 0; k < pad; k++) body[n++] = 0;
     }
     (void)v;
     send_frame(fd, 0x0010, body, n);
@@ -194,7 +208,10 @@ void mock_vpp_get_last_request(uint16_t *msg_id, uint8_t *body,
 static struct {
     int listen_fd;
     pthread_t thread;
-    bool running;
+    /* Written by the stopper thread, polled by the server thread: must be
+     * atomic, otherwise TSAN correctly reports a data race and the loop
+     * exit is undefined. */
+    atomic_bool running;
     int mem_fd;
     void *mem;
     size_t size;
@@ -256,15 +273,22 @@ static void build_segment(void)
     strcpy((char *)m + NAME_OFF, "/sys/node/ip4-input");
     strcpy((char *)m + NAME_OFF + 32, "/if/0/rx-packets");
 
-    /* offset vector: 2 workers -> [u32 2][u64 CNT0_OFF][u64 CNT1_OFF] */
+    /* offset vector: 2 workers -> [u32 2][u64 CNT0_OFF][u64 CNT1_OFF]
+     *
+     * Written with memcpy rather than through a uint64_t pointer: OFFVEC_OFF
+     * is not guaranteed 8-byte aligned inside the mapping, and a typed store
+     * to a misaligned address is undefined behaviour even where the hardware
+     * tolerates it. UBSan flags it, and it would fault on a strict-alignment
+     * target. */
     uint32_t nw = 2;
     memcpy(m + OFFVEC_OFF, &nw, 4);
-    q = (uint64_t *)(m + OFFVEC_OFF + 4);
-    q[0] = CNT0_OFF;
-    q[1] = CNT1_OFF;
+    uint64_t cnt0_off = CNT0_OFF, cnt1_off = CNT1_OFF;
+    memcpy(m + OFFVEC_OFF + 4, &cnt0_off, 8);
+    memcpy(m + OFFVEC_OFF + 12, &cnt1_off, 8);
     /* worker counter arrays: counter[0] */
-    q = (uint64_t *)(m + CNT0_OFF); *q = 3000;
-    q = (uint64_t *)(m + CNT1_OFF); *q = 2000;
+    uint64_t v0 = 3000, v1 = 2000;
+    memcpy(m + CNT0_OFF, &v0, 8);
+    memcpy(m + CNT1_OFF, &v1, 8);
 }
 
 static void *stat_accept_loop(void *arg)
