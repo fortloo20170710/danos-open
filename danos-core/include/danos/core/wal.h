@@ -8,7 +8,15 @@
  *   - Checkpoint truncates WAL after state is snapshot'd
  *
  * WAL record format:
- *   [magic:4][tx_id:8][op_type:1][obj_type:2][obj_id:4][data_len:4][data:N][crc:4]
+ *   [magic:4][tx_id:8][op_type:1][obj_type:2][obj_id:8][data_len:4][data:N][crc:4]
+ *
+ * obj_id is 64 bits because DPA object ids are 64-bit hashes (routes are
+ * keyed by an FNV-1a hash of the prefix, and QoS binds set bit 63). An
+ * earlier 32-bit field silently discarded every such object, so no route
+ * was ever durable. Because the layout changed, WAL_MAGIC was bumped to a
+ * new value: a v1 file is rejected at the magic check and replay stops
+ * rather than misparsing it. There is nothing to lose - v1 never stored a
+ * route.
  */
 
 #ifndef DANOS_WAL_H__
@@ -46,17 +54,17 @@ typedef enum {
 
 /* WAL record */
 typedef struct {
-    uint32_t magic;        /* 0xDANOS01 */
+    uint32_t magic;        /* WAL_MAGIC */
     uint64_t tx_id;        /* transaction ID */
     uint8_t  op_type;      /* wal_op_type_t */
     uint16_t obj_type;     /* wal_obj_type_t */
-    uint32_t obj_id;       /* object ID */
+    uint64_t obj_id;       /* object ID (64-bit: DPA ids are 64-bit) */
     uint32_t data_len;     /* payload length */
     const uint8_t *data;   /* payload (not owned) */
 } wal_record_t;
 
-#define WAL_MAGIC 0x444E4F53  /* "DNOS" */
-#define WAL_HEADER_SIZE 23    /* 4+8+1+2+4+4 */
+#define WAL_MAGIC 0x444E4F32  /* "DNOS2": v2 layout, 64-bit obj_id */
+#define WAL_HEADER_SIZE 27    /* 4+8+1+2+8+4 */
 
 /* WAL context */
 typedef struct {

@@ -12,17 +12,28 @@
 #include <fcntl.h>
 #include <errno.h>
 
-/* Simple CRC32 */
-static uint32_t crc32_calc(const uint8_t *data, size_t len)
+/* CRC32 (IEEE), in three parts so a record's checksum can be chained
+ * across the header and the payload. */
+static uint32_t crc32_update(uint32_t crc, const uint8_t *data, size_t len)
 {
-    uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < len; i++) {
         crc ^= data[i];
         for (int j = 0; j < 8; j++) {
             crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
         }
     }
+    return crc;
+}
+
+static uint32_t crc32_final(uint32_t crc)
+{
     return ~crc;
+}
+
+/* One-shot CRC over a single buffer. */
+static uint32_t crc32_calc(const uint8_t *data, size_t len)
+{
+    return crc32_final(crc32_update(0xFFFFFFFF, data, len));
 }
 
 int danos_wal_init(wal_ctx_t *ctx, const char *path)
@@ -61,14 +72,14 @@ int danos_wal_append(wal_ctx_t *ctx, const wal_record_t *rec)
     memcpy(header + 4, &rec->tx_id, 8);
     header[12] = rec->op_type;
     memcpy(header + 13, &rec->obj_type, 2);
-    memcpy(header + 15, &rec->obj_id, 4);
-    memcpy(header + 19, &rec->data_len, 4);
+    memcpy(header + 15, &rec->obj_id, 8);
+    memcpy(header + 23, &rec->data_len, 4);
 
-    /* CRC over header + data */
+    /* CRC chained over header then payload, so a bit flip in the header
+     * cannot be cancelled by a matching flip in the payload. */
     uint32_t crc = crc32_calc(header, WAL_HEADER_SIZE);
-    if (rec->data_len > 0 && rec->data) {
-        crc = crc32_calc(rec->data, rec->data_len) ^ crc;
-    }
+    if (rec->data_len > 0 && rec->data)
+        crc = crc32_final(crc32_update(crc, rec->data, rec->data_len));
 
     size_t written = 0;
     written += fwrite(header, 1, WAL_HEADER_SIZE, ctx->fp);
@@ -156,8 +167,8 @@ int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
         memcpy(&rec.tx_id, header + 4, 8);
         rec.op_type = header[12];
         memcpy(&rec.obj_type, header + 13, 2);
-        memcpy(&rec.obj_id, header + 15, 4);
-        memcpy(&rec.data_len, header + 19, 4);
+        memcpy(&rec.obj_id, header + 15, 8);
+        memcpy(&rec.data_len, header + 23, 4);
 
         /* Sanity check data_len */
         if (rec.data_len > 1024 * 1024) break;  /* 1MB max */
@@ -183,9 +194,8 @@ int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
             break;
         }
         calc_crc = crc32_calc(header, WAL_HEADER_SIZE);
-        if (rec.data_len > 0 && data) {
-            calc_crc = crc32_calc(data, rec.data_len) ^ calc_crc;
-        }
+        if (rec.data_len > 0 && data)
+            calc_crc = crc32_final(crc32_update(calc_crc, data, rec.data_len));
 
         if (calc_crc != stored_crc) {
             /* CRC mismatch — stop replay */

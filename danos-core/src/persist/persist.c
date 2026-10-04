@@ -81,7 +81,7 @@ bool danos_persist_is_enabled(void)
 }
 
 int danos_persist_log_op(uint8_t wal_op, uint16_t wal_obj_type,
-                         uint32_t obj_id, const void *data, uint32_t len)
+                         uint64_t obj_id, const void *data, uint32_t len)
 {
     if (!g_enabled) return 0;   /* persistence off: no-op */
 
@@ -108,17 +108,20 @@ typedef struct {
     uint32_t len;
     uint8_t last_op;    /* last wal_op seen for this slot */
     uint16_t wal_type;
-    uint32_t id;
+    uint64_t id;        /* 64-bit: must match the WAL/DPA object id exactly */
     bool used;
 } replay_slot_t;
 
 #define REPLAY_SLOTS 4096
 
-static replay_slot_t *replay_slot(uint16_t wal_type, uint32_t id,
+static replay_slot_t *replay_slot(uint16_t wal_type, uint64_t id,
                                   replay_slot_t *table)
 {
-    /* linear probe hash on (type, id) */
-    uint32_t h = ((uint32_t)wal_type * 2654435761u + id) & (REPLAY_SLOTS - 1);
+    /* Linear probe hash on (type, id). The hash folds the id to 32 bits,
+     * but the comparison below uses the full 64-bit id so two objects that
+     * collide in the hash are still told apart. */
+    uint32_t h = (uint32_t)((wal_type * 2654435761ULL) ^ (id * 1099511628211ULL))
+                 & (REPLAY_SLOTS - 1);
     for (uint32_t i = 0; i < REPLAY_SLOTS; i++) {
         replay_slot_t *s = &table[(h + i) & (REPLAY_SLOTS - 1)];
         if (!s->used) {
@@ -161,11 +164,12 @@ void danos_persist_on_mutation(danos_object_store_t *store,
 {
     if (!g_enabled || g_recovering) return;
     if (store != g_default_store) return;   /* only durable config */
-    if (obj_id > 0xFFFFFFFFULL) return;
     uint16_t wt = dpa_type_to_wal((danos_obj_type_t)dpa_obj_type);
     if (wt == 0) return;
-    (void)danos_persist_log_op(wal_op, wt, (uint32_t)obj_id,
-                               data, (uint32_t)len);
+    /* obj_id is 64-bit throughout: routes are keyed by a 64-bit prefix
+     * hash and QoS binds set bit 63. An earlier guard dropped anything
+     * above 0xFFFFFFFF here, so those objects were never made durable. */
+    (void)danos_persist_log_op(wal_op, wt, obj_id, data, (uint32_t)len);
 }
 
 int danos_persist_recover(void)

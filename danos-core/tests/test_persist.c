@@ -23,8 +23,16 @@
 
 static void fresh_boot(void)
 {
-    /* emulate process start: no store, WAL on disk */
-    g_default_store = NULL;
+    /* Emulate process start: no store, WAL on disk.
+     *
+     * A real crash would simply lose the store. Under a leak-checking
+     * build (ASan/LSan) dropping the pointer orphans it, so free it here:
+     * the allocation being discarded is exactly what this helper models,
+     * and LSan cannot tell the difference. */
+    if (g_default_store) {
+        danos_object_store_destroy(g_default_store);
+        g_default_store = NULL;
+    }
     unlink(WAL_PATH);
 }
 
@@ -83,9 +91,12 @@ int test_enable_and_log(void)
 
 int test_recover_after_restart(void)
 {
-    /* "crash": persistence off, store dropped */
+    /* "crash": persistence off, store dropped (kept for the next boot) */
     danos_persist_disable();
-    g_default_store = NULL;
+    if (g_default_store) {
+        danos_object_store_destroy(g_default_store);
+        g_default_store = NULL;
+    }
 
     /* boot 2: re-enable (same WAL), recover */
     assert(danos_persist_enable(WAL_PATH) == 0);
@@ -155,7 +166,10 @@ int test_reconcile_after_recovery(void)
 int test_torn_record_tolerance(void)
 {
     danos_persist_disable();
-    g_default_store = NULL;
+    if (g_default_store) {
+        danos_object_store_destroy(g_default_store);
+        g_default_store = NULL;
+    }
 
     /* append garbage to the WAL (simulated torn write) */
     FILE *f = fopen(WAL_PATH, "ab");
@@ -181,6 +195,71 @@ int test_torn_record_tolerance(void)
     return 0;
 }
 
+/* Routes must be durable.
+ *
+ * A route's object id is a 64-bit FNV-1a hash of (vrf, prefix, protocol),
+ * so it exceeds 32 bits for essentially every prefix. The WAL header used a
+ * 32-bit obj_id and the mutation hook dropped anything above 0xFFFFFFFF, so
+ * no route was ever written and none survived a restart. This checks a route
+ * round-trips, and that its id genuinely needs more than 32 bits - otherwise
+ * the test would pass even with the old truncation. */
+int test_route_persistence(void)
+{
+    fresh_boot();
+    assert(danos_persist_enable(WAL_PATH) == 0);
+
+    danos_route_t r;
+    memset(&r, 0, sizeof(r));
+    r.vrf_id = 1;
+    r.protocol = DANOS_ROUTE_PROTO_STATIC;
+    r.prefix.addr.af = DANOS_AF_IPV4;
+    r.prefix.prefix_len = 24;
+    r.prefix.addr.addr[0] = 203; r.prefix.addr.addr[1] = 0;
+    r.prefix.addr.addr[2] = 113; r.prefix.addr.addr[3] = 0;
+    r.nhgroup_id = 42;
+    r.metric = 7;
+    r.admin_distance = 7;
+
+    /* Recreate the key derivation to prove the id exceeds 32 bits. */
+    uint64_t h = 14695981039346656037ULL;
+    h ^= (uint64_t)r.vrf_id;             h *= 1099511628211ULL;
+    for (int i = 0; i < 16; i++) { h ^= r.prefix.addr.addr[i]; h *= 1099511628211ULL; }
+    h ^= r.prefix.prefix_len;            h *= 1099511628211ULL;
+    h ^= (uint64_t)r.protocol;           h *= 1099511628211ULL;
+    assert(h > 0xFFFFFFFFULL);   /* the bug this test guards needed this */
+
+    danos_tx_t tx;
+    assert(danos_tx_begin(&tx, "route", NULL) == DANOS_OK);
+    assert(danos_route_create(&tx, &r) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    /* Simulate a restart: drop the store, keep the WAL. */
+    assert(danos_object_count(g_default_store, DANOS_OBJ_ROUTE) == 1);
+    danos_persist_disable();
+    danos_object_store_destroy(g_default_store);
+    g_default_store = NULL;
+
+    assert(danos_persist_enable(WAL_PATH) == 0);
+    int applied = danos_persist_recover();
+    assert(applied >= 1);
+
+    assert(danos_object_count(g_default_store, DANOS_OBJ_ROUTE) == 1);
+    assert(danos_tx_begin(&tx, "verify", NULL) == DANOS_OK);
+    danos_route_t out;
+    assert(danos_route_read(&tx, 1, r.prefix, DANOS_ROUTE_PROTO_STATIC,
+                            &out) == DANOS_OK);
+    assert(out.prefix.prefix_len == 24);
+    assert(out.prefix.addr.addr[0] == 203 && out.prefix.addr.addr[3] == 0);
+    assert(out.nhgroup_id == 42);
+    assert(out.metric == 7);
+    assert(danos_tx_abort(&tx) == DANOS_OK);
+
+    danos_object_store_destroy(g_default_store);
+    g_default_store = NULL;
+    printf("[PASS] test_route_persistence: 64-bit route id survives restart\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -188,6 +267,16 @@ int main(void)
     if (test_recover_after_restart() != 0) failed++;
     if (test_reconcile_after_recovery() != 0) failed++;
     if (test_torn_record_tolerance() != 0) failed++;
+    if (test_route_persistence() != 0) failed++;
+
+    /* Drop the last store and close persistence so the leak checker sees
+     * a clean process exit. */
+    if (g_default_store) {
+        danos_object_store_destroy(g_default_store);
+        g_default_store = NULL;
+    }
+    danos_persist_disable();
+
     printf("=== persist_test: %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

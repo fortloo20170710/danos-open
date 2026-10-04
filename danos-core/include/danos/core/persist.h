@@ -38,7 +38,7 @@ bool danos_persist_is_enabled(void);
 /* Log one mutation (called by the DPA object CRUD layer after the
  * in-memory store is updated). Returns 0 on success. */
 int danos_persist_log_op(uint8_t wal_op, uint16_t wal_obj_type,
-                         uint32_t obj_id, const void *data, uint32_t len);
+                         uint64_t obj_id, const void *data, uint32_t len);
 
 /* Mutation hook called by the object registry. No-op unless persistence
  * is enabled, the store is the DPA default store, and recovery is not
