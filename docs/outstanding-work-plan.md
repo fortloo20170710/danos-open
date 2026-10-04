@@ -185,16 +185,32 @@ advertises `candidate`, `running`, `rollback-on-error` capabilities that are not
 implemented. XML parsing is `strstr`, so two `<interface>` blocks yield only the
 first. `session-id` is hardcoded to 1.
 
-### [ ] 9. FRR nexthop types and protocol mapping
+### [x] 9. FRR nexthop types and protocol mapping
 
-In `zapi_mapper.c`:
-- nexthop types 4 (IPv6), 5 (blackhole) and 6 (have-nh-v6) are unparsed — ZAPI
-  route messages with these are silently dropped
-- LABEL / EVPN (0x40) / SEG6-LOCAL (0x10) / SEG6 (0x20) nexthop flags are not
-  parsed, so those routes are mis-decoded rather than cleanly rejected
-- `map_frr_protocol()` disagrees with FRR's `route_types.h` (connected/ISIS
-  becoming UNSPEC); delete keys on `route.protocol`, so the asymmetry leaks FIB
-  entries
+Done, against upstream FRR 10.3 rather than by inspection:
+
+- nexthop types now follow `enum nexthop_types_t` (lib/nexthop.h): 1 IFINDEX,
+  2 IPV4, 3 IPV4_IFINDEX, 4 IPV6, 5 IPV6_IFINDEX, 6 BLACKHOLE.
+  `zserv_encode_nexthop()` writes the trailing ifindex for *both* IPv4 forms
+  and both IPv6 forms; the decoder read it only for type 3, so every type-2
+  nexthop - the common case for an IPv4 route with a gateway - left four
+  bytes unread and desynchronised every nexthop after it. Types 4-6 were
+  skipped without consuming their payload. An unknown type is now refused
+  rather than decoded as garbage. Address width follows the nexthop type, not
+  the route family.
+- route protocols now follow `lib/route_types.txt`, the canonical registry
+  whose declaration order is the numeric value. The old table mapped 8 to ISIS
+  and 11 to OSPF; 8 is OSPF6 and 11 is PIM. ISIS (9) and OSPF (7) were not
+  mapped at all, so those routes decoded as UNSPEC and were dropped.
+  RIP/RIPNG/PIM now map to UNSPEC explicitly instead of to a nearby protocol.
+- the nexthop flag bits are named from `lib/zclient.h`; SEG6 is 0x10 and
+  SEG6LOCAL 0x20.
+
+Still open:
+- LABEL (0x02), EVPN (0x40), SEG6 (0x10) and SEG6LOCAL (0x20) are not
+  interpreted. They are consumed correctly, so the message stays in sync, but
+  an EVPN or SR route is installed as a plain IP route rather than rejected as
+  unsupported - which is arguably worse than refusing it
 - `zapi_client` registration does not request ZAPI_SERVICE_IPV4 via
   `zebra_register_zclient`
 
@@ -216,7 +232,7 @@ In `zapi_mapper.c`:
 
 ## P3 — engineering hygiene
 
-### [ ] 11. Golden-bytes tests against real upstream definitions
+### [~] 11. Golden-bytes tests against real upstream definitions
 
 The single highest-leverage item for preventing a repeat of §4. Every VPP
 encoder should be tested against bytes captured from a real VPP instance or
@@ -235,9 +251,25 @@ is only visible in `socket_client.c` and `socket_api.c`. Conversely the
 no padding. Both facts are recorded in
 `docs/security-and-correctness-hardening-2026-10-04.md` §4.5.
 
-So the durable fix is byte-level fixtures generated from VPP itself, not
-reading declarations. Until that exists, treat any change to these encodings
-as requiring a live VPP run.
+Done for both protocols. `danos-fib/tests/test_zapi_golden.c` and
+`danos-vpp/tests/test_vpp_golden.c` replace literal payloads with encoders
+transcribed from upstream (`lib/nexthop.h`, `zebra/zapi_msg.c`,
+`lib/zclient.h`, `lib/route_types.txt`, `api_types.h`, `interface.api`,
+`socket_client.c`, `socket_api.c`), so the production decoders have to agree
+with an implementation written from the specification. Citing the upstream
+source in the file keeps the transcription auditable.
+
+Both were verified against the bugs they exist to prevent: restoring the
+type-3-only ifindex read fails the ZAPI per-type test, renumbering a nexthop
+type fails the constant check, writing `admin_up_down` as a u32 fails the VPP
+set_flags test, and adding field-relative padding to the string codec fails the
+string test.
+
+Still open: the fixtures are transcribed by hand from upstream source, not
+generated mechanically from it. A generator that reads `route_types.txt` and
+the `.api` files would remove the transcription step, which is the remaining
+human-error surface. And none of this substitutes for item 3 - a live run
+against a real VPP and FRR.
 
 ### [ ] 12. Test-suite honesty
 

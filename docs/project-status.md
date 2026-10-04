@@ -1,5 +1,49 @@
 # DANOS Open Project Status
 
+## 2026-10-04 third pass: authentication, FRR decode, golden bytes
+
+CTest is now 38 tests, green under Debug, ASan+UBSan+LSan and TSan.
+
+**Authentication (`0d3f9e7`).** The previous pass added authorization but left
+nothing to authorize: with no credential source the role was the configured
+default, so RBAC could not deny anything. Two dependency-free sources now exist
+- a bearer token file (RFC 6750, constant-time compare, refused outright if
+group- or other-readable) and `SO_PEERCRED` on a unix socket (uid 0 → admin).
+gNMI authenticates per RPC and answers `grpc-status 16`; NETCONF captures the
+credential from `<hello>` and authenticates per session. mgrd refuses to start
+if a configured token file is unusable, and `DANOS_AUTHZ_REQUIRE_AUTH` makes a
+missing credential source fatal. **There is still no transport security**, so a
+bearer token crosses the wire in cleartext; mTLS remains open.
+
+Also fixed a real race this exposed: `rbac.c`'s `g_initialized` was a plain bool
+written by init and read by every request thread, which 32 concurrent
+connections turned into a TSAN data race.
+
+**Transaction atomicity (`a875ea0`) — mechanism only, not done.**
+`danos_object_apply_batch()` applies a set of mutations under a single store
+write-lock acquisition, so a reader or the reconciler sees none or all of a
+change set rather than half a configuration. Nothing stages yet and commit does
+not call it, so runtime behaviour is unchanged. The remaining work - routing
+the DPA CRUD entry points through it, a read-your-writes overlay, and
+per-object version counters for conflict detection - is called out explicitly in
+the plan document.
+
+**FRR decode (`41e866d`).** Two tables in `zapi_mapper.c`/`zapi_parse.c` were
+wrong, now derived from upstream FRR 10.3. Nexthop types follow
+`enum nexthop_types_t`; `zserv_encode_nexthop()` writes the trailing ifindex for
+both IPv4 forms and both IPv6 forms, and the decoder read it only for type 3, so
+every type-2 nexthop left four bytes unread and desynchronised the rest of the
+message. Types 4-6 were skipped without consuming their payload. Route
+protocols follow `lib/route_types.txt`, where declaration order is the value:
+the old table mapped 8→ISIS and 11→OSPF, but 8 is OSPF6 and 11 is PIM, and
+ISIS (9) and OSPF (7) were not mapped at all.
+
+**Golden bytes (`2f542b2`, `3cd10d6`).** `test_zapi_golden.c` and
+`test_vpp_golden.c` replace literal payloads with encoders transcribed from
+upstream, so the decoders must agree with an implementation written from the
+specification rather than from the decoder. This closes item 11's main gap;
+what remains is generating those encoders mechanically rather than by hand.
+
 ## 2026-10-04 second pass: transport, reconciler, authorization
 
 Follow-on work against `docs/outstanding-work-plan.md`. CTest is now 36 tests,
