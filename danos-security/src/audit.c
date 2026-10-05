@@ -10,12 +10,14 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <pthread.h>
 
 #define DEFAULT_AUDIT_PATH "/var/log/danos/audit.log"
 #define MAX_ENTRIES 4096
 
 static FILE *g_log_fp = NULL;
 static char g_path[256] = DEFAULT_AUDIT_PATH;
+static pthread_mutex_t g_audit_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* In-memory ring buffer for query */
 static danos_audit_entry_t g_ring[MAX_ENTRIES];
@@ -38,8 +40,9 @@ static const char *event_name(danos_audit_event_t e)
     }
 }
 
-int danos_audit_init(const char *path)
+static int audit_init_locked(const char *path)
 {
+    if (g_log_fp) fclose(g_log_fp);
     if (path) {
         snprintf(g_path, sizeof(g_path), "%s", path);
     }
@@ -53,20 +56,31 @@ int danos_audit_init(const char *path)
     return 0;
 }
 
+int danos_audit_init(const char *path)
+{
+    pthread_mutex_lock(&g_audit_lock);
+    int rc = audit_init_locked(path);
+    pthread_mutex_unlock(&g_audit_lock);
+    return rc;
+}
+
 void danos_audit_close(void)
 {
+    pthread_mutex_lock(&g_audit_lock);
     if (g_log_fp) {
         fclose(g_log_fp);
         g_log_fp = NULL;
     }
+    pthread_mutex_unlock(&g_audit_lock);
 }
 
 int danos_audit_log(const danos_audit_entry_t *entry)
 {
     if (!entry) return -1;
+    pthread_mutex_lock(&g_audit_lock);
     if (!g_log_fp && g_ring_count == 0) {
         /* Lazy init if not initialized */
-        danos_audit_init(NULL);
+        audit_init_locked(NULL);
     }
 
     /* Write to in-memory ring buffer */
@@ -88,6 +102,7 @@ int danos_audit_log(const danos_audit_entry_t *entry)
         fflush(g_log_fp);
     }
 
+    pthread_mutex_unlock(&g_audit_lock);
     return 0;
 }
 
@@ -95,6 +110,7 @@ int danos_audit_query(uint64_t tx_id,
                       danos_audit_entry_t *entries, int max_entries)
 {
     if (!entries || max_entries <= 0) return 0;
+    pthread_mutex_lock(&g_audit_lock);
 
     int count = 0;
     int start = (g_ring_count < MAX_ENTRIES) ? 0 : g_ring_head;
@@ -105,5 +121,6 @@ int danos_audit_query(uint64_t tx_id,
             entries[count++] = g_ring[idx];
         }
     }
+    pthread_mutex_unlock(&g_audit_lock);
     return count;
 }

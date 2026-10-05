@@ -7,6 +7,8 @@ set(SECURITY_SOURCES
 )
 
 add_library(danos-security ${SECURITY_SOURCES})
+find_package(Threads REQUIRED)
+target_link_libraries(danos-security PUBLIC Threads::Threads)
 target_include_directories(danos-security PUBLIC include)
 
 # Tests

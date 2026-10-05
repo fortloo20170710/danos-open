@@ -15,6 +15,7 @@
 #include <danos/dpa.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +24,7 @@ extern "C" {
 typedef struct {
     danos_reconcile_config_t config;
     danos_state_store_t     *state;
-    bool                     running;
+    _Atomic bool             running;
     pthread_t                thread;
     danos_reconcile_stats_t  stats;
     pthread_mutex_t          stats_lock;

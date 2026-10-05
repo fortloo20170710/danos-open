@@ -17,11 +17,13 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <stdatomic.h>
 
 static struct {
     int listen_fd;
     uint16_t port;
-    bool running;
+    _Atomic bool running;
+    pthread_t thread;
 } g_prom_srv;
 
 static void *prom_conn(void *arg)
@@ -99,13 +101,11 @@ int danos_prom_start_server(uint16_t port)
     g_prom_srv.port = port;
     g_prom_srv.running = true;
 
-    pthread_t tid;
-    if (pthread_create(&tid, NULL, prom_accept_loop, NULL) != 0) {
+    if (pthread_create(&g_prom_srv.thread, NULL, prom_accept_loop, NULL) != 0) {
         close(fd);
         g_prom_srv.running = false;
         return -1;
     }
-    pthread_detach(tid);
     return 0;
 }
 
@@ -115,5 +115,6 @@ void danos_prom_stop_server(void)
     g_prom_srv.running = false;
     shutdown(g_prom_srv.listen_fd, SHUT_RDWR);
     close(g_prom_srv.listen_fd);
+    pthread_join(g_prom_srv.thread, NULL);
     g_prom_srv.listen_fd = -1;
 }
