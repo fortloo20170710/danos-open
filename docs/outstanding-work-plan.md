@@ -120,19 +120,25 @@ gate. The loopback smoke is not packet-forwarding, DPDK, or throughput evidence.
 `docs/project-status.md` marks the physical I211 forwarding/ECMP result as FAIL
 already, for independent reasons (single carrier, 1000/1000 loss).
 
-### [ ] 4. Capability registry must be wired, or deleted
+### [x] 4. Capability registry must be wired, or deleted
 
 `capability_registry.c` is 38 lines with no header, no callers, and an
 unbounded `for (;;)` in its registration path. `danos_vpp_capability_register()`
 is defined but never called, so the registry is empty at runtime.
 
-The capability *table* was corrected in this pass to state only what the VPP
-backend can program, so wiring it now would be truthful. Completing this needs:
-- a header and a real registry with bounded slot allocation
-- call `danos_vpp_capability_register()` from `danos-vpp` install
-- implement backend selection over capability + load (ADR-0007)
-- keep `type_skipped()` and the capability table in agreement — ideally derive
-  one from the other
+Done: added `capability_registry.h` and `vpp_capability.h` so the entry points
+are declared at all, and the VPP adapter now registers its capability table at
+install time. The scan is bounded by `DANOS_MAX_BACKENDS` instead of relying on
+`danos_backend_get_info()` eventually failing. A regression test asserts
+interface/VRF/route are advertised and EVPN/MPLS/ACL/tunnel/multicast are not,
+so the registry cannot be wired to a lying table - verified to fail both when
+the register call is removed and when the table claims EVPN.
+
+Still open: backend *selection* (picking among several registered backends by
+capability and load, per ADR-0007) is not implemented - the registry answers
+questions, nothing consults it to choose. And `type_skipped()` is still a
+separate hand-maintained list rather than being derived from the table; the
+regression test is what keeps the two in agreement.
 
 ### [~] 5. Reconciler must be driven by the daemon
 
@@ -298,14 +304,26 @@ the `.api` files would remove the transcription step, which is the remaining
 human-error surface. And none of this substitutes for item 3 - a live run
 against a real VPP and FRR.
 
-### [ ] 12. Test-suite honesty
+### [~] 12. Test-suite honesty
 
-- `conformance_cases.c` treats `NOT_SUPPORTED` as a pass, so the v0.1 "11/11" is
-  vacuous for unimplemented features
-- `run_v016_release_gate.sh` records an environment-restricted lane as
-  `ENVIRONMENT-OPEN` without incrementing `failures`, so a release can proceed
-  with a hardware lane never run
+Done:
+- the two vacuous conformance cases now assert. `conf_iface_crud` runs the full
+  lifecycle, reads the object back, checks its contents, checks a duplicate
+  create is refused with `EXISTS`, and checks the delete takes effect -
+  verified to fail when the read-back expectation is disturbed.
+  `conf_capability_query` asserts a definite, stable answer rather than
+  discarding the status.
+- `run_v016_release_gate.sh` no longer lets an environment-restricted lane pass
+  silently. An open lane blocks the release by default; the policy lives in
+  `release_gate_policy.sh` so it is unit-tested without running every lane, and
+  `DANOS_RELEASE_ALLOW_OPEN_LANES=1` waives it deliberately with the waiver
+  recorded in the result file. Only the exact value 1 waives.
+
+Still open:
 - no code coverage measurement anywhere in CI
+- other conformance cases are still thin: `conf_vrf_crud`, `conf_route_crud`,
+  `conf_nh_crud`, `conf_nhgroup_crud`, `conf_acl_crud` and `conf_qos_crud`
+  exercise the calls but assert almost nothing about the results
 
 ### [ ] 13. Build and repository hygiene
 

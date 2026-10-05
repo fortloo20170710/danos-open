@@ -1,5 +1,40 @@
 # DANOS Open Project Status
 
+## 2026-10-05 pass: capability registry, conformance, release gate
+
+CTest remains 38 tests, green under Debug, ASan+UBSan+LSan and TSan. This pass
+closes two of the review's credibility findings.
+
+**Capability registry (`e08c77e`).** The registry was dead code end to end:
+`capability_registry.c` had no header, so its entry points were declared nowhere;
+nothing called them; the VPP capability table's register function had no
+declaration and no callers; and the scan relied on `danos_backend_get_info()`
+eventually failing. The VPP adapter now registers its table at install time and
+the scan is bounded. Because the table was corrected earlier to advertise only
+what the adapter can program, wiring it is truthful — and a regression test
+asserts interface/VRF/route are advertised while EVPN/MPLS/ACL/tunnel/multicast
+are not, so it cannot be wired to a lying table.
+
+**Conformance (`e08c77e`).** Two cases discarded their result and returned 0
+unconditionally, which is how a "11/11" could be vacuous for features that did
+not work at all. `conf_iface_crud` now runs the full lifecycle, reads back,
+checks contents, checks a duplicate create is refused, and checks the delete
+takes effect. `conf_capability_query` asserts a definite, stable answer.
+
+**Release gate (`617433a`).** An environment-restricted lane was recorded as
+`ENVIRONMENT-OPEN` without incrementing `failures`, so a release could be
+declared with the DPDK hardware lane never run — the recorded evidence and the
+gate's verdict could disagree unnoticed. An open lane now blocks by default;
+the policy lives in its own script so it is unit-tested without executing every
+lane, and `DANOS_RELEASE_ALLOW_OPEN_LANES=1` waives it deliberately with the
+waiver written into the result file.
+
+**Not done: transaction staging (item 2).** The remaining P0 is larger than it
+looks — 51 DPA CRUD entry points plus 61 commit call sites, several of which
+call `commit` without `prepare`/`validate` and rely on writes bypassing the
+transaction entirely. A partial staging layer would silently lose writes at
+every one of those sites, so it needs its own pass rather than an increment.
+
 ## 2026-10-04 fourth pass: gNMI POLL, unsupported nexthops
 
 CTest remains 38 tests, green under Debug, ASan+UBSan+LSan and TSan.
