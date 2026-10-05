@@ -97,9 +97,9 @@ write path and should land as its own series.
 
 #### Findings from an attempted implementation
 
-A first attempt was started and abandoned at the point where 12 of 38 tests
-failed. The tree was reverted; nothing from it is in the tree. These are the
-non-obvious things it established, so the next attempt does not repeat them:
+Two attempts were made and both were reverted after the test count went red
+(12/38 and 13/38). Nothing from either is in the tree. They established the
+following, so a third attempt starts from here rather than from scratch:
 
 - **The 51 CRUD entry points are uniform.** Every one is
   `(void)tx;` followed by a single
@@ -129,6 +129,29 @@ non-obvious things it established, so the next attempt does not repeat them:
   set unpublished and silently drop the caller's changes. Either run the
   skipped phases inside commit, or fix all 61 call sites; do not leave it
   strict and assume the callers were updated.
+- **The read overlay must be consulted *before* the store.** The first attempt
+  checked the store first and fell back to the overlay only when the object was
+  absent - which means a staged *update* to an object that already exists reads
+  back the stale stored value. That is the same invisibility staging exists to
+  remove, so it has to be: "if this transaction staged something for this
+  object, that is the truth for it".
+- **Staging changes abort semantics, and that is what actually breaks the
+  suite.** Today a delete applied the moment it was called, so a later abort
+  did not undo it and cross-test state looked as callers expected. With
+  staging, an aborted delete leaves the object in the store. Tests that create
+  in one transaction and assert in another - or that abort and then expect the
+  change to have happened - now see different state, which is the `EXISTS`
+  failure the second attempt ended on.
+- **So the real cost is not the 51 rewrites, it is the implicit contract.** The
+  suite passes today partly because writes are immediate; staging makes that
+  contract explicit and breaks every caller that leaned on it. Those callers
+  have to be found and given the lifecycle they were implicitly assuming, and
+  that inventory is the actual work - not the mechanical rewrite.
+
+A third attempt should start by writing a test that pins the intended
+transaction semantics (including what an abort must guarantee), fix the callers
+to it, and only then turn staging on. Turning it on first is what both attempts
+did, and it is why both had to be reverted.
 
 Note the recorder fix from the earlier pass: transaction records are now
 correctly retired, so this work no longer sits on top of a leak.

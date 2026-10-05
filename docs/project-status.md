@@ -29,15 +29,26 @@ the policy lives in its own script so it is unit-tested without executing every
 lane, and `DANOS_RELEASE_ALLOW_OPEN_LANES=1` waives it deliberately with the
 waiver written into the result file.
 
-**Not done: transaction staging (item 2).** An implementation was attempted and
-abandoned with 12 of 38 tests failing; the tree was reverted and nothing from it
-remains. The attempt was useful: it established that the 51 CRUD entry points
-are uniform enough to rewrite mechanically, that staging needs a read overlay
-and not just a write overlay (a `create` then `read` in one transaction fails
-otherwise), that the store signals existence through `DANOS_ERR_INVALID_ARG`
-with a *valid* `out_size`, and that the three operations must not be collapsed
-into a boolean or they lose their EXISTS / NOT_FOUND distinction. Those findings
-are written up in the plan document so the next attempt starts from them.
+**Not done: transaction staging (item 2).** Two attempts were made, reaching 12
+and 13 failures out of 38; both were reverted and nothing from them remains.
+
+The second attempt corrected the first attempt's mistakes — the read overlay is
+now consulted *before* the store rather than only when the object is absent,
+the three operations are modelled as an enum rather than a boolean, and
+`commit` tolerates being called from `OPEN`. It then failed for a different and
+more interesting reason: **staging changes what an abort guarantees.** Today a
+delete applies the moment it is called, so a later abort does not undo it; with
+staging, an aborted delete leaves the object in the store. Tests that lean on
+writes being immediate — creating in one transaction and asserting in another,
+or aborting and expecting the change to have landed — see different state. That
+is the `EXISTS` the attempt ended on.
+
+So the remaining cost is not the mechanical rewrite of 51 entry points, which is
+uniform and easy; it is inventorying the callers that depend on the current
+implicit contract. A third attempt should pin the intended semantics with tests
+first, fix the callers to them, and only then enable staging. Both attempts
+enabled staging first, which is why both had to be reverted. All of this is
+written up in the plan document.
 
 **Build hygiene (`this pass`).** `build-asan/` — 57 compiled artefacts, 34 MB —
 was tracked because `.gitignore` covered `build/`, `build-tsan/` and
