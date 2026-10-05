@@ -5,6 +5,7 @@
 #include "../src/zapi/zapi.h"
 #include <danos/dpa.h>
 #include <stdio.h>
+#include <sys/socket.h>
 #include <string.h>
 #include <assert.h>
 
@@ -457,6 +458,149 @@ int test_map_route_nh_overflow(void)
     return 0;
 }
 
+/* A nexthop carrying EVPN or SR information must be refused, not installed
+ * as a plain IP route.
+ *
+ * The flags are consumed for length accounting but were never interpreted, so
+ * an EVPN or SR-TE route became an ordinary IPv4 route - silently wrong
+ * rather than absent, and inconsistent with the VPP capability table, which
+ * advertises no EVPN, SR or MPLS support. Also covers a v6 nexthop inside an
+ * IPv4 route (the gateway must be copied at the nexthop's width) and a
+ * blackhole nexthop (the route becomes a blackhole, not a route pointing at
+ * an empty nexthop).
+ */
+/* ZEBRA_ROUTE_STATIC is 4 (lib/route_types.txt), which is what the
+ * read-back below expects. */
+static void put_route_header(uint8_t *b, uint32_t *n, uint8_t family,
+                             uint8_t plen, const uint8_t *pfx)
+{
+    b[(*n)++] = 4;                    /* type = ZEBRA_ROUTE_STATIC */
+    b[(*n)++] = 0; b[(*n)++] = 0;     /* instance */
+    b[(*n)++] = 0; b[(*n)++] = 0; b[(*n)++] = 0; b[(*n)++] = 0;  /* flags */
+    b[(*n)++] = 0; b[(*n)++] = 0; b[(*n)++] = 0; b[(*n)++] = 1;  /* NEXTHOP */
+    b[(*n)++] = 1;                    /* safi */
+    b[(*n)++] = family;
+    b[(*n)++] = plen;
+    for (int i = 0; i < (plen + 7) / 8; i++) b[(*n)++] = pfx[i];
+}
+
+int test_map_route_rejects_unsupported_nexthop(void)
+{
+    uint8_t prefix[4] = { 10, 77, 0, 0 };
+
+    /* --- EVPN nexthop must be refused ---------------------------------- */
+    {
+        uint8_t buf[256];
+        uint32_t n = 0;
+        put_route_header(buf, &n, AF_INET, 24, prefix);
+        buf[n++] = 0; buf[n++] = 1;              /* one nexthop */
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 0;  /* vrf */
+        buf[n++] = ZAPI_NH_IPV4_IFINDEX;
+        buf[n++] = ZAPI_NH_FLAG_EVPN;            /* 0x40 */
+        buf[n++] = 192; buf[n++] = 0; buf[n++] = 2; buf[n++] = 9;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 4;
+
+        zapi_message_t msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.header.version = ZAPI_VERSION;
+        msg.header.command = ZEBRA_FRR_REDISTRIBUTE_ROUTE_ADD;
+        msg.payload = buf;
+        msg.payload_size = n;
+        danos_tx_t tx = {0};
+        assert(danos_tx_begin(&tx, "evpn", NULL) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_ERR_NOT_SUPPORTED);
+        assert(danos_tx_abort(&tx) == DANOS_OK);
+    }
+
+    /* --- SRv6 nexthop must be refused ---------------------------------- */
+    {
+        uint8_t buf[256];
+        uint32_t n = 0;
+        put_route_header(buf, &n, AF_INET, 24, prefix);
+        buf[n++] = 0; buf[n++] = 1;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 0;
+        buf[n++] = ZAPI_NH_IPV4_IFINDEX;
+        buf[n++] = ZAPI_NH_FLAG_SEG6;            /* 0x10 */
+        buf[n++] = 192; buf[n++] = 0; buf[n++] = 2; buf[n++] = 9;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 4;
+
+        zapi_message_t msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.header.version = ZAPI_VERSION;
+        msg.header.command = ZEBRA_FRR_REDISTRIBUTE_ROUTE_ADD;
+        msg.payload = buf;
+        msg.payload_size = n;
+        danos_tx_t tx = {0};
+        assert(danos_tx_begin(&tx, "sr", NULL) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_ERR_NOT_SUPPORTED);
+        assert(danos_tx_abort(&tx) == DANOS_OK);
+    }
+
+    /* --- MPLS-labelled nexthop must be refused -------------------------- */
+    {
+        uint8_t buf[256];
+        uint32_t n = 0;
+        put_route_header(buf, &n, AF_INET, 24, prefix);
+        buf[n++] = 0; buf[n++] = 1;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 0;
+        buf[n++] = ZAPI_NH_IPV4_IFINDEX;
+        buf[n++] = ZAPI_NH_FLAG_LABEL;            /* 0x02 */
+        buf[n++] = 192; buf[n++] = 0; buf[n++] = 2; buf[n++] = 9;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 4;
+
+        zapi_message_t msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.header.version = ZAPI_VERSION;
+        msg.header.command = ZEBRA_FRR_REDISTRIBUTE_ROUTE_ADD;
+        msg.payload = buf;
+        msg.payload_size = n;
+        danos_tx_t tx = {0};
+        assert(danos_tx_begin(&tx, "mpls", NULL) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_ERR_NOT_SUPPORTED);
+        assert(danos_tx_abort(&tx) == DANOS_OK);
+    }
+
+    /* --- a blackhole nexthop makes the route a blackhole ---------------- */
+    {
+        uint8_t buf[256];
+        uint32_t n = 0;
+        uint8_t p2[4] = { 10, 78, 0, 0 };
+        put_route_header(buf, &n, AF_INET, 24, p2);
+        buf[n++] = 0; buf[n++] = 1;
+        buf[n++] = 0; buf[n++] = 0; buf[n++] = 0; buf[n++] = 0;
+        buf[n++] = ZAPI_NH_BLACKHOLE;
+        buf[n++] = 0;                             /* flags: none */
+
+        zapi_message_t msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.header.version = ZAPI_VERSION;
+        msg.header.command = ZEBRA_FRR_REDISTRIBUTE_ROUTE_ADD;
+        msg.payload = buf;
+        msg.payload_size = n;
+        danos_tx_t tx = {0};
+        assert(danos_tx_begin(&tx, "bh", NULL) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+        /* The route must exist and be flagged blackhole, with no nexthop
+         * group invented for it. */
+        uint64_t before = 0;
+        (void)danos_tx_begin(&tx, "chk", NULL);
+        danos_route_t out;
+        assert(danos_route_read(&tx, 0, (danos_ip_prefix_t){
+            .addr = { .af = DANOS_AF_IPV4, .addr = { 10, 78, 0, 0 } },
+            .prefix_len = 24 }, DANOS_ROUTE_PROTO_STATIC, &out) == DANOS_OK);
+        assert(danos_tx_abort(&tx) == DANOS_OK);
+        assert(out.flags & DANOS_ROUTE_FLAG_BLACKHOLE);
+        assert(out.nhgroup_id == 0);
+        (void)before;
+    }
+
+    printf("[PASS] test_map_route_rejects_unsupported_nexthop: EVPN/SR/MPLS "
+           "refused, blackhole nexthop honoured\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -473,6 +617,7 @@ int main(void)
     if (test_map_labels_add_delete() != 0) failed++;
     if (test_map_route_ecmp() != 0) failed++;
     if (test_map_route_nh_overflow() != 0) failed++;
+    if (test_map_route_rejects_unsupported_nexthop() != 0) failed++;
     printf("=== fib_test (zapi_mapper): %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

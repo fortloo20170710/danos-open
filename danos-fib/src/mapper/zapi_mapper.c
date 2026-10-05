@@ -193,6 +193,28 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
          * correct for any caller that fills the struct directly. */
         if (in.nexthop_count > DANOS_NHGROUP_MAX_NH)
             return DANOS_ERR_INVALID_ARG;
+        /* A nexthop carrying MPLS labels, EVPN or SR information cannot be
+         * represented as a plain IP nexthop. These were previously ignored,
+         * so an EVPN or SR-TE route was installed as an ordinary IPv4 route -
+         * silently wrong rather than refused, and inconsistent with the
+         * capability table, which advertises no EVPN, SR or MPLS support.
+         * Reject instead: the route stays absent rather than forwarding
+         * somewhere it should not. */
+        for (uint16_t i = 0; i < in.nexthop_count; i++) {
+            uint8_t f = in.nexthops[i].flags;
+            if (f & (ZAPI_NH_FLAG_LABEL | ZAPI_NH_FLAG_EVPN |
+                     ZAPI_NH_FLAG_SEG6 | ZAPI_NH_FLAG_SEG6LOCAL))
+                return DANOS_ERR_NOT_SUPPORTED;
+        }
+
+        /* A single blackhole nexthop means the route itself is a blackhole,
+         * not a route pointing at an empty nexthop. */
+        if (in.nexthop_count == 1 &&
+            in.nexthops[0].type == ZAPI_NH_BLACKHOLE) {
+            route.flags |= DANOS_ROUTE_FLAG_BLACKHOLE;
+            return danos_route_create(tx, &route);
+        }
+
         danos_nhgroup_t grp;
         memset(&grp, 0, sizeof(grp));
         grp.id = g_zapi_next_id++;
@@ -203,9 +225,17 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
             memset(&nh, 0, sizeof(nh));
             nh.id = g_zapi_next_id++;
             nh.ifindex = src->ifindex;
-            nh.gateway.af = route.prefix.addr.af;
-            if (src->has_gateway)
-                memcpy(nh.gateway.addr, src->gateway, in.family == 2 ? 4 : 16);
+            if (src->has_gateway) {
+                /* Width follows the nexthop type, not the route family: an
+                 * IPv4 route may carry a v6 nexthop, and copying only 4 of
+                 * its 16 bytes produced a wrong gateway. */
+                bool nh_v6 = (src->type == ZAPI_NH_IPV6 ||
+                              src->type == ZAPI_NH_IPV6_IFINDEX);
+                nh.gateway.af = nh_v6 ? DANOS_AF_IPV6 : DANOS_AF_IPV4;
+                memcpy(nh.gateway.addr, src->gateway, nh_v6 ? 16 : 4);
+            } else {
+                nh.gateway.af = route.prefix.addr.af;
+            }
             nh.weight = 1;
             nh.flags = in.nexthop_count > 1 ? DANOS_NH_FLAG_ECMP : 0;
             grp.nh_ids[i] = nh.id;
