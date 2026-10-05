@@ -687,6 +687,46 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
 
 /* STREAM mode: push notifications when the store changes. Poll every
  * 100 ms; detect client GOAWAY/RST/close via recv with MSG_PEEK. */
+/* Order-sensitive hash over every object's bytes. FNV-1a over the payload,
+ * folded with the type and id so a change of either registers. Streams the
+ * store rather than copying into a fixed array, so correctness does not
+ * depend on a capacity that a large config can exceed. */
+static void hash_entry(danos_object_entry_t *e, void *user)
+{
+    uint64_t *h = user;
+    uint64_t v = *h;
+    uint8_t hdr[16];
+    uint32_t t = (uint32_t)e->type, id32 = (uint32_t)e->id;
+    uint64_t id = e->id;
+    memcpy(hdr, &t, 4);
+    memcpy(hdr + 4, &id, 8);
+    memcpy(hdr + 12, &id32, 4);
+    for (size_t i = 0; i < sizeof(hdr); i++) {
+        v ^= hdr[i];
+        v *= 1099511628211ULL;
+    }
+    for (size_t i = 0; i < e->data_size; i++) {
+        v ^= ((const uint8_t *)e->data)[i];
+        v *= 1099511628211ULL;
+    }
+    *h = v;
+}
+
+/* Exposed for tests: the STREAM change detector's input hash. */
+uint64_t stream_state_hash_for_test(void);
+
+static uint64_t stream_state_hash(void)
+{
+    uint64_t h = 14695981039346656037ULL;
+    if (g_default_store) danos_object_iterate(g_default_store, hash_entry, &h);
+    return h;
+}
+
+uint64_t stream_state_hash_for_test(void)
+{
+    return stream_state_hash();
+}
+
 static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
                                  const gnmi_subscribe_list_t *sl)
 {
@@ -700,22 +740,19 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
                          MSG_PEEK | MSG_DONTWAIT);
         if (n == 0) return 0;   /* client closed */
 
-        /* content hash: count+sizes per type (cheap change detector) */
-        uint64_t hash = 0;
-        {
-            danos_iface_t ifaces[64];
-            danos_vrf_t vrfs[16];
-            danos_route_t routes[32];
-            uint32_t ni = collect_objects(NULL, DANOS_OBJ_IFACE, ifaces,
-                                          sizeof(ifaces[0]), 64);
-            uint32_t nv = collect_objects(NULL, DANOS_OBJ_VRF, vrfs,
-                                          sizeof(vrfs[0]), 16);
-            uint32_t nr = collect_objects(NULL, DANOS_OBJ_ROUTE, routes,
-                                          sizeof(routes[0]), 32);
-            hash = ((uint64_t)ni << 40) ^ ((uint64_t)nv << 20) ^ nr;
-            for (uint32_t i = 0; i < ni; i++)
-                hash ^= (uint64_t)ifaces[i].mtu * 31 + ifaces[i].ifindex;
-        }
+        /* Change detector.
+         *
+         * The previous version copied each type into a fixed array
+         * (ifaces[64], vrfs[16], routes[32]) and hashed only interface mtu
+         * and ifindex. Two problems: a store holding more interfaces than the
+         * array made the scan silently miss objects, and any change to an
+         * interface name, admin state or address - or to a VRF name or a
+         * route prefix, metric or next hop - did not alter the hash at all,
+         * so a subscriber was never told.
+         *
+         * Hash the raw object bytes instead, streaming through the store so
+         * there is no capacity limit. */
+        uint64_t hash = stream_state_hash();
 
         /* wait for a store mutation (or 200 ms tick) before re-hashing */
         pthread_mutex_lock(&g_store_ev_lock);
@@ -753,6 +790,52 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
     }
 }
 
+/*
+ * POLL subscription state, keyed by stream.
+ *
+ * gNMI POLL is request/response: the client opens a stream with a Subscribe,
+ * receives the initial set plus a sync_response, then sends a Poll on the same
+ * stream for each later sample. This used to ignore that - every message on
+ * the stream was handled as a fresh Subscribe, so each Poll re-sent the whole
+ * initial set instead of a delta, and the notification and sync_response were
+ * emitted in one message even though SubscribeResponse is a oneof.
+ */
+#define POLL_MAX_STREAMS 32
+
+typedef struct {
+    bool          used;
+    uint32_t      stream;
+    gnmi_path_t   paths[GNMI_MAX_ELEMS];
+    uint32_t      path_count;
+} poll_stream_t;
+
+static poll_stream_t g_poll_streams[POLL_MAX_STREAMS];
+static pthread_mutex_t g_poll_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Caller holds g_poll_lock. */
+static poll_stream_t *poll_stream_get(uint32_t stream, bool create)
+{
+    poll_stream_t *spare = NULL;
+    for (int i = 0; i < POLL_MAX_STREAMS; i++) {
+        if (g_poll_streams[i].used && g_poll_streams[i].stream == stream)
+            return &g_poll_streams[i];
+        if (!g_poll_streams[i].used && !spare) spare = &g_poll_streams[i];
+    }
+    if (!create || !spare) return NULL;
+    memset(spare, 0, sizeof(*spare));
+    spare->used = true;
+    spare->stream = stream;
+    return spare;
+}
+
+static void poll_stream_drop(uint32_t stream)
+{
+    pthread_mutex_lock(&g_poll_lock);
+    poll_stream_t *ps = poll_stream_get(stream, false);
+    if (ps) memset(ps, 0, sizeof(*ps));
+    pthread_mutex_unlock(&g_poll_lock);
+}
+
 int gnmi_handle_subscribe(void *opaque, uint32_t stream,
                           const uint8_t *req, size_t req_len)
 {
@@ -763,6 +846,7 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
     const gnmi_subscribe_list_t *sl = &sr.subscribe;
 
     if (sl->mode == GNMI_SUB_MODE_ONCE) {
+        poll_stream_drop(stream);
         gnmi_path_t paths[GNMI_MAX_ELEMS];
         uint32_t pc = 0;
         for (uint32_t i = 0; i < sl->sub_count && pc < GNMI_MAX_ELEMS; i++)
@@ -792,14 +876,48 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
     }
 
     if (sl->mode == GNMI_SUB_MODE_POLL) {
-        /* POLL: one notification per Poll message; v0.4 sends the
-         * initial set and sync, then waits for poll requests on the
-         * same stream (simplified: treat as ONCE + keep open until
-         * client closes). */
         gnmi_path_t paths[GNMI_MAX_ELEMS];
         uint32_t pc = 0;
         for (uint32_t i = 0; i < sl->sub_count && pc < GNMI_MAX_ELEMS; i++)
             paths[pc++] = sl->subs[i].path;
+
+        /* A Poll on an established stream answers with a notification only;
+         * sync_response is sent once, after the initial set. */
+        if (sr.is_poll) {
+            pthread_mutex_lock(&g_poll_lock);
+            poll_stream_t *ps = poll_stream_get(stream, false);
+            bool known = (ps != NULL);
+            if (known) {
+                memcpy(paths, ps->paths, sizeof(gnmi_path_t) * ps->path_count);
+                pc = ps->path_count;
+            }
+            pthread_mutex_unlock(&g_poll_lock);
+            if (!known) return -1;   /* Poll before Subscribe */
+
+            uint8_t notif[8192];
+            int mlen = build_notification_for_paths(sl, paths, pc,
+                                                    notif, sizeof(notif));
+            if (mlen < 0) return -1;
+            uint8_t resp[16384];
+            gnmi_pb_t w;
+            gnmi_pb_init(&w, resp, sizeof(resp));
+            gnmi_pb_put_len_delim(&w, 1, notif, (size_t)mlen);
+            return send_stream_message(c, stream, resp, w.len) < 0 ? -1 : 0;
+        }
+
+        /* Initial Subscribe: register the stream, then send the set and the
+         * sync_response as *separate* gRPC messages. SubscribeResponse is a
+         * oneof (notification = 1, sync_response = 2), so a message carrying
+         * both is invalid; the previous code emitted them together. */
+        pthread_mutex_lock(&g_poll_lock);
+        poll_stream_t *ps = poll_stream_get(stream, true);
+        if (ps) {
+            memcpy(ps->paths, paths, sizeof(gnmi_path_t) * pc);
+            ps->path_count = pc;
+        }
+        pthread_mutex_unlock(&g_poll_lock);
+        if (!ps) return -1;
+
         uint8_t notif[8192];
         int mlen = build_notification_for_paths(sl, paths, pc,
                                                 notif, sizeof(notif));
@@ -808,12 +926,16 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
         gnmi_pb_t w;
         gnmi_pb_init(&w, resp, sizeof(resp));
         gnmi_pb_put_len_delim(&w, 1, notif, (size_t)mlen);
-        gnmi_encode_subscribe_sync(&w);
         if (send_stream_headers(c, stream) < 0) return -1;
         if (send_stream_message(c, stream, resp, w.len) < 0) return -1;
-        return 0;   /* leave stream open; served until connection ends */
-    }
 
+        uint8_t sresp[16];
+        gnmi_pb_t sw;
+        gnmi_pb_init(&sw, sresp, sizeof(sresp));
+        gnmi_encode_subscribe_sync(&sw);
+        if (send_stream_message(c, stream, sresp, sw.len) < 0) return -1;
+        return 0;   /* stream stays open for Poll messages */
+    }
     return subscribe_stream_loop(c, stream, sl);
 }
 

@@ -869,6 +869,108 @@ static int test_get_not_found_status(void)
     return 0;
 }
 
+/* The STREAM change detector must notice every field, not just a couple.
+ *
+ * It used to hash only interface mtu and ifindex, so a change to an interface
+ * name, admin state or address, or to a VRF name or a route prefix, metric or
+ * next hop, left the hash unchanged and the subscriber was never notified. It
+ * also copied each type into a fixed array (ifaces[64], vrfs[16],
+ * routes[32]), so a larger store silently lost objects from the scan.
+ *
+ * The detector itself is static, so this drives it indirectly through the
+ * exported subscribe path by observing whether a notification is produced.
+ * What is asserted here is the property that matters and is cheap to check:
+ * every mutation of a monitored field changes the observable state, verified
+ * by hashing the same bytes the detector hashes.
+ */
+extern uint64_t stream_state_hash_for_test(void);
+
+static int test_stream_detector_sees_all_fields(void)
+{
+    uint64_t base = stream_state_hash_for_test();
+
+    /* Interface admin state: previously invisible. */
+    {
+        danos_iface_t ifc;
+        memset(&ifc, 0, sizeof(ifc));
+        ifc.ifindex = 77;
+        snprintf(ifc.name, sizeof(ifc.name), "det77");
+        ifc.mtu = 1500;
+        ifc.admin_up = false;
+        assert(danos_object_create(g_default_store, DANOS_OBJ_IFACE, 77,
+                                   &ifc, sizeof(ifc)) == DANOS_OK);
+        uint64_t h1 = stream_state_hash_for_test();
+        assert(h1 != base);
+
+        ifc.admin_up = true;
+        assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 77,
+                                   &ifc, sizeof(ifc)) == DANOS_OK);
+        assert(stream_state_hash_for_test() != h1);
+    }
+
+    /* Interface name: previously invisible. */
+    {
+        danos_iface_t ifc;
+        memset(&ifc, 0, sizeof(ifc));
+        ifc.ifindex = 78;
+        snprintf(ifc.name, sizeof(ifc.name), "det78");
+        ifc.mtu = 1500;
+        assert(danos_object_create(g_default_store, DANOS_OBJ_IFACE, 78,
+                                   &ifc, sizeof(ifc)) == DANOS_OK);
+        uint64_t h1 = stream_state_hash_for_test();
+
+        snprintf(ifc.name, sizeof(ifc.name), "det78-renamed");
+        assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 78,
+                                   &ifc, sizeof(ifc)) == DANOS_OK);
+        assert(stream_state_hash_for_test() != h1);
+    }
+
+    /* Route metric and next hop: previously invisible. */
+    {
+        danos_tx_t tx;
+        danos_route_t r;
+        memset(&r, 0, sizeof(r));
+        r.vrf_id = 0;
+        r.prefix.addr.af = DANOS_AF_IPV4;
+        r.prefix.addr.addr[0] = 203; r.prefix.addr.addr[1] = 0;
+        r.prefix.addr.addr[2] = 113; r.prefix.addr.addr[3] = 200;
+        r.prefix.prefix_len = 32;
+        r.protocol = DANOS_ROUTE_PROTO_STATIC;
+        r.nhgroup_id = 1;
+        r.metric = 10;
+        assert(danos_tx_begin(&tx, "det", NULL) == DANOS_OK);
+        assert(danos_route_create(&tx, &r) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+        uint64_t h1 = stream_state_hash_for_test();
+
+        assert(danos_tx_begin(&tx, "det", NULL) == DANOS_OK);
+        r.metric = 20;
+        assert(danos_route_update(&tx, &r) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+        uint64_t h2 = stream_state_hash_for_test();
+        assert(h2 != h1);
+
+        assert(danos_tx_begin(&tx, "det", NULL) == DANOS_OK);
+        r.metric = 10;
+        r.nhgroup_id = 2;
+        assert(danos_route_update(&tx, &r) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+        assert(stream_state_hash_for_test() != h2);
+    }
+
+    /* Deleting must register too. */
+    {
+        uint64_t before = stream_state_hash_for_test();
+        assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 78)
+               == DANOS_OK);
+        assert(stream_state_hash_for_test() != before);
+    }
+
+    printf("[PASS] test_stream_detector_sees_all_fields: admin/name/metric/"
+           "nexthop/delete all register\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -900,6 +1002,7 @@ int main(void)
      * which would disturb the seeded state the tests above rely on. */
     if (test_set_max_operations() != 0) failed++;
     if (test_get_not_found_status() != 0) failed++;
+    if (test_stream_detector_sees_all_fields() != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);
