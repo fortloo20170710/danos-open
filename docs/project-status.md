@@ -1,5 +1,39 @@
 # DANOS Open Project Status
 
+## 2026-10-04 fourth pass: gNMI POLL, unsupported nexthops
+
+CTest remains 38 tests, green under Debug, ASan+UBSan+LSan and TSan.
+
+**gNMI POLL (`d6ee6e9`).** POLL did not work as a mode. Every message arriving
+on a POLL stream was handled as a fresh Subscribe, so each Poll re-sent the whole
+initial set instead of a delta, and the notification and `sync_response` were
+encoded into one gRPC message — invalid, since `SubscribeResponse` is a `oneof`
+(the ONCE branch already sent them separately for that reason). Streams are now
+tracked per stream id; the initial Subscribe sends the set and then the sync as
+separate messages and leaves the stream open, a Poll answers with a notification
+only, and a Poll before Subscribe is refused.
+
+The STREAM change detector hashed only interface mtu and ifindex, so a change to
+an interface name, admin state or address, or to a VRF name or a route prefix,
+metric or next hop, left the hash identical and subscribers were never notified.
+It also copied each type into a fixed array, so a larger store silently lost
+objects. It now streams the store and folds the raw object bytes.
+
+**Unsupported nexthops (`ff2101a`).** LABEL, EVPN, SEG6 and SEG6LOCAL were
+consumed for length but never interpreted, so an EVPN or SR-TE route was
+installed as an ordinary IPv4 route — silently forwarding where it should not,
+and contradicting the capability table. Such routes are now refused. Two related
+defects in the same loop are fixed: the gateway was copied at the route family's
+width rather than the nexthop type's, and a blackhole nexthop became an empty
+nexthop in a group instead of setting `DANOS_ROUTE_FLAG_BLACKHOLE`.
+
+Writing that test surfaced something worth recording: `zapi_mapper.c` carries
+**two ZAPI route dialects**. `zapi_map_route` decodes a simplified layout used
+by the mock path; `zapi_dispatch_frr` decodes the native FRR layout and is what
+real FRR traffic actually takes. The nexthop corrections went into the native
+path. The simplified dialect has no flags field and cannot carry this
+information, so the two will keep diverging until it is retired.
+
 ## 2026-10-04 third pass: authentication, FRR decode, golden bytes
 
 CTest is now 38 tests, green under Debug, ASan+UBSan+LSan and TSan.

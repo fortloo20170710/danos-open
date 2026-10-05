@@ -167,16 +167,30 @@ again — the duplication needs resolving one way or the other.
 
 ## P2 — protocol compliance gaps
 
-### [ ] 7. gNMI `Subscribe` and `Set` semantics
+### [~] 7. gNMI `Subscribe` and `Set` semantics
 
-- POLL mode does not set `sync_response` (violates the response oneof) and
-  leaves the stream open indefinitely
-- STREAM mode polls every 200 ms and diffs a cheap hash that misses VRF-name and
-  route-prefix changes
+Done:
+- POLL is now a real mode. Streams are tracked per stream id; the initial
+  Subscribe sends the set and then the sync_response as **separate** messages
+  (SubscribeResponse is a oneof, so the previous single combined message was
+  invalid), and a Poll on a known stream answers with a notification only. A
+  Poll before Subscribe is refused rather than treated as a new subscription.
+  Previously every message on a POLL stream was handled as a fresh Subscribe,
+  so each Poll re-sent the entire initial set.
+- the STREAM change detector now hashes the raw object bytes (type and id
+  folded in) streamed from the store. It hashed only interface mtu and
+  ifindex, so a change to an interface name, admin state or address, or to a
+  VRF name or a route prefix, metric or next hop, left the hash identical and
+  subscribers were never told. It also copied each type into a fixed array
+  (ifaces[64], vrfs[16], routes[32]), so a larger store silently lost objects.
+
+Still open:
 - `replace` is decoded but never applied
 - `Get` echoes the request path for each update instead of the per-object path
 - `updates_only`, `use_models`, `encoding` are ignored; no bytes/decimal
   `TypedValue`
+- STREAM still polls on a 200 ms tick rather than subscribing to store events,
+  so latency and CPU cost scale with stream count
 
 ### [ ] 8. NETCONF has no transport
 
@@ -206,11 +220,24 @@ Done, against upstream FRR 10.3 rather than by inspection:
 - the nexthop flag bits are named from `lib/zclient.h`; SEG6 is 0x10 and
   SEG6LOCAL 0x20.
 
+Also done:
+- nexthops carrying LABEL, EVPN, SEG6 or SEG6LOCAL are now **refused** with
+  NOT_SUPPORTED. They were consumed for length but never interpreted, so an
+  EVPN or SR-TE route was installed as an ordinary IPv4 route - silently
+  forwarding where it should not, and contradicting the capability table.
+- the gateway is copied at the nexthop type's width, not the route family's,
+  so a v6 nexthop inside an IPv4 route no longer takes 4 bytes of a 16-byte
+  address
+- a blackhole nexthop now sets `DANOS_ROUTE_FLAG_BLACKHOLE` instead of becoming
+  a nexthop with no gateway inside an NHGroup
+
+Note the file carries **two ZAPI route dialects**: `zapi_map_route` decodes a
+simplified layout used by the mock path, while `zapi_dispatch_frr` decodes the
+native FRR layout and is what real FRR traffic takes. The nexthop fixes are in
+the native path. The simplified dialect has no flags field, so it cannot carry
+this information and the two will keep differing until it is retired.
+
 Still open:
-- LABEL (0x02), EVPN (0x40), SEG6 (0x10) and SEG6LOCAL (0x20) are not
-  interpreted. They are consumed correctly, so the message stays in sync, but
-  an EVPN or SR route is installed as a plain IP route rather than rejected as
-  unsupported - which is arguably worse than refusing it
 - `zapi_client` registration does not request ZAPI_SERVICE_IPV4 via
   `zebra_register_zclient`
 
