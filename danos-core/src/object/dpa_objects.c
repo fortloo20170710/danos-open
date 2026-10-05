@@ -21,6 +21,51 @@ static danos_object_store_t *get_default_store(void)
     return g_default_store;
 }
 
+static danos_status_t dpa_create(danos_tx_t *tx, danos_object_store_t *store,
+                                 danos_obj_type_t type, danos_obj_id_t id,
+                                 const void *data, size_t size)
+{
+    (void)store;
+    return danos_tx_stage_object(tx, type, id, data, size, DANOS_TX_OP_CREATE);
+}
+
+static danos_status_t dpa_update(danos_tx_t *tx, danos_object_store_t *store,
+                                 danos_obj_type_t type, danos_obj_id_t id,
+                                 const void *data, size_t size)
+{
+    (void)store;
+    return danos_tx_stage_object(tx, type, id, data, size, DANOS_TX_OP_UPDATE);
+}
+
+static danos_status_t dpa_delete(danos_tx_t *tx, danos_object_store_t *store,
+                                 danos_obj_type_t type, danos_obj_id_t id)
+{
+    (void)store;
+    return danos_tx_stage_object(tx, type, id, NULL, 0, DANOS_TX_OP_DELETE);
+}
+
+static danos_status_t dpa_read(danos_tx_t *tx, danos_object_store_t *store,
+                               danos_obj_type_t type, danos_obj_id_t id,
+                               void *out, size_t *size)
+{
+    if (!tx) return DANOS_ERR_TX_INVALID;
+    bool handled = false;
+    danos_status_t st = danos_tx_read_staged(tx, type, id, out, size,
+                                             &handled);
+    if (handled || st != DANOS_OK) return st;
+    return danos_object_read(store, type, id, out, size);
+}
+
+/* All DPA CRUD below is transaction-scoped; the generic object registry
+ * remains the immediate-mutation API for recovery and internal tests. */
+#define danos_object_create(store, type, id, data, size) \
+    dpa_create(tx, store, type, id, data, size)
+#define danos_object_update(store, type, id, data, size) \
+    dpa_update(tx, store, type, id, data, size)
+#define danos_object_delete(store, type, id) dpa_delete(tx, store, type, id)
+#define danos_object_read(store, type, id, out, size) \
+    dpa_read(tx, store, type, id, out, size)
+
 /* =========================================================================
  * Interface CRUD
  * ========================================================================= */
@@ -215,6 +260,7 @@ danos_status_t danos_route_read(danos_tx_t *tx, danos_vrf_id_t vrf_id,
 }
 
 typedef struct {
+    danos_tx_t *tx;
     danos_vrf_id_t vrf_id;
     danos_route_cb_t cb;
     void *user;
@@ -226,6 +272,16 @@ static void route_dump_iter(danos_object_entry_t *e, void *user)
     if (e->type != DANOS_OBJ_ROUTE) return;
     if (e->data_size < sizeof(danos_route_t)) return;
     const danos_route_t *r = e->data;
+    danos_route_t overlay;
+    size_t overlay_size = sizeof(overlay);
+    bool handled = false;
+    danos_status_t st = danos_tx_read_staged(c->tx, DANOS_OBJ_ROUTE, e->id,
+                                              &overlay, &overlay_size,
+                                              &handled);
+    if (handled) {
+        if (st != DANOS_OK) return;
+        r = &overlay;
+    }
     if (c->vrf_id != 0 && r->vrf_id != c->vrf_id) return;  /* 0 = all VRFs */
     c->cb(r, c->user);
 }
@@ -233,10 +289,29 @@ static void route_dump_iter(danos_object_entry_t *e, void *user)
 danos_status_t danos_route_dump(danos_tx_t *tx, danos_vrf_id_t vrf_id,
                                 danos_route_cb_t cb, void *user)
 {
-    (void)tx;
-    if (!cb) return DANOS_ERR_INVALID_ARG;
-    route_dump_ctx_t c = { .vrf_id = vrf_id, .cb = cb, .user = user };
+    if (!tx || !cb) return DANOS_ERR_INVALID_ARG;
+    route_dump_ctx_t c = { .tx = tx, .vrf_id = vrf_id, .cb = cb, .user = user };
     danos_object_iterate(get_default_store(), route_dump_iter, &c);
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) return DANOS_ERR_TX_INVALID;
+    pthread_mutex_lock(&rec->lock);
+    danos_route_t *additions = calloc(rec->staged_count, sizeof(*additions));
+    if (rec->staged_count && !additions) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_NO_MEMORY;
+    }
+    size_t addition_count = 0;
+    for (size_t i = 0; i < rec->staged_count; i++) {
+        danos_object_mutation_t *m = &rec->staged[i];
+        if (m->type != DANOS_OBJ_ROUTE || m->remove || m->base_exists ||
+            m->data_size < sizeof(danos_route_t)) continue;
+        const danos_route_t *r = m->data;
+        if (vrf_id == 0 || r->vrf_id == vrf_id)
+            additions[addition_count++] = *r;
+    }
+    pthread_mutex_unlock(&rec->lock);
+    for (size_t i = 0; i < addition_count; i++) cb(&additions[i], user);
+    free(additions);
     return DANOS_OK;
 }
 

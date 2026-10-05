@@ -32,6 +32,15 @@ static const danos_tx_timeouts_t kDefaultTimeouts = {
     .verify_ms  = 1000,
 };
 
+static danos_status_t conf_commit(danos_tx_t *tx)
+{
+    danos_status_t st = danos_tx_prepare(tx);
+    if (st == DANOS_OK) st = danos_tx_validate(tx);
+    if (st == DANOS_OK) st = danos_tx_commit(tx);
+    if (st == DANOS_OK) st = danos_tx_verify(tx);
+    return st;
+}
+
 /* ----------------------------------------------------------------------- */
 /* 1. Transaction lifecycle: begin → prepare → validate → commit → done     */
 /* ----------------------------------------------------------------------- */
@@ -154,9 +163,8 @@ int conf_vrf_crud(void)
     vrf.ipv4_active = true;
     strncpy(vrf.name, "VRF100", sizeof(vrf.name) - 1);
 
-    danos_vrf_create(&tx, &vrf);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_vrf_create(&tx, &vrf) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 int conf_route_crud(void)
@@ -174,9 +182,8 @@ int conf_route_crud(void)
     route.admin_distance = 1;
     route.metric = 0;
 
-    danos_route_create(&tx, &route);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_route_create(&tx, &route) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 int conf_nh_crud(void)
@@ -191,9 +198,8 @@ int conf_nh_crud(void)
     nh.ifindex = 1;
     nh.weight = 1;
 
-    danos_nh_create(&tx, &nh);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_nh_create(&tx, &nh) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 int conf_nhgroup_crud(void)
@@ -207,9 +213,8 @@ int conf_nhgroup_crud(void)
     grp.nh_ids[0] = 1;
     grp.nh_ids[1] = 2;
 
-    danos_nhgroup_create(&tx, &grp);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_nhgroup_create(&tx, &grp) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 int conf_acl_crud(void)
@@ -222,9 +227,8 @@ int conf_acl_crud(void)
     strncpy(tbl.name, "ACL1", sizeof(tbl.name) - 1);
     tbl.ingress = true;
 
-    danos_acl_table_create(&tx, &tbl);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_acl_table_create(&tx, &tbl) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 int conf_qos_crud(void)
@@ -238,9 +242,8 @@ int conf_qos_crud(void)
     p.cir_bps = 100000000;  /* 100 Mbps */
     p.cb_bytes = 12500000;  /* 100ms burst */
 
-    danos_qos_policy_create(&tx, &p);
-    danos_tx_commit(&tx);
-    return 0;
+    if (danos_qos_policy_create(&tx, &p) != DANOS_OK) return 2;
+    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 
 /* ----------------------------------------------------------------------- */

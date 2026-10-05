@@ -91,9 +91,7 @@ int main(void)
             make_iface(i, &ifc);
             if (danos_iface_create(&tx, &ifc) != DANOS_OK) continue;
         }
-        danos_tx_prepare(&tx);
-        danos_tx_validate(&tx);
-        danos_tx_commit(&tx);
+        if (danos_tx_commit_atomic(&tx) != DANOS_OK) return 1;
     }
     t1 = now_ms();
     printf("B1b batch tx      : %u objects in %.1f ms\n",
@@ -116,7 +114,7 @@ int main(void)
             make_iface(i, &ifc);
             danos_iface_create(&tx, &ifc);
         }
-        danos_tx_commit(&tx);
+        if (danos_tx_commit_atomic(&tx) != DANOS_OK) return 1;
     }
     t1 = now_ms();
     double wal_ms = t1 - t0;

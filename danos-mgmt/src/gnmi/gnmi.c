@@ -337,6 +337,7 @@ static char *handle_delete_acl_table(const char *path)
     }
 
     st = danos_tx_prepare(&tx);
+    if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
         char *resp = malloc(128);
@@ -465,6 +466,7 @@ static char *handle_delete_qos_policy(const char *path)
     }
 
     st = danos_tx_prepare(&tx);
+    if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
         char *resp = malloc(128);

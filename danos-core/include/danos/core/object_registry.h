@@ -82,7 +82,16 @@ typedef struct {
     void            *data;
     size_t           data_size;
     bool             remove;   /* delete instead of write */
+    bool             base_exists; /* optimistic conflict snapshot */
+    void            *base_data;
+    size_t           base_size;
 } danos_object_mutation_t;
+
+/* Return the current payload as a heap copy for transaction conflict checks. */
+danos_status_t danos_object_read_copy(danos_object_store_t *store,
+                                      danos_obj_type_t type,
+                                      danos_obj_id_t id,
+                                      void **data, size_t *size);
 
 /* Apply a set of mutations as one atomic step.
  *
@@ -101,6 +110,12 @@ typedef struct {
 int danos_object_apply_batch(danos_object_store_t *store,
                              const danos_object_mutation_t *muts,
                              size_t n);
+
+/* Transaction commit variant: compare every key to its captured base
+ * snapshot and apply all changes atomically under the store write lock. */
+int danos_object_apply_transaction_batch(danos_object_store_t *store,
+                                        const danos_object_mutation_t *muts,
+                                        size_t n, uint64_t tx_id);
 
 /* Iterate all entries (all types) under a read lock. The callback must
  * not modify the store. */

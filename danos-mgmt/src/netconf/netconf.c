@@ -292,9 +292,11 @@ static char *edit_config_apply(const char *xml)
                                                   &target, sizeof(target), &v);
         if (st != DANOS_OK) return error_reply(danos_status_str(st));
     }
-    danos_status_t st = danos_object_update(g_default_store,
-                                            DANOS_OBJ_IFACE, target.ifindex,
-                                            &target, sizeof(target));
+    danos_tx_t tx = {0};
+    danos_status_t st = danos_tx_begin(&tx, "netconf-edit-config", NULL);
+    if (st == DANOS_OK) st = danos_iface_update(&tx, &target);
+    if (st == DANOS_OK) st = danos_tx_commit_atomic(&tx);
+    if (st != DANOS_OK && tx._internal) (void)danos_tx_abort(&tx);
     if (st != DANOS_OK) return error_reply(danos_status_str(st));
     return ok_reply();
 }

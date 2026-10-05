@@ -309,18 +309,17 @@ danos_status_t gnmi_route_delete(danos_vrf_id_t vrf_id,
     danos_status_t st = danos_tx_begin(&tx, "gnmi-route-del", NULL);
     if (st != DANOS_OK) return st;
 
-    /* order: route first (references the group), then group, then NHs */
-    st = danos_object_delete(g_default_store, DANOS_OBJ_ROUTE, c.route_id);
+    /* Stage dependency deletes in one candidate; abort leaves the whole
+     * route/NH graph untouched if any member is stale. */
+    st = danos_route_delete(&tx, vrf_id, *prefix, DANOS_ROUTE_PROTO_STATIC);
     if (st == DANOS_OK && have_group) {
-        st = danos_object_delete(g_default_store, DANOS_OBJ_NHGROUP,
-                                 c.group_id);
+        st = danos_nhgroup_delete(&tx, c.group_id);
     }
     if (st == DANOS_OK && have_group) {
         for (uint32_t i = 0; i < grp.nh_count && i < 16; i++) {
-            (void)danos_object_delete(g_default_store, DANOS_OBJ_NEXTHOP,
-                                      grp.nh_ids[i]);
+            st = danos_nh_delete(&tx, grp.nh_ids[i]);
+            if (st != DANOS_OK) break;
         }
-        st = DANOS_OK;
     }
     if (st != DANOS_OK) { danos_tx_abort(&tx); return st; }
     st = danos_tx_prepare(&tx);

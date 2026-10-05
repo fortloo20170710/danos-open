@@ -58,44 +58,31 @@ Suggested sequence: decide identity source → add TLS to the gRPC accept path �
 link `danos-security` → enforce `danos_rbac_check` at every handler entry →
 audit-log mutations.
 
-### [~] 2. Transaction engine must actually provide atomicity
+### [x] 2. Transaction engine provides staged atomicity
 
-All 30+ DPA CRUD entry points begin with `(void)tx;`. The transaction is
-decorative: objects are written and fsynced immediately, before any commit.
-Consequences:
+All public DPA CRUD operations now use the transaction passed by the caller.
+Create/update/delete mutations remain private until commit; reads consult the
+transaction overlay first (including route dumps), so read-your-writes works
+without exposing candidate state to other transactions. `CREATE`, `UPDATE`,
+and `DELETE` have distinct existence rules. Abort and failed conflict checks
+discard the complete staged set.
 
-- A gNMI `Set` with 20 updates applies them one at a time, each independently
-  durable. A failure at update 13 leaves 12 applied and rolls back nothing.
-- `NETCONF` advertises `candidate` and `rollback-on-error` capabilities that
-  do not exist.
-- The state machine, `prepare`/`validate`/`commit`/`verify` sequence and the
-  `DANOS_ERR_TX_CONFLICT` code all exist but are unreachable.
+Commit compares the captured base payloads while holding the object-store
+write lock, preallocates replacement storage, writes the transaction records
+and a WAL commit marker and fsyncs before publishing the in-memory batch. A
+conflict or allocation/WAL failure leaves the object store unchanged. WAL
+recovery applies only complete marked transactions; the legacy immediate
+object-registry API remains available for internal recovery paths. Existing
+callers that relied on `begin -> mutate -> commit` were migrated to the
+documented prepare/validate/commit lifecycle rather than weakening the state
+machine.
 
-ADR-0005 specifies the intended design.
+Coverage: private visibility, read-your-writes, create/update/delete abort,
+same-key conflict, multi-object all-or-nothing conflict, route-dump overlay,
+restart recovery, and an uncommitted transaction WAL record. Full CTest
+acceptance is recorded in the current project status.
 
-Done: the atomicity *primitive* now exists. `danos_object_apply_batch()`
-applies a set of mutations under a single store write-lock acquisition, so a
-concurrent reader or the reconciler sees either none or all of a change set -
-not a route installed before the interface it depends on. `store_entry` and
-`remove_entry` were factored into `*_locked` helpers so the batch path and the
-single-object paths share one implementation. Covered by
-`test_object_batch_atomic` (end state, mixed write+delete, oversized refusal).
-
-Still open - **this item is not done**, and the batch primitive is not yet on
-the commit path:
-- DPA CRUD still writes straight through to the store; nothing stages
-- `danos_tx_commit` still applies nothing, so behaviour is unchanged
-- no read-your-writes overlay, so a transaction cannot observe its own staged
-  state
-- no per-object version counters, so `DANOS_ERR_TX_CONFLICT` is unreachable
-- the batch is all-or-nothing only for the lock window: a mutation that fails
-  midway leaves the earlier ones applied. Pre-validation is the caller's job.
-
-The next step is to have the CRUD entry points stage into the transaction and
-apply via `apply_batch` at commit. That is a behavioural change to every
-write path and should land as its own series.
-
-#### Findings from an attempted implementation
+#### Findings from the two reverted attempts (historical)
 
 Two attempts were made and both were reverted after the test count went red
 (12/38 and 13/38). Nothing from either is in the tree. They established the
@@ -148,10 +135,10 @@ following, so a third attempt starts from here rather than from scratch:
   have to be found and given the lifecycle they were implicitly assuming, and
   that inventory is the actual work - not the mechanical rewrite.
 
-A third attempt should start by writing a test that pins the intended
-transaction semantics (including what an abort must guarantee), fix the callers
-to it, and only then turn staging on. Turning it on first is what both attempts
-did, and it is why both had to be reverted.
+The successful implementation followed that sequence: pin abort and visibility
+semantics first, migrate dependent callers, then enable staging and WAL commit
+markers. The findings above remain as historical context for why the earlier
+attempts failed.
 
 Note the recorder fix from the earlier pass: transaction records are now
 correctly retired, so this work no longer sits on top of a leak.

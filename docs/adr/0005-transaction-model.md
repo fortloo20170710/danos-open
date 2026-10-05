@@ -35,12 +35,21 @@ Key properties:
    checked before commit, not at OPEN.
 3. **Global write mutex at COMMIT**: Serializes commits with a 1-second
    timeout to prevent starvation.
-4. **State model**: CONFIG → DESIRED → PROGRAMMED → OPER
+4. **Staging and visibility**: DPA mutations are private to OPEN transactions;
+   reads in the same transaction consult its overlay before the committed
+   store. Other transactions only observe committed state. Abort discards the
+   overlay.
+5. **Conflict and persistence**: Commit compares each touched object's
+   captured base payload under the store write lock. When persistence is
+   enabled, the complete transaction and commit marker are fsynced before the
+   in-memory batch is published; recovery ignores records without a commit
+   marker.
+6. **State model**: CONFIG → DESIRED → PROGRAMMED → OPER
    - CONFIG: User-provided configuration
    - DESIRED: Validated and committed configuration
    - PROGRAMMED: What's actually in the dataplane
    - OPER: Operational state from dataplane
-5. **Reconciliation**: Background thread detects DESIRED ≠ PROGRAMMED
+7. **Reconciliation**: Background thread detects DESIRED ≠ PROGRAMMED
    and re-programs.
 
 ## Consequences

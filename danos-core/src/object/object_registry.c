@@ -179,6 +179,32 @@ danos_status_t danos_object_read(danos_object_store_t *s,
     return DANOS_OK;
 }
 
+danos_status_t danos_object_read_copy(danos_object_store_t *s,
+                                      danos_obj_type_t type,
+                                      danos_obj_id_t id,
+                                      void **data, size_t *size)
+{
+    if (!s || !data || !size) return DANOS_ERR_INVALID_ARG;
+    *data = NULL;
+    *size = 0;
+    pthread_rwlock_rdlock(&s->lock);
+    danos_object_entry_t *e = find_entry(s, type, id);
+    if (!e) {
+        pthread_rwlock_unlock(&s->lock);
+        return DANOS_ERR_NOT_FOUND;
+    }
+    void *copy = malloc(e->data_size);
+    if (!copy) {
+        pthread_rwlock_unlock(&s->lock);
+        return DANOS_ERR_NO_MEMORY;
+    }
+    memcpy(copy, e->data, e->data_size);
+    *data = copy;
+    *size = e->data_size;
+    pthread_rwlock_unlock(&s->lock);
+    return DANOS_OK;
+}
+
 danos_status_t danos_object_update(danos_object_store_t *s,
                                    danos_obj_type_t type,
                                    danos_obj_id_t id,
@@ -341,7 +367,10 @@ int danos_object_apply_batch(danos_object_store_t *store,
      * touches this store. */
     for (size_t i = 0; i < (size_t)applied; i++) {
         const danos_object_mutation_t *m = &muts[i];
-        if (!g_event_bus) break;
+        danos_persist_on_mutation(store, m->remove ? 3 : 1, (int)m->type,
+                                  m->id, m->data, m->data_size);
+        danos_programming_mark_dirty();
+        if (!g_event_bus) continue;
         danos_event_t ev;
         memset(&ev, 0, sizeof(ev));
         ev.type = m->remove ? DANOS_EVENT_OBJ_DELETED
@@ -352,6 +381,110 @@ int danos_object_apply_batch(danos_object_store_t *store,
         danos_event_publish(&ev);
     }
     return applied;
+}
+
+int danos_object_apply_transaction_batch(danos_object_store_t *store,
+                                        const danos_object_mutation_t *muts,
+                                        size_t n, uint64_t tx_id)
+{
+    if (!store || (!muts && n)) return DANOS_ERR_INVALID_ARG;
+    if (!n) return 0;
+    danos_object_entry_t **prepared = calloc(n, sizeof(*prepared));
+    bool *was_present = calloc(n, sizeof(*was_present));
+    if (!prepared || !was_present) {
+        free(prepared); free(was_present);
+        return -DANOS_ERR_NO_MEMORY;
+    }
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        if (m->data_size > DANOS_MAX_OBJECT_BYTES ||
+            (!m->remove && (!m->data || !m->data_size))) goto invalid_batch;
+        for (size_t j = 0; j < i; j++)
+            if (muts[j].type == m->type && muts[j].id == m->id)
+                goto invalid_batch;
+        if (!m->remove) {
+            prepared[i] = calloc(1, sizeof(*prepared[i]));
+            if (!prepared[i]) goto no_memory;
+            prepared[i]->data = malloc(m->data_size);
+            if (!prepared[i]->data) goto no_memory;
+            memcpy(prepared[i]->data, m->data, m->data_size);
+            prepared[i]->type = m->type;
+            prepared[i]->id = m->id;
+            prepared[i]->data_size = m->data_size;
+        }
+    }
+
+    pthread_rwlock_wrlock(&store->lock);
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        danos_object_entry_t *e = find_entry(store, m->type, m->id);
+        was_present[i] = e != NULL;
+        bool same = (e != NULL) == m->base_exists;
+        if (same && e && m->base_exists)
+            same = e->data_size == m->base_size &&
+                   memcmp(e->data, m->base_data, e->data_size) == 0;
+        if (!same) {
+            pthread_rwlock_unlock(&store->lock);
+            for (size_t j = 0; j < n; j++)
+                if (prepared[j]) { free(prepared[j]->data); free(prepared[j]); }
+            free(prepared); free(was_present);
+            return -DANOS_ERR_TX_CONFLICT;
+        }
+    }
+    if (danos_persist_log_transaction(tx_id, muts, n) != 0) {
+        pthread_rwlock_unlock(&store->lock);
+        for (size_t j = 0; j < n; j++)
+            if (prepared[j]) { free(prepared[j]->data); free(prepared[j]); }
+        free(prepared); free(was_present);
+        return -DANOS_ERR_BACKEND_IO;
+    }
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        danos_object_entry_t *e = find_entry(store, m->type, m->id);
+        if (m->remove) {
+            if (e) (void)remove_entry_locked(store, m->type, m->id);
+        } else if (e) {
+            free(e->data);
+            e->data = prepared[i]->data;
+            e->data_size = prepared[i]->data_size;
+            prepared[i]->data = NULL;
+        } else {
+            size_t h = danos_obj_hash(m->type, m->id, store->bucket_count);
+            prepared[i]->next = store->buckets[h];
+            store->buckets[h] = prepared[i];
+            store->count++;
+            prepared[i] = NULL;
+        }
+    }
+    pthread_rwlock_unlock(&store->lock);
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        danos_programming_mark_dirty();
+        if (g_event_bus) {
+            danos_event_t ev = {0};
+            ev.type = m->remove ? DANOS_EVENT_OBJ_DELETED
+                      : (was_present[i] ? DANOS_EVENT_OBJ_UPDATED
+                                         : DANOS_EVENT_OBJ_CREATED);
+            ev.obj_type = m->type;
+            ev.obj_id = m->id;
+            ev.timestamp_ns = (uint64_t)time(NULL) * 1000000000ULL;
+            danos_event_publish(&ev);
+        }
+        if (prepared[i]) { free(prepared[i]->data); free(prepared[i]); }
+    }
+    free(prepared); free(was_present);
+    return (int)n;
+
+invalid_batch:
+    for (size_t i = 0; i < n; i++)
+        if (prepared[i]) { free(prepared[i]->data); free(prepared[i]); }
+    free(prepared); free(was_present);
+    return -DANOS_ERR_INVALID_ARG;
+no_memory:
+    for (size_t i = 0; i < n; i++)
+        if (prepared[i]) { free(prepared[i]->data); free(prepared[i]); }
+    free(prepared); free(was_present);
+    return -DANOS_ERR_NO_MEMORY;
 }
 
 void danos_object_iterate(danos_object_store_t *store,

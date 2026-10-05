@@ -1,6 +1,24 @@
 # DANOS Open Project Status
 
-## 2026-10-05 pass: capability registry, conformance, release gate
+## 2026-10-06 pass: P0-2 transactional DPA staging
+
+P0-2 is implemented and accepted locally. Public DPA CRUD stages against an
+explicit transaction; staged values shadow the committed store for reads,
+including route dumps. Other transactions cannot see candidate state. Abort
+discards staged create/update/delete operations, and commit rejects stale base
+payloads. A preallocated batch is published under one store write lock. When
+persistence is enabled, WAL operations plus a commit marker are fsynced before
+the batch is published; recovery ignores operations with no commit marker.
+
+The dependent write paths were migrated: NETCONF edit-config and gNMI route
+cascade deletion now use DPA transactions, and ZAPI/conformance/performance
+callers no longer rely on ignored `OPEN -> commit` transitions. Regression
+tests cover abort, read-your-writes, cross-transaction isolation, same-key and
+multi-object conflicts, route-dump overlay, recovery, and an incomplete WAL
+transaction. Verification: Debug, ASan/UBSan/LSan, and TSan builds each pass
+CTest 38/38; `git diff --check` clean.
+
+## 2026-10-05 pass: capability registry, conformance, release gate (historical)
 
 CTest remains 38 tests, green under Debug, ASan+UBSan+LSan and TSan. This pass
 closes two of the review's credibility findings.
@@ -29,26 +47,11 @@ the policy lives in its own script so it is unit-tested without executing every
 lane, and `DANOS_RELEASE_ALLOW_OPEN_LANES=1` waives it deliberately with the
 waiver written into the result file.
 
-**Not done: transaction staging (item 2).** Two attempts were made, reaching 12
-and 13 failures out of 38; both were reverted and nothing from them remains.
-
-The second attempt corrected the first attempt's mistakes — the read overlay is
-now consulted *before* the store rather than only when the object is absent,
-the three operations are modelled as an enum rather than a boolean, and
-`commit` tolerates being called from `OPEN`. It then failed for a different and
-more interesting reason: **staging changes what an abort guarantees.** Today a
-delete applies the moment it is called, so a later abort does not undo it; with
-staging, an aborted delete leaves the object in the store. Tests that lean on
-writes being immediate — creating in one transaction and asserting in another,
-or aborting and expecting the change to have landed — see different state. That
-is the `EXISTS` the attempt ended on.
-
-So the remaining cost is not the mechanical rewrite of 51 entry points, which is
-uniform and easy; it is inventorying the callers that depend on the current
-implicit contract. A third attempt should pin the intended semantics with tests
-first, fix the callers to them, and only then enable staging. Both attempts
-enabled staging first, which is why both had to be reverted. All of this is
-written up in the plan document.
+**Transaction staging was still open at this date.** Two attempts had been
+reverted after 12/38 and 13/38 failures. Their diagnosis—that abort semantics
+and implicit immediate-visibility dependencies required test-first migration—
+led to the 2026-10-06 implementation above. See the P0-2 section and plan for
+the accepted behavior and current evidence.
 
 **Build hygiene (`this pass`).** `build-asan/` — 57 compiled artefacts, 34 MB —
 was tracked because `.gitignore` covered `build/`, `build-tsan/` and
@@ -108,14 +111,17 @@ Also fixed a real race this exposed: `rbac.c`'s `g_initialized` was a plain bool
 written by init and read by every request thread, which 32 concurrent
 connections turned into a TSAN data race.
 
-**Transaction atomicity (`a875ea0`) — mechanism only, not done.**
-`danos_object_apply_batch()` applies a set of mutations under a single store
-write-lock acquisition, so a reader or the reconciler sees none or all of a
-change set rather than half a configuration. Nothing stages yet and commit does
-not call it, so runtime behaviour is unchanged. The remaining work - routing
-the DPA CRUD entry points through it, a read-your-writes overlay, and
-per-object version counters for conflict detection - is called out explicitly in
-the plan document.
+**P0-2 transaction staging — implemented and tested in this worktree.** DPA
+CRUD now stages per transaction; reads (including route dumps) overlay staged
+state, other transactions see only committed state, and abort discards writes.
+Commit detects stale base objects and publishes an allocation-safe batch under
+the store lock. With persistence enabled, WAL operations plus a commit marker
+are synced before publication; recovery ignores transactions without a marker.
+Callers relying on implicit immediate visibility were migrated to the explicit
+prepare/validate/commit lifecycle. New regression coverage includes
+create/update/delete abort, read-your-writes, visibility isolation, same-key
+and multi-object conflicts, and incomplete WAL recovery. Full CTest is 38/38;
+the clean rebuild and diff review are the remaining acceptance checks.
 
 **FRR decode (`41e866d`).** Two tables in `zapi_mapper.c`/`zapi_parse.c` were
 wrong, now derived from upstream FRR 10.3. Nexthop types follow

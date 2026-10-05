@@ -13,6 +13,8 @@
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
+#include <danos/core/object_registry.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,10 +25,20 @@ typedef struct danos_tx_record {
     danos_tx_t           pub;        /* public view */
     pthread_mutex_t     lock;       /* per-tx lock */
     bool                 in_use;
+    bool                 reclaiming;
     uint64_t             seq;        /* allocation order, for expiry reclaim */
     struct danos_tx_record *next;   /* chain in pool */
     struct danos_tx_record *live_next; /* chain of every live record */
+    danos_object_mutation_t *staged;
+    size_t staged_count;
+    size_t staged_capacity;
 } danos_tx_record_t;
+
+typedef enum {
+    DANOS_TX_OP_CREATE = 1,
+    DANOS_TX_OP_UPDATE = 2,
+    DANOS_TX_OP_DELETE = 3,
+} danos_tx_operation_t;
 
 /* Transaction manager */
 typedef struct {
@@ -59,6 +71,15 @@ bool danos_tx_in_state(danos_tx_record_t *rec, danos_tx_state_t expected);
 
 /* Validate tx pointer */
 danos_tx_record_t *danos_tx_validate_ptr(danos_tx_t *tx);
+
+/* Private DPA object overlay helpers. Writes are accepted only while OPEN. */
+danos_status_t danos_tx_stage_object(danos_tx_t *tx, danos_obj_type_t type,
+                                     danos_obj_id_t id, const void *data,
+                                     size_t size,
+                                     danos_tx_operation_t operation);
+danos_status_t danos_tx_read_staged(danos_tx_t *tx, danos_obj_type_t type,
+                                    danos_obj_id_t id, void *out, size_t *size,
+                                    bool *handled);
 
 #ifdef __cplusplus
 }

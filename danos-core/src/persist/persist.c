@@ -135,25 +135,78 @@ static replay_slot_t *replay_slot(uint16_t wal_type, uint64_t id,
     return NULL;
 }
 
+typedef struct pending_replay_op {
+    uint64_t tx_id;
+    uint16_t obj_type;
+    uint64_t obj_id;
+    uint8_t op_type;
+    uint32_t data_len;
+    uint8_t *data;
+    struct pending_replay_op *next;
+} pending_replay_op_t;
+
+typedef struct {
+    replay_slot_t *table;
+    pending_replay_op_t *pending;
+} replay_ctx_t;
+
+static int replay_apply_one(replay_slot_t *table, uint16_t type, uint64_t id,
+                            uint8_t op, const uint8_t *data, uint32_t len)
+{
+    replay_slot_t *s = replay_slot(type, id, table);
+    if (!s) return -1;
+    uint8_t *copy = NULL;
+    if (len && data) {
+        copy = malloc(len);
+        if (!copy) return -1;
+        memcpy(copy, data, len);
+    }
+    free(s->data);
+    s->data = copy;
+    s->len = len;
+    s->last_op = op;
+    return 0;
+}
+
 static int replay_cb(const wal_record_t *rec, void *user)
 {
-    replay_slot_t *table = user;
-    if (rec->op_type != WAL_OP_CREATE && rec->op_type != WAL_OP_UPDATE &&
-        rec->op_type != WAL_OP_DELETE)
-        return 0;   /* commit/abort markers: not object state */
-
-    replay_slot_t *s = replay_slot(rec->obj_type, rec->obj_id, table);
-    if (!s) return -1;
-
-    free(s->data);
-    s->data = NULL;
-    s->len = rec->data_len;
-    s->last_op = rec->op_type;
-    if (rec->data_len > 0 && rec->data) {
-        s->data = malloc(rec->data_len);
-        if (!s->data) return -1;
-        memcpy(s->data, rec->data, rec->data_len);
+    replay_ctx_t *ctx = user;
+    if (rec->op_type == WAL_OP_COMMIT || rec->op_type == WAL_OP_ABORT) {
+        pending_replay_op_t **pp = &ctx->pending;
+        while (*pp) {
+            pending_replay_op_t *p = *pp;
+            if (p->tx_id != rec->tx_id) { pp = &p->next; continue; }
+            if (rec->op_type == WAL_OP_COMMIT &&
+                replay_apply_one(ctx->table, p->obj_type, p->obj_id,
+                                 p->op_type, p->data, p->data_len) != 0)
+                return -1;
+            *pp = p->next;
+            free(p->data);
+            free(p);
+        }
+        return 0;
     }
+    if (rec->op_type != WAL_OP_CREATE && rec->op_type != WAL_OP_UPDATE &&
+        rec->op_type != WAL_OP_DELETE) return 0;
+    /* tx_id 1 is the legacy immediate-mutation stream. New DPA commits use
+     * unique ids and become visible to recovery only after COMMIT. */
+    if (rec->tx_id == 1)
+        return replay_apply_one(ctx->table, rec->obj_type, rec->obj_id,
+                                rec->op_type, rec->data, rec->data_len);
+    pending_replay_op_t *p = calloc(1, sizeof(*p));
+    if (!p) return -1;
+    p->tx_id = rec->tx_id;
+    p->obj_type = rec->obj_type;
+    p->obj_id = rec->obj_id;
+    p->op_type = rec->op_type;
+    p->data_len = rec->data_len;
+    if (rec->data_len) {
+        p->data = malloc(rec->data_len);
+        if (!p->data) { free(p); return -1; }
+        memcpy(p->data, rec->data, rec->data_len);
+    }
+    p->next = ctx->pending;
+    ctx->pending = p;
     return 0;
 }
 
@@ -172,6 +225,33 @@ void danos_persist_on_mutation(danos_object_store_t *store,
     (void)danos_persist_log_op(wal_op, wt, obj_id, data, (uint32_t)len);
 }
 
+int danos_persist_log_transaction(uint64_t tx_id,
+                                  const danos_object_mutation_t *muts,
+                                  size_t count)
+{
+    if (!g_enabled) return 0;
+    if (!tx_id || (!muts && count)) return -1;
+    for (size_t i = 0; i < count; i++) {
+        const danos_object_mutation_t *m = &muts[i];
+        uint16_t wt = dpa_type_to_wal(m->type);
+        if (!wt) continue;
+        wal_record_t rec = {0};
+        rec.magic = WAL_MAGIC;
+        rec.tx_id = tx_id;
+        rec.op_type = m->remove ? WAL_OP_DELETE
+                      : (m->base_exists ? WAL_OP_UPDATE : WAL_OP_CREATE);
+        rec.obj_type = wt;
+        rec.obj_id = m->id;
+        rec.data_len = m->remove ? 0 : (uint32_t)m->data_size;
+        rec.data = m->remove ? NULL : m->data;
+        if (danos_wal_append(&g_wal, &rec) != 0) return -1;
+        g_records_logged++;
+    }
+    if (danos_wal_append_commit(&g_wal, tx_id) != 0 ||
+        danos_wal_sync(&g_wal) != 0) return -1;
+    return 0;
+}
+
 int danos_persist_recover(void)
 {
     if (!g_enabled) return 0;
@@ -181,7 +261,8 @@ int danos_persist_recover(void)
     replay_slot_t *table = calloc(REPLAY_SLOTS, sizeof(*table));
     if (!table) return -1;
 
-    int replayed = danos_wal_replay(g_wal.path, replay_cb, table);
+    replay_ctx_t ctx = { .table = table, .pending = NULL };
+    int replayed = danos_wal_replay(g_wal.path, replay_cb, &ctx);
     if (replayed < 0) {
         /* corrupt WAL: keep whatever replay gave us, discard the rest */
         replayed = 0;
@@ -215,6 +296,12 @@ int danos_persist_recover(void)
             }
         }
         free(s->data);
+    }
+    while (ctx.pending) {
+        pending_replay_op_t *next = ctx.pending->next;
+        free(ctx.pending->data);
+        free(ctx.pending);
+        ctx.pending = next;
     }
     free(table);
     g_recovering = false;

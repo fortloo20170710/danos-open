@@ -39,7 +39,7 @@ int test_map_route_add(void)
     /* Should succeed (route created in DPA store) */
     assert(st == DANOS_OK);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_route_add: ZAPI ROUTE_ADD → DPA route\n");
     return 0;
 }
@@ -59,7 +59,7 @@ int test_map_frr_route_add(void)
     danos_tx_t tx = {0};
     assert(danos_tx_begin(&tx, "frr-test", NULL) == DANOS_OK);
     assert(zapi_dispatch_frr(&msg, &tx) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_frr_route_add: native FRR route -> DPA\n");
     return 0;
 }
@@ -96,7 +96,7 @@ int test_map_interface_add(void)
     assert(strcmp(iface.name, "eth0") == 0);
     assert(iface.mtu == 1500);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_interface_add: ZAPI IF_ADD → DPA interface\n");
     return 0;
 }
@@ -166,7 +166,7 @@ int test_map_interface_set_mtu(void)
     assert(st == DANOS_OK);
     assert(iface.mtu == 9000);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_interface_set_mtu: ZAPI SET_MTU → DPA iface update\n");
     return 0;
 }
@@ -238,7 +238,7 @@ int test_map_interface_up_down(void)
     assert(st == DANOS_OK);
     assert(iface.admin_up == true);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_interface_up_down: ZAPI UP/DOWN → DPA admin_up\n");
     return 0;
 }
@@ -260,7 +260,7 @@ int test_map_redistribute_add(void)
     danos_status_t st = zapi_dispatch(&msg, &tx);
     assert(st == DANOS_OK);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_redistribute_add: acknowledged (no-op)\n");
     return 0;
 }
@@ -350,7 +350,7 @@ int test_map_labels_add_delete(void)
     st = danos_mpls_lsp_read(&tx, 100, &lsp);
     assert(st == DANOS_ERR_NOT_FOUND);
 
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_labels_add_delete: ZAPI LABELS_ADD/DELETE → DPA MPLS LSP\n");
     return 0;
 }
@@ -376,7 +376,7 @@ int test_map_route_ecmp(void)
     assert(grp.nh_count == 2);
     danos_nexthop_t nh; assert(danos_nh_read(&tx, grp.nh_ids[1], &nh) == DANOS_OK);
     assert(nh.ifindex == 12 && (nh.flags & DANOS_NH_FLAG_ECMP));
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     printf("[PASS] test_map_route_ecmp: ZAPI multipath -> DPA NHGroup\n");
     return 0;
 }

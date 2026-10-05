@@ -19,6 +19,7 @@
 #define DANOS_PERSIST_H__
 
 #include <stdbool.h>
+#include <danos/core/object_registry.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -49,6 +50,12 @@ void danos_persist_on_mutation(danos_object_store_t *store,
                                uint8_t wal_op, int dpa_obj_type,
                                uint64_t obj_id,
                                const void *data, size_t len);
+
+/* Durably append one complete DPA transaction before publishing it in the
+ * object store. Returns 0 when persistence is disabled or commit is durable. */
+int danos_persist_log_transaction(uint64_t tx_id,
+                                  const danos_object_mutation_t *muts,
+                                  size_t count);
 
 /* Replay the WAL into the DPA default object store. Returns the number
  * of applied records, or -1 on fatal error. Torn/corrupt trailing

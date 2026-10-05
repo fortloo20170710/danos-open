@@ -85,7 +85,7 @@ static int bench_object_crud(void)
         danos_iface_t iface;
         danos_iface_read(&tx, (danos_ifindex_t)(i + 1), &iface);
     }
-    danos_tx_commit(&tx);
+    danos_tx_abort(&tx); /* read-only transaction */
     uint64_t read_ns = now_ns() - start;
 
     /* Delete */
@@ -148,7 +148,7 @@ static int bench_concurrent_read(void)
         danos_tx_begin(&rtx, "read", NULL);
         danos_iface_t iface;
         danos_iface_read(&rtx, (danos_ifindex_t)((i % 100) + 1), &iface);
-        danos_tx_commit(&rtx);
+        danos_tx_abort(&rtx); /* read-only transaction */
     }
     uint64_t elapsed = now_ns() - start;
     double secs = (double)elapsed / 1e9;

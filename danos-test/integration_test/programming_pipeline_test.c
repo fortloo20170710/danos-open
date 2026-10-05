@@ -240,9 +240,7 @@ int main(void)
     make_route(1, &rt);
     rt.nhgroup_id = 1;
     assert(danos_route_create(&tx, &rt) == DANOS_OK);
-    danos_tx_prepare(&tx);
-    danos_tx_validate(&tx);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
 
     /* ---- 2. program the pipeline -------------------------------------- */
     uint64_t attempted = 0, failed = 0;
@@ -262,7 +260,7 @@ int main(void)
     danos_iface_t ifc_update = ifc;
     memset(&ifc_update.ipv4_address, 0, sizeof(ifc_update.ipv4_address));
     assert(danos_iface_update(&tx, &ifc_update) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     attempted = failed = 0;
     assert(danos_programming_run(&attempted, &failed) == 1);
     assert(failed == 0 && attempted == 1);
@@ -277,7 +275,7 @@ int main(void)
     rt.prefix.addr.addr[1] = 99;    /* 10.99.0.0/24 */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
     assert(danos_route_create(&tx, &rt) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
 
     programmed = danos_programming_run(&attempted, &failed);
     assert(programmed == 1 && failed == 0);
@@ -289,7 +287,7 @@ int main(void)
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
     assert(danos_route_delete(&tx, 0, rt.prefix,
                               DANOS_ROUTE_PROTO_STATIC) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     assert(danos_netlink_mock_route_exists(rt.prefix.addr.addr,
                                            rt.prefix.prefix_len, 0));  /* still in kernel */
     uint64_t swept = danos_programming_sweep(&failed);
@@ -309,7 +307,7 @@ int main(void)
         nh2.ifindex = 5;
         assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
         assert(danos_nh_update(&tx, &nh2) == DANOS_OK);
-        danos_tx_commit(&tx);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     }
     attempted = failed = 0;
     assert(danos_programming_run(&attempted, &failed) == 1);   /* re-programmed! */
@@ -320,7 +318,7 @@ int main(void)
         assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
         assert(danos_object_delete(g_default_store, DANOS_OBJ_NEXTHOP, 100)
                == DANOS_OK);
-        danos_tx_commit(&tx);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     }
     attempted = failed = 0;
     (void)danos_programming_run(&attempted, &failed);
@@ -331,7 +329,7 @@ int main(void)
     /* ---- 5e. v0.11 iface tombstone: delete -> admin down ---------------- */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
     assert(danos_iface_delete(&tx, 5) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     uint64_t swept2 = danos_programming_sweep(&failed);
     assert(swept2 >= 1 && failed == 0);
     assert(!danos_netlink_mock_iface_up(5));
@@ -346,7 +344,7 @@ int main(void)
         strcpy(i2.name, "wan0");
         i2.mtu = 1500; i2.admin_up = true;
         assert(danos_iface_create(&t2, &i2) == DANOS_OK);
-        danos_tx_commit(&t2);
+        assert(danos_tx_commit_atomic(&t2) == DANOS_OK);
     }
 
     /* ---- 6. reconciler honesty ----------------------------------------- */
@@ -375,7 +373,7 @@ int main(void)
     assert(danos_nh_create(&tx, &nh3) == DANOS_OK);
     /* nhgroup 1 still exists in desired state */
     assert(danos_route_create(&tx, &rt) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     diffs = danos_reconciler_run_once();
     /* two routes programmed: 10.2 (new) and 10.1 (pending RETRY from
      * the NH deletion — now resolvable again). The pending-retry
@@ -387,7 +385,7 @@ int main(void)
      * route that still references it, rather than leave stale forwarding. */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
     assert(danos_nhgroup_delete(&tx, 1) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     attempted = failed = 0;
     (void)danos_programming_run(&attempted, &failed);
     assert(failed == 0);
@@ -404,7 +402,7 @@ int main(void)
     restored_grp.nh_count = 1;
     restored_grp.nh_ids[0] = 100;
     assert(danos_nhgroup_create(&tx, &restored_grp) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
 
     assert(test_reconciler_withdraws_deletes() == 0);
     assert(test_retry_backoff_and_limit() == 0);
@@ -440,7 +438,7 @@ static int test_vpp_adapter_pipeline(void)
     rt.protocol = DANOS_ROUTE_PROTO_STATIC;
     rt.nhgroup_id = 1;
     assert(danos_route_create(&tx, &rt) == DANOS_OK);
-    danos_tx_commit(&tx);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
 
     uint64_t attempted = 0, failed = 0;
     uint64_t ok = danos_programming_run(&attempted, &failed);

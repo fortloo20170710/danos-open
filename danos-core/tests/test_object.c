@@ -309,6 +309,121 @@ int test_tunnel_crud(void)
     return 0;
 }
 
+static int route_seen(const danos_route_t *route, void *user)
+{
+    unsigned *matches = user;
+    if (route->prefix.addr.addr[13] == 91 &&
+        route->prefix.addr.addr[14] == 92) (*matches)++;
+    return 0;
+}
+
+/* P0-2: DPA mutations are private to their transaction until commit.
+ * In particular, abort must discard create/update/delete rather than
+ * leaving their side effects behind in the shared object store. */
+int test_transaction_staging_semantics(void)
+{
+    const danos_obj_id_t id = 909090;
+    danos_tunnel_t value = {0}, out = {0};
+    value.id = id;
+    value.type = DANOS_TUNNEL_VXLAN;
+    value.vni = 100;
+
+    danos_tx_t writer = {0}, observer = {0};
+    assert(danos_tx_begin(&writer, "staging-writer", NULL) == DANOS_OK);
+    assert(danos_tx_begin(&observer, "staging-observer", NULL) == DANOS_OK);
+    assert(danos_tunnel_create(&writer, &value) == DANOS_OK);
+    assert(danos_tunnel_read(&writer, id, &out) == DANOS_OK);
+    assert(out.vni == 100);
+    assert(danos_tunnel_read(&observer, id, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_tx_abort(&writer) == DANOS_OK);
+    assert(danos_tunnel_read(&observer, id, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_tx_abort(&observer) == DANOS_OK);
+
+    danos_tx_t committed = {0}, reader = {0};
+    assert(danos_tx_begin(&committed, "staging-commit", NULL) == DANOS_OK);
+    assert(danos_tunnel_create(&committed, &value) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&committed) == DANOS_OK);
+    assert(danos_tx_begin(&reader, "staging-reader", NULL) == DANOS_OK);
+    assert(danos_tunnel_read(&reader, id, &out) == DANOS_OK);
+    assert(out.vni == 100);
+    assert(danos_tx_abort(&reader) == DANOS_OK);
+
+    danos_tx_t updater = {0}, after_abort = {0};
+    assert(danos_tx_begin(&updater, "staging-update-abort", NULL) == DANOS_OK);
+    value.vni = 200;
+    assert(danos_tunnel_update(&updater, &value) == DANOS_OK);
+    assert(danos_tunnel_read(&updater, id, &out) == DANOS_OK);
+    assert(out.vni == 200);
+    assert(danos_tx_abort(&updater) == DANOS_OK);
+    assert(danos_tx_begin(&after_abort, "staging-after-abort", NULL) == DANOS_OK);
+    assert(danos_tunnel_read(&after_abort, id, &out) == DANOS_OK);
+    assert(out.vni == 100);
+    assert(danos_tunnel_delete(&after_abort, id) == DANOS_OK);
+    assert(danos_tx_abort(&after_abort) == DANOS_OK);
+
+    danos_tx_t final_reader = {0};
+    assert(danos_tx_begin(&final_reader, "staging-final-reader", NULL) == DANOS_OK);
+    assert(danos_tunnel_read(&final_reader, id, &out) == DANOS_OK);
+    assert(out.vni == 100);
+    assert(danos_tx_abort(&final_reader) == DANOS_OK);
+
+    danos_route_t route = {0};
+    route.prefix.addr.af = DANOS_AF_IPV4;
+    route.prefix.addr.addr[12] = 10;
+    route.prefix.addr.addr[13] = 91;
+    route.prefix.addr.addr[14] = 92;
+    route.prefix.prefix_len = 24;
+    route.protocol = DANOS_ROUTE_PROTO_STATIC;
+    route.nhgroup_id = 17;
+    danos_tx_t route_tx = {0};
+    assert(danos_tx_begin(&route_tx, "staging-route-dump", NULL) == DANOS_OK);
+    assert(danos_route_create(&route_tx, &route) == DANOS_OK);
+    unsigned route_dump_matches = 0;
+    assert(danos_route_dump(&route_tx, 0, route_seen, &route_dump_matches) == DANOS_OK);
+    assert(route_dump_matches == 1);
+    assert(danos_tx_abort(&route_tx) == DANOS_OK);
+
+    danos_tx_t first = {0}, stale = {0};
+    assert(danos_tx_begin(&first, "staging-conflict-a", NULL) == DANOS_OK);
+    assert(danos_tx_begin(&stale, "staging-conflict-b", NULL) == DANOS_OK);
+    value.vni = 300;
+    assert(danos_tunnel_update(&first, &value) == DANOS_OK);
+    value.vni = 400;
+    assert(danos_tunnel_update(&stale, &value) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&first) == DANOS_OK);
+    assert(danos_tx_prepare(&stale) == DANOS_OK);
+    assert(danos_tx_validate(&stale) == DANOS_OK);
+    assert(danos_tx_commit(&stale) == DANOS_ERR_TX_CONFLICT);
+    assert(danos_tx_abort(&stale) == DANOS_OK);
+    assert(danos_tx_begin(&final_reader, "staging-conflict-check", NULL) == DANOS_OK);
+    assert(danos_tunnel_read(&final_reader, id, &out) == DANOS_OK);
+    assert(out.vni == 300);
+    assert(danos_tx_abort(&final_reader) == DANOS_OK);
+
+    /* A conflict in one key must reject the complete multi-object batch. */
+    danos_tx_t batch = {0}, winner = {0}, verify_batch = {0};
+    danos_tunnel_t extra = value;
+    extra.id = id + 1;
+    assert(danos_tx_begin(&batch, "staging-batch-conflict", NULL) == DANOS_OK);
+    value.vni = 500;
+    assert(danos_tunnel_update(&batch, &value) == DANOS_OK);
+    assert(danos_tunnel_create(&batch, &extra) == DANOS_OK);
+    assert(danos_tx_begin(&winner, "staging-batch-winner", NULL) == DANOS_OK);
+    value.vni = 600;
+    assert(danos_tunnel_update(&winner, &value) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&winner) == DANOS_OK);
+    assert(danos_tx_prepare(&batch) == DANOS_OK);
+    assert(danos_tx_validate(&batch) == DANOS_OK);
+    assert(danos_tx_commit(&batch) == DANOS_ERR_TX_CONFLICT);
+    assert(danos_tx_abort(&batch) == DANOS_OK);
+    assert(danos_tx_begin(&verify_batch, "staging-batch-check", NULL) == DANOS_OK);
+    assert(danos_tunnel_read(&verify_batch, id + 1, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_tunnel_read(&verify_batch, id, &out) == DANOS_OK);
+    assert(out.vni == 600);
+    assert(danos_tx_abort(&verify_batch) == DANOS_OK);
+    return 0;
+}
+
 /* v0.2: EVPN EVI CRUD via DPA public API */
 int test_evpn_crud(void)
 {

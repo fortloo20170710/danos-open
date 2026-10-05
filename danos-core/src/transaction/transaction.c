@@ -12,6 +12,7 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/types.h>
 
 danos_tx_manager_t *g_tx_mgr = NULL;
 
@@ -19,6 +20,13 @@ static uint64_t now_ns(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static uint64_t tx_id_seed(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
@@ -32,7 +40,9 @@ int danos_tx_manager_init(void)
     pthread_mutex_init(&g_tx_mgr->write_lock, NULL);
     pthread_mutex_init(&g_tx_mgr->pool_lock, NULL);
     g_tx_mgr->free_list = NULL;
-    g_tx_mgr->next_tx_id = 1;
+    /* Keep transaction WAL ids out of the reserved legacy immediate stream
+     * (id 1), and avoid id reuse across daemon restarts. */
+    g_tx_mgr->next_tx_id = tx_id_seed();
     g_tx_mgr->active_count = 0;
     return 0;
 }
@@ -47,6 +57,11 @@ void danos_tx_manager_fini(void)
     danos_tx_record_t *r = g_tx_mgr->live_list;
     while (r) {
         danos_tx_record_t *next = r->live_next;
+        for (size_t i = 0; i < r->staged_count; i++) {
+            free(r->staged[i].data);
+            free(r->staged[i].base_data);
+        }
+        free(r->staged);
         pthread_mutex_destroy(&r->lock);
         free(r);
         r = next;
@@ -83,8 +98,10 @@ danos_tx_record_t *danos_tx_record_alloc(void)
         g_tx_mgr->live_list = r;
         pthread_mutex_unlock(&g_tx_mgr->pool_lock);
     }
-    r->in_use = true;
+    pthread_mutex_lock(&r->lock);
     memset(&r->pub, 0, sizeof(r->pub));
+    __atomic_store_n(&r->in_use, false, __ATOMIC_SEQ_CST);
+    pthread_mutex_unlock(&r->lock);
     return r;
 }
 
@@ -109,18 +126,39 @@ static danos_tx_record_t *reclaim_expired(void)
 
     pthread_mutex_lock(&g_tx_mgr->pool_lock);
     for (danos_tx_record_t *r = g_tx_mgr->live_list; r; r = r->live_next) {
-        if (!r->in_use) continue;
+        if (!__atomic_load_n(&r->in_use, __ATOMIC_SEQ_CST) || r->reclaiming) continue;
         if (r->pub.deadline_ns == 0 || now < r->pub.deadline_ns) continue;
         if (!best || r->seq < best->seq) best = r;
     }
-    if (best) {
-        best->in_use = false;
-        best->pub._internal = NULL;
-        best->next = g_tx_mgr->free_list;
-        g_tx_mgr->free_list = best;
-        __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
-    }
+    if (best) best->reclaiming = true;
     pthread_mutex_unlock(&g_tx_mgr->pool_lock);
+
+    if (best) {
+        pthread_mutex_lock(&best->lock);
+        now = now_ns();
+        bool expired = __atomic_load_n(&best->in_use, __ATOMIC_SEQ_CST) &&
+                       best->pub.deadline_ns != 0 &&
+                       now >= best->pub.deadline_ns &&
+                       best->pub.state < DANOS_TX_COMMIT;
+        if (expired) {
+        for (size_t i = 0; i < best->staged_count; i++) {
+            free(best->staged[i].data);
+            free(best->staged[i].base_data);
+        }
+        free(best->staged);
+        best->staged = NULL;
+        best->staged_count = best->staged_capacity = 0;
+        __atomic_store_n(&best->in_use, false, __ATOMIC_SEQ_CST);
+        best->pub.state = DANOS_TX_ABORT;
+        best->pub._internal = NULL;
+        __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
+        }
+        pthread_mutex_unlock(&best->lock);
+        pthread_mutex_lock(&g_tx_mgr->pool_lock);
+        best->reclaiming = false;
+        pthread_mutex_unlock(&g_tx_mgr->pool_lock);
+        if (!expired) best = NULL;
+    }
     return best;
 }
 
@@ -133,7 +171,6 @@ uint64_t danos_tx_active_count(void)
 void danos_tx_record_free(danos_tx_record_t *r)
 {
     if (!r) return;
-    r->in_use = false;
     pthread_mutex_lock(&g_tx_mgr->pool_lock);
     r->next = g_tx_mgr->free_list;
     g_tx_mgr->free_list = r;
@@ -144,6 +181,148 @@ danos_tx_record_t *danos_tx_validate_ptr(danos_tx_t *tx)
 {
     if (!tx) return NULL;
     return (danos_tx_record_t *)tx->_internal;
+}
+
+static ssize_t staged_index(danos_tx_record_t *rec, danos_obj_type_t type,
+                            danos_obj_id_t id)
+{
+    for (size_t i = 0; i < rec->staged_count; i++)
+        if (rec->staged[i].type == type && rec->staged[i].id == id)
+            return (ssize_t)i;
+    return -1;
+}
+
+danos_status_t danos_tx_stage_object(danos_tx_t *tx, danos_obj_type_t type,
+                                     danos_obj_id_t id, const void *data,
+                                     size_t size,
+                                     danos_tx_operation_t operation)
+{
+    if (!tx || (!data && operation != DANOS_TX_OP_DELETE) ||
+        operation < DANOS_TX_OP_CREATE || operation > DANOS_TX_OP_DELETE ||
+        size > DANOS_MAX_OBJECT_BYTES)
+        return DANOS_ERR_INVALID_ARG;
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) return DANOS_ERR_TX_INVALID;
+    pthread_mutex_lock(&rec->lock);
+    if (!__atomic_load_n(&rec->in_use, __ATOMIC_SEQ_CST) || rec->pub.state != DANOS_TX_OPEN) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_TX_INVALID;
+    }
+
+    ssize_t index = staged_index(rec, type, id);
+    bool exists;
+    bool new_item = false;
+    danos_object_mutation_t *m = NULL;
+    if (index >= 0) {
+        m = &rec->staged[index];
+        exists = !m->remove;
+    } else {
+        void *base = NULL;
+        size_t base_size = 0;
+        danos_status_t read_st = danos_object_read_copy(g_default_store, type,
+                                                        id, &base, &base_size);
+        exists = read_st == DANOS_OK;
+        if (read_st != DANOS_OK && read_st != DANOS_ERR_NOT_FOUND) {
+            pthread_mutex_unlock(&rec->lock);
+            return read_st;
+        }
+        if ((operation == DANOS_TX_OP_CREATE && exists) ||
+            ((operation == DANOS_TX_OP_UPDATE ||
+              operation == DANOS_TX_OP_DELETE) && !exists)) {
+            free(base);
+            pthread_mutex_unlock(&rec->lock);
+            return operation == DANOS_TX_OP_CREATE ? DANOS_ERR_EXISTS
+                                                    : DANOS_ERR_NOT_FOUND;
+        }
+        if (rec->staged_count == rec->staged_capacity) {
+            size_t cap = rec->staged_capacity ? rec->staged_capacity * 2 : 8;
+            danos_object_mutation_t *next = realloc(rec->staged,
+                                                      cap * sizeof(*next));
+            if (!next) {
+                free(base);
+                pthread_mutex_unlock(&rec->lock);
+                return DANOS_ERR_NO_MEMORY;
+            }
+            rec->staged = next;
+            rec->staged_capacity = cap;
+        }
+        m = &rec->staged[rec->staged_count++];
+        memset(m, 0, sizeof(*m));
+        m->type = type;
+        m->id = id;
+        m->base_exists = exists;
+        m->base_data = base;
+        m->base_size = base_size;
+        new_item = true;
+    }
+
+    if ((operation == DANOS_TX_OP_CREATE && exists) ||
+        ((operation == DANOS_TX_OP_UPDATE ||
+          operation == DANOS_TX_OP_DELETE) && !exists)) {
+        pthread_mutex_unlock(&rec->lock);
+        return operation == DANOS_TX_OP_CREATE ? DANOS_ERR_EXISTS
+                                                : DANOS_ERR_NOT_FOUND;
+    }
+    void *copy = NULL;
+    if (operation != DANOS_TX_OP_DELETE) {
+        copy = malloc(size);
+        if (!copy) {
+            if (new_item) {
+                free(m->base_data);
+                memset(m, 0, sizeof(*m));
+                rec->staged_count--;
+            }
+            pthread_mutex_unlock(&rec->lock);
+            return DANOS_ERR_NO_MEMORY;
+        }
+        memcpy(copy, data, size);
+    }
+    free(m->data);
+    m->data = copy;
+    m->data_size = size;
+    m->remove = operation == DANOS_TX_OP_DELETE;
+    pthread_mutex_unlock(&rec->lock);
+    return DANOS_OK;
+}
+
+danos_status_t danos_tx_read_staged(danos_tx_t *tx, danos_obj_type_t type,
+                                    danos_obj_id_t id, void *out, size_t *size,
+                                    bool *handled)
+{
+    if (!handled) return DANOS_ERR_INVALID_ARG;
+    *handled = false;
+    if (!tx) return DANOS_OK;
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) return DANOS_ERR_TX_INVALID;
+    pthread_mutex_lock(&rec->lock);
+    if (!__atomic_load_n(&rec->in_use, __ATOMIC_SEQ_CST) || rec->pub.state > DANOS_TX_VALIDATE) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_TX_INVALID;
+    }
+    ssize_t index = staged_index(rec, type, id);
+    if (index < 0) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_OK;
+    }
+    danos_object_mutation_t *m = &rec->staged[index];
+    *handled = true;
+    if (m->remove) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_NOT_FOUND;
+    }
+    if (!m->data) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_INTERNAL;
+    }
+    if (!out || !size || *size < m->data_size) {
+        if (size) *size = m->data_size;
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_INVALID_ARG;
+    }
+    memcpy(out, m->data, m->data_size);
+    *size = m->data_size;
+    pthread_mutex_unlock(&rec->lock);
+    return DANOS_OK;
 }
 
 /*
@@ -157,10 +336,23 @@ danos_tx_record_t *danos_tx_validate_ptr(danos_tx_t *tx)
  */
 static void tx_retire(danos_tx_record_t *rec, danos_tx_t *tx)
 {
-    if (!rec || !rec->in_use) return;
+    if (!rec) return;
+    pthread_mutex_lock(&rec->lock);
+    if (!__atomic_load_n(&rec->in_use, __ATOMIC_SEQ_CST)) {
+        pthread_mutex_unlock(&rec->lock);
+        return;
+    }
+    for (size_t i = 0; i < rec->staged_count; i++) {
+        free(rec->staged[i].data);
+        free(rec->staged[i].base_data);
+    }
+    free(rec->staged);
+    rec->staged = NULL;
+    rec->staged_count = rec->staged_capacity = 0;
     if (tx) tx->_internal = NULL;
     rec->pub._internal = NULL;
-    rec->in_use = false;
+    __atomic_store_n(&rec->in_use, false, __ATOMIC_SEQ_CST);
+    pthread_mutex_unlock(&rec->lock);
     __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
     danos_tx_record_free(rec);
 }
@@ -196,6 +388,7 @@ danos_status_t danos_tx_begin(danos_tx_t *tx,
     danos_tx_record_t *rec = danos_tx_record_alloc();
     if (!rec) return DANOS_ERR_NO_MEMORY;
 
+    pthread_mutex_lock(&rec->lock);
     rec->pub.id = __atomic_fetch_add(&g_tx_mgr->next_tx_id, 1, __ATOMIC_SEQ_CST);
     rec->pub.state = DANOS_TX_OPEN;
     rec->pub.start_ns = now_ns();
@@ -216,6 +409,8 @@ danos_status_t danos_tx_begin(danos_tx_t *tx,
 
     /* Copy public view to caller */
     *tx = rec->pub;
+    __atomic_store_n(&rec->in_use, true, __ATOMIC_SEQ_CST);
+    pthread_mutex_unlock(&rec->lock);
 
     __atomic_add_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
     return DANOS_OK;
@@ -270,12 +465,34 @@ danos_status_t danos_tx_commit(danos_tx_t *tx)
         rec->pub.state = DANOS_TX_ABORT;
         tx->state = DANOS_TX_ABORT;
         pthread_mutex_unlock(&rec->lock);
+        tx_retire(rec, tx);
         return DANOS_ERR_TX_TIMEOUT;
     }
 
     rec->pub.state = DANOS_TX_COMMIT;
     tx->state = DANOS_TX_COMMIT;
     pthread_mutex_unlock(&rec->lock);
+
+    /* Compare captured base snapshots and publish all staged changes under
+     * one object-store write lock. */
+    danos_status_t apply_status = DANOS_OK;
+    if (apply_status == DANOS_OK && rec->staged_count) {
+        int applied = danos_object_apply_transaction_batch(g_default_store,
+                                               rec->staged, rec->staged_count,
+                                               rec->pub.id);
+        if (applied < 0)
+            apply_status = (danos_status_t)(-applied);
+        else if ((size_t)applied != rec->staged_count)
+            apply_status = DANOS_ERR_INTERNAL;
+    }
+    if (apply_status != DANOS_OK) {
+        pthread_mutex_lock(&rec->lock);
+        rec->pub.state = DANOS_TX_VALIDATE;
+        tx->state = DANOS_TX_VALIDATE;
+        pthread_mutex_unlock(&rec->lock);
+        pthread_mutex_unlock(&g_tx_mgr->write_lock);
+        return apply_status;
+    }
 
     /* Release write lock after commit */
     pthread_mutex_unlock(&g_tx_mgr->write_lock);
@@ -317,11 +534,18 @@ danos_status_t danos_tx_verify(danos_tx_t *tx)
 danos_status_t danos_tx_abort(danos_tx_t *tx)
 {
     if (!tx) return DANOS_ERR_INVALID_ARG;
-    /* can't abort once the write has been applied */
-    if (tx->state >= DANOS_TX_COMMIT) return DANOS_ERR_TX_INVALID;
-
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) return DANOS_ERR_TX_INVALID;
+    pthread_mutex_lock(&rec->lock);
+    if (!__atomic_load_n(&rec->in_use, __ATOMIC_SEQ_CST) ||
+        rec->pub.state >= DANOS_TX_COMMIT) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_TX_INVALID;
+    }
+    rec->pub.state = DANOS_TX_ABORT;
     tx->state = DANOS_TX_ABORT;
-    tx_retire(danos_tx_validate_ptr(tx), tx);
+    pthread_mutex_unlock(&rec->lock);
+    tx_retire(rec, tx);
     return DANOS_OK;
 }
 

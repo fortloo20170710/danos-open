@@ -56,6 +56,34 @@ int test_enable_and_log(void)
     assert(danos_tx_validate(&tx) == DANOS_OK);
     assert(danos_tx_commit(&tx) == DANOS_OK);
 
+    /* An aborted candidate must neither become visible nor enter the WAL. */
+    danos_iface_t aborted = {0};
+    aborted.ifindex = 9;
+    strcpy(aborted.name, "abort0");
+    aborted.mtu = 1500;
+    assert(danos_tx_begin(&tx, "persist-abort", NULL) == DANOS_OK);
+    assert(danos_iface_create(&tx, &aborted) == DANOS_OK);
+    assert(danos_tx_abort(&tx) == DANOS_OK);
+
+    /* Simulate a crash after a transactional WAL data record but before its
+     * commit marker: recovery must not publish that incomplete transaction. */
+    wal_ctx_t incomplete_wal;
+    assert(danos_wal_init(&incomplete_wal, WAL_PATH) == 0);
+    danos_iface_t incomplete = aborted;
+    incomplete.ifindex = 10;
+    strcpy(incomplete.name, "partial0");
+    wal_record_t incomplete_rec = {0};
+    incomplete_rec.magic = WAL_MAGIC;
+    incomplete_rec.tx_id = UINT64_C(0xfedcba9876543210);
+    incomplete_rec.op_type = WAL_OP_CREATE;
+    incomplete_rec.obj_type = WAL_OBJ_IFACE;
+    incomplete_rec.obj_id = incomplete.ifindex;
+    incomplete_rec.data_len = sizeof(incomplete);
+    incomplete_rec.data = (const uint8_t *)&incomplete;
+    assert(danos_wal_append(&incomplete_wal, &incomplete_rec) == 0);
+    assert(danos_wal_sync(&incomplete_wal) == 0);
+    danos_wal_close(&incomplete_wal);
+
     /* update it */
     assert(danos_tx_begin(&tx, "persist-test", NULL) == DANOS_OK);
     ifc.mtu = 1500;
@@ -112,8 +140,12 @@ int test_recover_after_restart(void)
     assert(danos_iface_read(&tx, 7, &out) == DANOS_OK);
     assert(strcmp(out.name, "wan0") == 0);
     assert(out.mtu == 1500);
+    assert(danos_iface_read(&tx, 9, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_iface_read(&tx, 10, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_tx_abort(&tx) == DANOS_OK);
 
     /* tmp0 (deleted) must not come back */
+    assert(danos_tx_begin(&tx, "verify-delete", NULL) == DANOS_OK);
     assert(danos_iface_read(&tx, 8, &out) == DANOS_ERR_NOT_FOUND);
     assert(danos_tx_abort(&tx) == DANOS_OK);
 
