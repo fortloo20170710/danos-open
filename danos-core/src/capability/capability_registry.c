@@ -3,7 +3,7 @@
  * Aggregates capabilities from all registered backends.
  */
 
-#include <danos/dpa.h>
+#include <danos/core/capability_registry.h>
 #include <string.h>
 
 /* Uses danos-dpa's backend registry; this file provides core-level
@@ -12,7 +12,9 @@
 /* Check if any backend supports a given object type */
 bool danos_core_capability_supported(danos_obj_type_t type)
 {
-    for (uint32_t i = 0; ; i++) {
+    /* Bounded: this relied on danos_backend_get_info() eventually failing.
+     * A registry that kept answering would spin here indefinitely. */
+    for (uint32_t i = 0; i < DANOS_MAX_BACKENDS; i++) {
         danos_backend_info_t be;
         if (danos_backend_get_info(i, &be) != DANOS_OK) break;
         for (uint32_t c = 0; c < be.cap_count; c++) {

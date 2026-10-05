@@ -11,6 +11,7 @@
  */
 
 #include <danos/dpa.h>
+#include <danos/core/capability_registry.h>
 #include <assert.h>
 #include <string.h>
 #include <time.h>
@@ -111,11 +112,35 @@ int conf_iface_crud(void)
     strncpy(iface.name, "eth0", sizeof(iface.name) - 1);
     iface.admin_up = true;
 
-    /* Create may succeed or return NOT_SUPPORTED (no backend); both OK for skeleton */
-    danos_status_t st = danos_iface_create(&tx, &iface);
-    (void)st;
+    /* This used to discard the status and return 0 unconditionally, so the
+     * case passed whether or not the CRUD worked - which is how a v0.1
+     * "11/11" could be vacuous. Assert the contract instead. */
+    if (danos_iface_create(&tx, &iface) != DANOS_OK) return 10;
+    if (danos_tx_prepare(&tx) != DANOS_OK) return 11;
+    if (danos_tx_validate(&tx) != DANOS_OK) return 12;
+    if (danos_tx_commit(&tx) != DANOS_OK) return 13;
 
-    danos_tx_commit(&tx);
+    /* Read it back through the public API: create must actually persist. */
+    danos_iface_t out;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 14;
+    if (danos_iface_read(&tx, 1, &out) != DANOS_OK) return 15;
+    if (out.mtu != 1500) return 16;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 17;
+
+    /* Creating the same id again must be refused, not silently accepted. */
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 18;
+    if (danos_iface_create(&tx, &iface) != DANOS_ERR_EXISTS) return 19;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 20;
+
+    /* And it must be removable. */
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 21;
+    if (danos_iface_delete(&tx, 1) != DANOS_OK) return 22;
+    if (danos_tx_prepare(&tx) != DANOS_OK) return 23;
+    if (danos_tx_validate(&tx) != DANOS_OK) return 24;
+    if (danos_tx_commit(&tx) != DANOS_OK) return 25;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 26;
+    if (danos_iface_read(&tx, 1, &out) != DANOS_ERR_NOT_FOUND) return 27;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 28;
     return 0;
 }
 
@@ -223,10 +248,28 @@ int conf_qos_crud(void)
 /* ----------------------------------------------------------------------- */
 int conf_capability_query(void)
 {
+    /* This used to discard the status and return 0 unconditionally. With the
+     * VPP backend installed the registry now answers, so assert a definite
+     * result rather than accepting anything. */
     danos_capability_t cap;
-    /* Query may return OK or NOT_SUPPORTED depending on backend registration */
     danos_status_t st = danos_capability_query(NULL, DANOS_OBJ_ROUTE, &cap);
-    (void)st;
+    if (st == DANOS_OK) {
+        /* A backend claims ROUTE, so the object type must be set. */
+        if (cap.type != DANOS_OBJ_ROUTE) return 30;
+        if (!cap.supported) return 31;
+        if (cap.max_count == 0) return 32;
+    } else if (st != DANOS_ERR_NOT_SUPPORTED) {
+        /* Any other status is a real failure, not an acceptable outcome. */
+        return 33;
+    }
+
+    /* The answer must be stable across calls: a registry that answers
+     * differently each time is not usable for backend selection. */
+    danos_capability_t cap2;
+    if (danos_capability_query(NULL, DANOS_OBJ_ROUTE, &cap2) != st) return 34;
+    if (st == DANOS_OK && (cap2.supported != cap.supported ||
+                           cap2.max_count != cap.max_count))
+        return 35;
     return 0;
 }
 

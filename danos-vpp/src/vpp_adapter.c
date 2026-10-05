@@ -12,6 +12,7 @@
 
 #include <danos/core/backend_ops.h>
 #include <danos/dpa.h>
+#include "capability/vpp_capability.h"
 #include "api/vpp_api.h"
 #include "api/vpp_msgs.h"
 #include <stdio.h>
@@ -177,5 +178,9 @@ int danos_vpp_adapter_install(bool real, const char *sock_path)
         if (danos_vpp_api_connect() != 0) return -1;
     }
     danos_backend_ops_set(&g_vpp_ops);
+    /* Advertise what this backend can program. Without this the capability
+     * registry stays empty and anything doing backend selection has nothing
+     * to select on. */
+    (void)danos_vpp_capability_register();
     return 0;
 }

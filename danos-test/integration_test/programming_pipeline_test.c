@@ -14,6 +14,8 @@
 #include <danos/core/reconciler.h>
 #include "../danos-netlink/danos_netlink.h"
 #include <danos/dpa.h>
+#include <danos/core/capability_registry.h>
+#include "../../danos-vpp/src/vpp_adapter.h"
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -34,6 +36,44 @@ static void make_route(unsigned i, danos_route_t *r)
 }
 
 static int test_vpp_adapter_pipeline(void);
+
+/* Installing the backend must make it visible to capability selection.
+ *
+ * The capability table and the register call were both dead code: nothing
+ * declared the registry's entry points and nothing invoked the VPP
+ * registration, so the registry stayed empty and backend selection had
+ * nothing to select on. Asserting the registration happened, and that the
+ * table still tells the truth - route and interface yes, EVPN no - pins both
+ * halves: a wired registry that lies is worse than an empty one.
+ */
+static int test_capability_registry_is_wired(void)
+{
+    assert(danos_vpp_adapter_install(false, NULL) == 0);
+
+    /* Programmable types must be advertised. */
+    assert(danos_core_capability_supported(DANOS_OBJ_IFACE));
+    assert(danos_core_capability_supported(DANOS_OBJ_VRF));
+    assert(danos_core_capability_supported(DANOS_OBJ_ROUTE));
+
+    /* Types the adapter cannot program must not be. The VPP adapter has ops
+     * for exactly three types, and type_skipped() agrees; if the table ever
+     * drifts from that, one of these two assertions is what catches it. */
+    assert(!danos_core_capability_supported(DANOS_OBJ_EVPN));
+    assert(!danos_core_capability_supported(DANOS_OBJ_MPLS_LSP));
+    assert(!danos_core_capability_supported(DANOS_OBJ_ACL));
+    assert(!danos_core_capability_supported(DANOS_OBJ_TUNNEL));
+    assert(!danos_core_capability_supported(DANOS_OBJ_MULTICAST));
+
+    /* And the query must carry a usable capacity for a supported type. */
+    assert(danos_core_capability_check(NULL, DANOS_OBJ_ROUTE, 1) == DANOS_OK);
+    assert(danos_core_capability_check(NULL, DANOS_OBJ_ROUTE, 1000000000)
+           == DANOS_ERR_NO_CAPACITY);
+    assert(danos_core_capability_check(NULL, DANOS_OBJ_EVPN, 1)
+           == DANOS_ERR_NOT_SUPPORTED);
+
+    printf("[PASS] test_capability_registry_is_wired\n");
+    return 0;
+}
 
 /* The reconciler must withdraw deleted config on its own.
  *
@@ -369,6 +409,9 @@ int main(void)
     assert(test_reconciler_withdraws_deletes() == 0);
     assert(test_retry_backoff_and_limit() == 0);
     assert(test_vpp_adapter_pipeline() == 0);
+    /* Last: installs the VPP adapter, replacing the netlink mock backend the
+     * earlier cases assert against. */
+    assert(test_capability_registry_is_wired() == 0);
     danos_netlink_shutdown();
 
     printf("=== programming_pipeline_test: ALL PASSED ===\n");
