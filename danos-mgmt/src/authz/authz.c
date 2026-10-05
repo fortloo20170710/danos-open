@@ -145,9 +145,8 @@ void danos_authz_shutdown(void)
 
 danos_sec_role_t danos_authz_default_role(void)
 {
-    /* No identity source exists yet, so the role cannot be derived from a
-     * credential. DANOS_AUTHZ_DEFAULT_ROLE lets an operator lock the daemon
-     * down to a lesser role before TLS or tokens land. */
+    /* Default for laboratory/bearer/local paths only. Certificate identities
+     * have explicit roles and never fall back to this setting. */
     const char *env = getenv("DANOS_AUTHZ_DEFAULT_ROLE");
     if (env && *env) {
         danos_sec_role_t r;

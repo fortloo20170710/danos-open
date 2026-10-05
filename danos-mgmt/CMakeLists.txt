@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+find_package(OpenSSL 3.0 REQUIRED)
 # danos-mgmt: Management plane (E1-E4)
 add_library(danos-mgmt STATIC
   src/cli/cli.c
@@ -9,11 +10,12 @@ add_library(danos-mgmt STATIC
   src/gnmi/model_paths.c
   src/gnmi/model_routes.c
   src/gnmi/gnmi_grpc.c
+  src/gnmi/gnmi_tls.c
   src/netconf/netconf.c
   src/authz/authz.c
 )
 target_include_directories(danos-mgmt PUBLIC src)
-target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core danos-security)
+target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core danos-security OpenSSL::SSL OpenSSL::Crypto)
 
 if(DANOS_BUILD_TESTS)
   add_subdirectory(tests)

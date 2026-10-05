@@ -2,8 +2,7 @@
  * DANOS-Open Management: gNMI gRPC Server (v0.3)
  *
  * A real gNMI server: protobuf-encoded gNMI messages over gRPC framing
- * on HTTP/2 (h2c — cleartext, no TLS; a TLS wrapper can be added in
- * front without changing this code).
+ * on HTTP/2 (mTLS with h2 ALPN, or explicitly enabled laboratory h2c).
  *
  * Service: gnmi.gNMI (per openconfig/gnmi), methods:
  *   /gnmi.gNMI/Capabilities
@@ -22,6 +21,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdatomic.h>
+#include "gnmi_tls.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,9 +33,11 @@ typedef struct {
     _Atomic bool running;
     _Atomic uint64_t rpcs_served;
     danos_state_store_t *store;   /* borrowed; NULL = use g_default_store */
+    danos_gnmi_tls_t *tls;        /* borrowed; free only after stop */
 } danos_gnmi_grpc_ctx_t;
 
 void danos_gnmi_grpc_init(danos_gnmi_grpc_ctx_t *ctx, uint16_t port);
+void danos_gnmi_grpc_set_tls(danos_gnmi_grpc_ctx_t *ctx, danos_gnmi_tls_t *tls);
 
 /* Bind the server to a state store (desired state is read by Get) */
 void danos_gnmi_grpc_set_store(danos_gnmi_grpc_ctx_t *ctx,

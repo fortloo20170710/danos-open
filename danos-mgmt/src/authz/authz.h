@@ -6,14 +6,11 @@
  * and unit-tested but never linked into the daemon, so the repository
  * shipped a security module that provided no security.
  *
- * Identity is deliberately pluggable and currently unresolved: there is no
- * TLS, no token and no peer-credential check on any listener, so
- * authz_role_for_peer() cannot derive a role from a credential and returns
- * the configured default. Enforcement and audit are wired now so that adding
- * an identity source is a change to one function rather than to every
- * handler. Until such a source exists, the default role must be ADMIN for
- * behaviour to be unchanged - this is *not* authorization, and the audit log
- * is the only externally visible effect.
+ * gNMI mTLS authenticates the session and maps its certificate fingerprint
+ * to an explicit RBAC role (gnmi_tls). Legacy laboratory/local callers may
+ * use a bearer token or Unix peer credentials through this module.
+ * The configured default role is not an identity source and does not
+ * override an authenticated certificate's role.
  *
  * What this does provide today:
  *   - every mutating RPC is authorized through one check, so the set of

@@ -104,7 +104,7 @@ Suites: trixie trixie-updates
 Components: main contrib non-free non-free-firmware
 EOF
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends build-essential cmake busybox-static zstd \
+apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev openssl python3 busybox-static zstd \
     linux-image-amd64 isolinux syslinux-common
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
 test -x /bin/busybox
@@ -342,6 +342,12 @@ fi
 # mgrd built in step 1 lives in the container; fetch fresh copy
 docker cp "$BUILD_CONTAINER:/tmp/b/danos-mgrd/danos-mgrd" "$WORK/initramfs/bin/mgrd"
 chmod +x "$WORK/initramfs/bin/mgrd"
+# mgrd's TLS dependency is present even in this laboratory h2c image.
+mkdir -p "$WORK/initramfs/lib/x86_64-linux-gnu"
+for lib in libssl.so.3 libcrypto.so.3; do
+  tls_lib_path=$(docker exec "$BUILD_CONTAINER" readlink -f "/lib/x86_64-linux-gnu/$lib")
+  docker cp "$BUILD_CONTAINER:$tls_lib_path" "$WORK/initramfs/lib/x86_64-linux-gnu/$lib"
+done
 if test -x "$WORK/../build/danos-test/fib_live_bridge"; then
   cp "$WORK/../build/danos-test/fib_live_bridge" "$WORK/initramfs/bin/fib_live_bridge"
   chmod +x "$WORK/initramfs/bin/fib_live_bridge"

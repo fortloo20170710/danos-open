@@ -19,7 +19,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake socat
+          sudo apt-get install -y build-essential cmake socat libssl-dev openssl python3
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -48,7 +48,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Configure (ASAN+UBSAN)
         run: cmake -B build-asan -DDANOS_SANITIZE=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -71,7 +71,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Configure (TSAN)
         run: cmake -B build-tsan -DDANOS_TSAN=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -87,7 +87,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y clang cmake build-essential
+        run: sudo apt-get update && sudo apt-get install -y clang cmake build-essential libssl-dev openssl python3
       - name: Configure
         run: cmake -B build-fuzz -DCMAKE_C_COMPILER=clang -DDANOS_LIBFUZZER=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
@@ -103,7 +103,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -119,7 +119,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -128,12 +128,12 @@ jobs:
         run: docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:${{ github.sha }} .
       - name: Smoke test image
         run: |
-          docker run -d --name mgrd-smoke danos-mgrd:${{ github.sha }} \
+          docker run -d --name mgrd-smoke -e DANOS_ALLOW_INSECURE=1 \
+            -p 127.0.0.1:59201:59201 danos-mgrd:${{ github.sha }} \
             --port 59200 --metrics-port 59201 --wal /tmp/smoke.wal --seed
           sleep 2
-          curl -sf http://127.0.0.1:59201/metrics | grep -q danos_ \
-            && echo "metrics OK"
-          docker logs mgrd-smoke | grep -q "gNMI" && echo "gNMI OK"
+          curl -sf http://127.0.0.1:59201/metrics | grep -q danos_
+          docker logs mgrd-smoke | grep -q "gNMI"
           docker rm -f mgrd-smoke
 
   kernel-programming:
@@ -144,7 +144,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake iproute2
+          sudo apt-get install -y build-essential cmake iproute2 libssl-dev openssl python3
       - name: Setup Go (gnmic)
         uses: actions/setup-go@v5
         with:
@@ -159,7 +159,7 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j$(nproc) --target danos-mgrd --target programming_pipeline_test
-      - name: K4/K5 verification (root runner: real netns + ping)
+      - name: "K4/K5 verification (root runner: real netns + ping)"
         run: sudo -E env PATH="$PATH" bash danos-test/integration/run_v0.10_kernel.sh
 
   vpp-interop:
@@ -171,7 +171,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake socat
+          sudo apt-get install -y build-essential cmake socat libssl-dev openssl python3
       - name: Install VPP (FDio)
         run: |
           sudo apt-get install -y ca-certificates curl gnupg

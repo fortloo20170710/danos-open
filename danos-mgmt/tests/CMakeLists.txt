@@ -39,3 +39,15 @@ add_executable(authz_test test_authz.c)
 target_link_libraries(authz_test PRIVATE danos-mgmt danos-security pthread)
 target_compile_options(authz_test PRIVATE -UNDEBUG)
 add_test(NAME authz COMMAND authz_test)
+
+if(DANOS_BUILD_VPP)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  find_program(DANOS_OPENSSL_EXECUTABLE openssl)
+  if(NOT DANOS_OPENSSL_EXECUTABLE)
+    message(FATAL_ERROR "openssl executable is required for mTLS acceptance")
+  endif()
+  add_test(NAME gnmi_mtls COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_mtls.py
+    $<TARGET_FILE:danos-mgrd> ${DANOS_OPENSSL_EXECUTABLE})
+  set_tests_properties(gnmi_mtls PROPERTIES TIMEOUT 120)
+endif()

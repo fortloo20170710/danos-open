@@ -88,7 +88,7 @@ nsenter -t $NSPID -n ip link set lo up || echo "NSSETUP-FAIL: lo up"
 echo "DEBUG state:"; ip -br link; ip -br addr; nsenter -t $NSPID -n ip -br link
 
 # ---- K4: mgrd (real netlink) + gnmic set route -----------------------
-MGRD_NETLINK_REAL=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" \
+DANOS_ALLOW_INSECURE=1 MGRD_NETLINK_REAL=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" \
     --port 59450 --metrics-port 59451 --wal /tmp/k4.wal \
     --seed > /tmp/k4-mgrd.log 2>&1 &
 MGRD=$!

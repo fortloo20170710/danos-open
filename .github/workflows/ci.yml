@@ -15,7 +15,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake python3
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
@@ -39,11 +39,17 @@ jobs:
       - name: Install cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu cmake
+          sudo dpkg --add-architecture arm64
+          sudo sed -i '/^Architectures:/d; /^Types: deb/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+          echo 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe' | sudo tee /etc/apt/sources.list.d/danos-arm64.list
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu cmake libssl-dev:arm64 openssl python3
       - name: Configure (cross)
         run: |
           cmake -B build-arm \
             -DCMAKE_TOOLCHAIN_FILE=cmake/aarch64.cmake \
+            -DOPENSSL_SSL_LIBRARY=/usr/lib/aarch64-linux-gnu/libssl.so \
+            -DOPENSSL_CRYPTO_LIBRARY=/usr/lib/aarch64-linux-gnu/libcrypto.so \
             -DCMAKE_BUILD_TYPE=Release \
             -DDANOS_BUILD_TESTS=OFF
       - name: Build (cross)
@@ -58,7 +64,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Build
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -84,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Build performance target
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release

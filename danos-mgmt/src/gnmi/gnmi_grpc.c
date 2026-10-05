@@ -1,7 +1,7 @@
 /*
  * DANOS-Open Management: gNMI gRPC Server implementation (v0.3)
  *
- * HTTP/2 (h2c) server with HPACK, gRPC message framing
+ * HTTP/2 (mTLS or laboratory h2c) server with HPACK, gRPC message framing
  * ([1B compressed][4B BE length][protobuf]), and gNMI method dispatch.
  */
 
@@ -26,6 +26,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <poll.h>
 
 #define H2_PREFACE "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 #define H2_PREFACE_LEN 24
@@ -77,6 +78,7 @@ typedef struct {
 
 typedef struct {
     int fd;
+    SSL *ssl;
     hpack_dyn_table_t dyn_dec;   /* decoder-side dynamic table */
     /* HTTP/2 flow control (our send side) */
     int64_t conn_window;         /* stream-0 budget */
@@ -93,13 +95,13 @@ typedef struct {
  * Frame I/O
  * ========================================================================= */
 
-static int read_full(int fd, void *buf, size_t n)
+static int read_full(h2_conn_t *c, void *buf, size_t n)
 {
     uint8_t *p = buf;
     while (n) {
-        ssize_t k = recv(fd, p, n, 0);
+        ssize_t k = c->ssl ? SSL_read(c->ssl, p, (int)n) : recv(c->fd, p, n, 0);
         if (k <= 0) {
-            if (k < 0 && errno == EINTR) continue;
+            if (!c->ssl && k < 0 && errno == EINTR) continue;
             return -1;
         }
         p += k; n -= (size_t)k;
@@ -107,13 +109,13 @@ static int read_full(int fd, void *buf, size_t n)
     return 0;
 }
 
-static int write_full(int fd, const void *buf, size_t n)
+static int write_full(h2_conn_t *c, const void *buf, size_t n)
 {
     const uint8_t *p = buf;
     while (n) {
-        ssize_t k = send(fd, p, n, MSG_NOSIGNAL);
+        ssize_t k = c->ssl ? SSL_write(c->ssl, p, (int)n) : send(c->fd, p, n, MSG_NOSIGNAL);
         if (k <= 0) {
-            if (k < 0 && errno == EINTR) continue;
+            if (!c->ssl && k < 0 && errno == EINTR) continue;
             return -1;
         }
         p += k; n -= (size_t)k;
@@ -121,7 +123,7 @@ static int write_full(int fd, const void *buf, size_t n)
     return 0;
 }
 
-static int write_frame(int fd, uint8_t type, uint8_t flags, uint32_t stream,
+static int write_frame(h2_conn_t *c, uint8_t type, uint8_t flags, uint32_t stream,
                        const void *payload, uint32_t len)
 {
     uint8_t hdr[9];
@@ -134,8 +136,8 @@ static int write_frame(int fd, uint8_t type, uint8_t flags, uint32_t stream,
     hdr[6] = (uint8_t)(stream >> 16);
     hdr[7] = (uint8_t)(stream >> 8);
     hdr[8] = (uint8_t)stream;
-    if (write_full(fd, hdr, 9) < 0) return -1;
-    if (len && write_full(fd, payload, len) < 0) return -1;
+    if (write_full(c, hdr, 9) < 0) return -1;
+    if (len && write_full(c, payload, len) < 0) return -1;
     return 0;
 }
 
@@ -241,14 +243,14 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
         if (pending_pop(c, type, flags, stream, payload, len)) return 0;
 
         uint8_t fh[9];
-        if (read_full(c->fd, fh, 9) < 0) return -1;
+        if (read_full(c, fh, 9) < 0) return -1;
         uint32_t flen = ((uint32_t)fh[0] << 16) | ((uint32_t)fh[1] << 8) | fh[2];
         uint8_t ftype = fh[3], fflags = fh[4];
         uint32_t fstream = ((uint32_t)fh[5] << 24) | ((uint32_t)fh[6] << 16) |
                            ((uint32_t)fh[7] << 8) | fh[8];
         if (flen > H2_MAX_FRAME_LEN) return -1;
         uint8_t fbuf[H2_MAX_FRAME_LEN];
-        if (flen && read_full(c->fd, fbuf, flen) < 0) return -1;
+        if (flen && read_full(c, fbuf, flen) < 0) return -1;
 
         switch (ftype) {
         case H2_F_SETTINGS: {
@@ -275,13 +277,13 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
                         }
                     }
                 }
-                write_frame(c->fd, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
+                write_frame(c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
             }
             continue;   /* housekeeping: caller never sees SETTINGS */
         }
         case H2_F_PING:
             if (!(fflags & H2_FLAG_ACK))
-                write_frame(c->fd, H2_F_PING, H2_FLAG_ACK, 0, fbuf, flen);
+                write_frame(c, H2_F_PING, H2_FLAG_ACK, 0, fbuf, flen);
             continue;
         case H2_F_WINDOW: {
             if (flen < 4) continue;
@@ -319,8 +321,8 @@ static void send_window_update(h2_conn_t *c, uint32_t stream, uint32_t n)
     uint8_t p[4];
     p[0] = (uint8_t)(inc >> 24); p[1] = (uint8_t)(inc >> 16);
     p[2] = (uint8_t)(inc >> 8);  p[3] = (uint8_t)inc;
-    (void)write_frame(c->fd, H2_F_WINDOW, 0, 0, p, 4);
-    if (stream) (void)write_frame(c->fd, H2_F_WINDOW, 0, stream, p, 4);
+    (void)write_frame(c, H2_F_WINDOW, 0, 0, p, 4);
+    if (stream) (void)write_frame(c, H2_F_WINDOW, 0, stream, p, 4);
 }
 
 /* Send `len` bytes as DATA frames respecting peer flow-control windows.
@@ -351,7 +353,7 @@ static int send_data_windowed(h2_conn_t *c, uint32_t stream,
         }
 
         size_t chunk = (size_t)budget < len - sent ? (size_t)budget : len - sent;
-        if (write_frame(c->fd, H2_F_DATA, 0, stream,
+        if (write_frame(c, H2_F_DATA, 0, stream,
                         data + sent, (uint32_t)chunk) < 0) return -1;
         sent += chunk;
         s->window -= (int64_t)chunk;
@@ -367,7 +369,6 @@ static int send_data_windowed(h2_conn_t *c, uint32_t stream,
 static int send_grpc_response(h2_conn_t *c, uint32_t stream,
                               const uint8_t *msg, size_t len)
 {
-    int fd = c->fd;
     /* HEADERS: :status 200 + content-type application/grpc */
     uint8_t hbuf[128];
     size_t hlen = 0;
@@ -380,7 +381,7 @@ static int send_grpc_response(h2_conn_t *c, uint32_t stream,
     if (k < 0) return -1;
     hlen += (size_t)k;
 
-    if (write_frame(fd, H2_F_HEADERS, 0x4 /* END_HEADERS */, stream,
+    if (write_frame(c, H2_F_HEADERS, 0x4 /* END_HEADERS */, stream,
                     hbuf, (uint32_t)hlen) < 0)
         return -1;
 
@@ -391,10 +392,10 @@ static int send_grpc_response(h2_conn_t *c, uint32_t stream,
     gbuf[2] = (uint8_t)(len >> 16);
     gbuf[3] = (uint8_t)(len >> 8);
     gbuf[4] = (uint8_t)len;
-    if (write_frame(fd, H2_F_DATA, 0, stream, gbuf, 5) < 0) return -1;
+    if (write_frame(c, H2_F_DATA, 0, stream, gbuf, 5) < 0) return -1;
     if (send_data_windowed(c, stream, msg, len) < 0) return -1;
     if (len == 0) {
-        if (write_frame(fd, H2_F_DATA, H2_FLAG_END_STREAM, stream, NULL, 0) < 0)
+        if (write_frame(c, H2_F_DATA, H2_FLAG_END_STREAM, stream, NULL, 0) < 0)
             return -1;
     }
 
@@ -404,7 +405,7 @@ static int send_grpc_response(h2_conn_t *c, uint32_t stream,
     k = hpack_encode_literal(tbuf, sizeof(tbuf), "grpc-status", "0");
     if (k < 0) return -1;
     tlen = (size_t)k;
-    return write_frame(fd, H2_F_HEADERS, H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
+    return write_frame(c, H2_F_HEADERS, H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                        stream, tbuf, (uint32_t)tlen);
 }
 
@@ -574,7 +575,6 @@ static bool find_iface_by_name(danos_state_store_t *ss, const char *name,
 /* Send response HEADERS for a streaming RPC (no END_STREAM) */
 static int send_stream_headers(h2_conn_t *c, uint32_t stream)
 {
-    int fd = c->fd;
     uint8_t hbuf[128];
     size_t hlen = 0;
     int k = hpack_encode_literal(hbuf + hlen, sizeof(hbuf) - hlen,
@@ -585,27 +585,25 @@ static int send_stream_headers(h2_conn_t *c, uint32_t stream)
                              "content-type", "application/grpc");
     if (k < 0) return -1;
     hlen += (size_t)k;
-    return write_frame(fd, H2_F_HEADERS, 0x4, stream, hbuf, (uint32_t)hlen);
+    return write_frame(c, H2_F_HEADERS, 0x4, stream, hbuf, (uint32_t)hlen);
 }
 
 /* Send one gRPC message on an open stream (DATA frames only) */
 static int send_stream_message(h2_conn_t *c, uint32_t stream,
                                const uint8_t *msg, size_t len)
 {
-    int fd = c->fd;
     uint8_t gbuf[5] = { 0, (uint8_t)(len >> 24), (uint8_t)(len >> 16),
                         (uint8_t)(len >> 8), (uint8_t)len };
-    if (write_frame(fd, H2_F_DATA, 0, stream, gbuf, 5) < 0) return -1;
+    if (write_frame(c, H2_F_DATA, 0, stream, gbuf, 5) < 0) return -1;
     return send_data_windowed(c, stream, msg, len);
 }
 
 static int send_stream_trailers(h2_conn_t *c, uint32_t stream)
 {
-    int fd = c->fd;
     uint8_t tbuf[64];
     int k = hpack_encode_literal(tbuf, sizeof(tbuf), "grpc-status", "0");
     if (k < 0) return -1;
-    return write_frame(fd, H2_F_HEADERS,
+    return write_frame(c, H2_F_HEADERS,
                        H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                        stream, tbuf, (size_t)k);
 }
@@ -736,8 +734,16 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
     for (;;) {
         /* check peer liveness + consume control frames */
         uint8_t probe[16];
-        ssize_t n = recv(c->fd, probe, sizeof(probe),
-                         MSG_PEEK | MSG_DONTWAIT);
+        ssize_t n = -1;
+        if (c->ssl) {
+            struct pollfd pfd = { .fd = c->fd, .events = POLLIN };
+            if (SSL_pending(c->ssl) || poll(&pfd, 1, 0) > 0) {
+                n = SSL_peek(c->ssl, probe, sizeof(probe));
+                if (n <= 0) return 0;
+            }
+        } else {
+            n = recv(c->fd, probe, sizeof(probe), MSG_PEEK | MSG_DONTWAIT);
+        }
         if (n == 0) return 0;   /* client closed */
 
         /* Change detector.
@@ -1488,11 +1494,12 @@ static int read_grpc_message(h2_conn_t *c, uint32_t stream,
     }
 }
 
-int danos_gnmi_grpc_serve_fd(int fd)
+static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
 {
     h2_conn_t c;
     memset(&c, 0, sizeof(c));
     c.fd = fd;
+    c.ssl = ssl;
     c.conn_window = H2_DEFAULT_WINDOW;
     c.peer_initial_window = H2_DEFAULT_WINDOW;
     /* Stream windows are created on demand at peer_initial_window. */
@@ -1500,14 +1507,14 @@ int danos_gnmi_grpc_serve_fd(int fd)
 
     /* 1. client preface */
     char preface[H2_PREFACE_LEN];
-    if (read_full(fd, preface, H2_PREFACE_LEN) < 0 ||
+    if (read_full(&c, preface, H2_PREFACE_LEN) < 0 ||
         memcmp(preface, H2_PREFACE, H2_PREFACE_LEN) != 0) {
         hpack_dyn_free(&c.dyn_dec);
         return -1;
     }
 
     /* 2. our SETTINGS */
-    write_frame(fd, H2_F_SETTINGS, 0, 0, NULL, 0);
+    write_frame(&c, H2_F_SETTINGS, 0, 0, NULL, 0);
 
     /* subscribe to store mutations (once) for STREAM subscriptions */
     pthread_once(&g_event_subscribe_once, subscribe_store_events_once);
@@ -1578,9 +1585,9 @@ int danos_gnmi_grpc_serve_fd(int fd)
          * which is only acceptable because configure() then reports false
          * and the startup path is expected to refuse serving. */
         bool rpc_open = (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") == 0);
-        danos_sec_role_t role = DANOS_ROLE_ADMIN;
+        danos_sec_role_t role = ssl ? peer_role : danos_authz_default_role();
         bool authed = true;
-        if (!rpc_open && danos_authz_configured()) {
+        if (!ssl && !rpc_open && danos_authz_configured()) {
             long uid = -1;
             authed = (danos_authz_authenticate(h.authorization, uid, -1,
                                                &role) == DANOS_AUTH_OK);
@@ -1598,7 +1605,7 @@ int danos_gnmi_grpc_serve_fd(int fd)
                 k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
                                          "grpc-status", "16");
                 tlen += k;
-                write_frame(fd, H2_F_HEADERS,
+                write_frame(&c, H2_F_HEADERS,
                             H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                             fstream, tbuf, tlen);
                 danos_authz_audit_auth("gRPC", false, "unauthenticated RPC");
@@ -1611,7 +1618,8 @@ int danos_gnmi_grpc_serve_fd(int fd)
          * description and needs no check. */
         if (!rpc_open &&
             !danos_authz_check(role, DANOS_SEC_OBJ_ALL,
-                               (h.path && strcmp(h.path, "/gnmi.gNMI/Get") == 0)
+                               (h.path && (strcmp(h.path, "/gnmi.gNMI/Get") == 0 ||
+                                           strcmp(h.path, "/gnmi.gNMI/Subscribe") == 0))
                                    ? DANOS_SEC_OP_READ : DANOS_SEC_OP_UPDATE,
                                h.path ? h.path : "")) {
             /* grpc-status 7 PERMISSION_DENIED (DANOS_ERR_PERMISSION) */
@@ -1627,7 +1635,7 @@ int danos_gnmi_grpc_serve_fd(int fd)
             k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
                                      "grpc-status", "7");
             tlen += k;
-            write_frame(fd, H2_F_HEADERS,
+            write_frame(&c, H2_F_HEADERS,
                         H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                         fstream, tbuf, tlen);
             continue;
@@ -1668,7 +1676,7 @@ int danos_gnmi_grpc_serve_fd(int fd)
             k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
                                      "grpc-status", "12");
             tlen += k;
-            write_frame(fd, H2_F_HEADERS,
+            write_frame(&c, H2_F_HEADERS,
                         H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                         fstream, tbuf, tlen);
             continue;
@@ -1702,7 +1710,7 @@ int danos_gnmi_grpc_serve_fd(int fd)
             k = hpack_encode_literal(tbuf + tlen, sizeof(tbuf) - tlen,
                                      "grpc-message", gmsg);
             tlen += k;
-            write_frame(fd, H2_F_HEADERS,
+            write_frame(&c, H2_F_HEADERS,
                         H2_FLAG_END_STREAM | H2_FLAG_END_HEADERS,
                         fstream, tbuf, tlen);
         }
@@ -1718,6 +1726,11 @@ out:
     return rc;
 }
 
+int danos_gnmi_grpc_serve_fd(int fd)
+{
+    return serve_connection(fd, NULL, DANOS_ROLE_VIEWER);
+}
+
 /* =========================================================================
  * Server lifecycle
  * ========================================================================= */
@@ -1727,17 +1740,31 @@ static struct {
     pthread_t thread;
 } g_grpc;
 
-typedef struct {
+typedef struct grpc_conn_arg {
     int fd;
     danos_gnmi_grpc_ctx_t *ctx;
+    struct grpc_conn_arg *next;
 } grpc_conn_arg_t;
+
+static pthread_mutex_t g_conn_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_conn_done = PTHREAD_COND_INITIALIZER;
+static grpc_conn_arg_t *g_connections;
 
 static void *grpc_conn_thread(void *argp)
 {
     grpc_conn_arg_t *a = argp;
-    danos_gnmi_grpc_serve_fd(a->fd);
+    danos_sec_role_t role = DANOS_ROLE_VIEWER;
+    SSL *ssl = a->ctx->tls ? danos_gnmi_tls_accept(a->ctx->tls, a->fd, &role) : NULL;
+    if (!a->ctx->tls || ssl) serve_connection(a->fd, ssl, role);
+    SSL_free(ssl);
+    pthread_mutex_lock(&g_conn_lock);
+    grpc_conn_arg_t **p = &g_connections;
+    while (*p != a) p = &(*p)->next;
+    *p = a->next;
     close(a->fd);
     atomic_fetch_add_explicit(&a->ctx->rpcs_served, 1, memory_order_relaxed);
+    pthread_cond_broadcast(&g_conn_done);
+    pthread_mutex_unlock(&g_conn_lock);
     free(a);
     return NULL;
 }
@@ -1750,6 +1777,10 @@ static void *grpc_accept_loop(void *arg)
         if (fd < 0) break;
         int one = 1;
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+        /* Bound an unauthenticated peer's handshake and idle reads. */
+        struct timeval timeout = { .tv_sec = 10 };
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
         grpc_conn_arg_t *a = malloc(sizeof(*a));
         if (!a) {
@@ -1758,14 +1789,27 @@ static void *grpc_accept_loop(void *arg)
         }
         a->fd = fd;
         a->ctx = ctx;
+        pthread_mutex_lock(&g_conn_lock);
+        size_t connections = 0;
+        for (grpc_conn_arg_t *p = g_connections; p; p = p->next) connections++;
+        if (connections >= 128) {
+            pthread_mutex_unlock(&g_conn_lock);
+            close(fd);
+            free(a);
+            continue;
+        }
+        a->next = g_connections;
+        g_connections = a;
         pthread_t tid;
         pthread_attr_t attr;
         pthread_attr_init(&attr);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         if (pthread_create(&tid, &attr, grpc_conn_thread, a) != 0) {
+            g_connections = a->next;
             close(fd);
             free(a);
         }
+        pthread_mutex_unlock(&g_conn_lock);
         pthread_attr_destroy(&attr);
     }
     return NULL;
@@ -1783,6 +1827,11 @@ void danos_gnmi_grpc_set_store(danos_gnmi_grpc_ctx_t *ctx,
 {
     ctx->store = store;
     g_store = store;
+}
+
+void danos_gnmi_grpc_set_tls(danos_gnmi_grpc_ctx_t *ctx, danos_gnmi_tls_t *tls)
+{
+    ctx->tls = tls;
 }
 
 int danos_gnmi_grpc_start(danos_gnmi_grpc_ctx_t *ctx)
@@ -1821,5 +1870,10 @@ void danos_gnmi_grpc_stop(danos_gnmi_grpc_ctx_t *ctx)
     shutdown(ctx->listen_fd, SHUT_RDWR);
     close(ctx->listen_fd);
     pthread_join(g_grpc.thread, NULL);
+    pthread_mutex_lock(&g_conn_lock);
+    for (grpc_conn_arg_t *a = g_connections; a; a = a->next)
+        shutdown(a->fd, SHUT_RDWR);
+    while (g_connections) pthread_cond_wait(&g_conn_done, &g_conn_lock);
+    pthread_mutex_unlock(&g_conn_lock);
     ctx->listen_fd = -1;
 }

@@ -143,10 +143,7 @@ int main(int argc, char **argv)
         {"no-vpp",      no_argument,       0, 'n'},
         {0, 0, 0, 0},
     };
-    /* 0. authorization + audit. Must come up before any northbound
-     * interface accepts a request. There is still no authenticated identity
-     * (no TLS, token or peer-credential check on any listener), so the role
-     * is the configured default - see authz.h. */
+    /* 0. authorization + audit, before opening any listener. */
     const char *audit = getenv("DANOS_AUDIT_LOG");
     if (danos_authz_init(audit) == 0) {
         printf("mgrd: authorization active (default role %s, audit %s)\n",
@@ -162,22 +159,40 @@ int main(int argc, char **argv)
      * cannot be used is fatal - falling back to open access would be worse
      * than not starting.
      *
-     * DANOS_AUTHZ_REQUIRE_AUTH forces a credential source to be present.
-     * Without it the daemon still starts open, which is the pre-existing
-     * behaviour and is only appropriate for a lab. */
+     * Production gNMI requires mTLS regardless of this legacy switch.
+     * Bearer/peer credentials remain useful for laboratory/local callers. */
     const char *token_file = getenv("DANOS_AUTHZ_TOKEN_FILE");
     bool peercred = getenv("DANOS_AUTHZ_PEERCRED") != NULL;
     if (danos_authz_configure(token_file, peercred) != 0) {
         fprintf(stderr, "mgrd: credential configuration failed\n");
         return 1;
     }
-    if (getenv("DANOS_AUTHZ_REQUIRE_AUTH") && !danos_authz_configured()) {
+    const char *tls_cert = getenv("DANOS_TLS_CERT");
+    const char *tls_key = getenv("DANOS_TLS_KEY");
+    const char *tls_ca = getenv("DANOS_TLS_CLIENT_CA");
+    const char *tls_roles = getenv("DANOS_TLS_ROLE_FILE");
+    danos_gnmi_tls_t *tls = NULL;
+    if (tls_cert || tls_key || tls_ca || tls_roles) {
+        tls = danos_gnmi_tls_new(tls_cert, tls_key, tls_ca, tls_roles);
+        if (!tls) return 1; /* never fall back to plaintext */
+    } else {
+        const char *lab = getenv("DANOS_ALLOW_INSECURE");
+        if (!lab || strcmp(lab, "1")) {
+            fprintf(stderr, "mgrd: mTLS required; configure DANOS_TLS_CERT/KEY/"
+                    "CLIENT_CA/ROLE_FILE (laboratory only: DANOS_ALLOW_INSECURE=1)\n");
+            return 1;
+        }
+        fprintf(stderr, "mgrd: WARNING explicit laboratory plaintext mode\n");
+    }
+    if (getenv("DANOS_AUTHZ_REQUIRE_AUTH") && !tls && !danos_authz_configured()) {
         fprintf(stderr,
                 "mgrd: DANOS_AUTHZ_REQUIRE_AUTH set but no credential source "
                 "configured (DANOS_AUTHZ_TOKEN_FILE / DANOS_AUTHZ_PEERCRED)\n");
         return 1;
     }
-    if (danos_authz_configured()) {
+    if (tls) {
+        printf("mgrd: authentication required (mTLS certificate role map)\n");
+    } else if (danos_authz_configured()) {
         printf("mgrd: authentication required (%s%s)\n",
                token_file ? "bearer-token" : "",
                (token_file && peercred) ? "+" : (peercred ? "peer-cred" : ""));
@@ -198,6 +213,7 @@ int main(int argc, char **argv)
         default:
             fprintf(stderr, "usage: mgrd [--port N] [--metrics-port N] "
                     "[--wal PATH] [--seed] [--vpp-sock PATH] [--no-vpp]\n");
+            danos_gnmi_tls_free(tls);
             return 2;
         }
     }
@@ -235,11 +251,7 @@ int main(int argc, char **argv)
         danos_reconcile_config_t rcfg;
         memset(&rcfg, 0, sizeof(rcfg));
         rcfg.reconcile_period_ms = 1000;   /* fast pipeline convergence */
-        if (danos_reconciler_init(NULL, &rcfg) == 0) {
-            danos_reconciler_start();
-            printf("mgrd: programming pipeline active (netlink %s)\n",
-                   danos_netlink_is_real() ? "real kernel" : "mock");
-        }
+        (void)danos_reconciler_init(NULL, &rcfg);
     } else {
         printf("mgrd: netlink adapter unavailable — no programming\n");
     }
@@ -247,6 +259,7 @@ int main(int argc, char **argv)
     /* 2. persistence: boot with the last durable configuration */
     if (danos_persist_enable(wal) != 0) {
         fprintf(stderr, "mgrd: cannot open WAL %s\n", wal);
+        danos_gnmi_tls_free(tls);
         return 1;
     }
     int recovered = danos_persist_recover();
@@ -255,6 +268,16 @@ int main(int argc, char **argv)
         seed_initial_config();
         printf("mgrd: seeded bootstrap configuration\n");
     }
+    /* Publish/recover the store before creating any reader thread. */
+    if (g_reconciler) {
+        if (danos_reconciler_start() != 0) {
+            fprintf(stderr, "mgrd: reconciler thread failed\n");
+            danos_gnmi_tls_free(tls);
+            return 1;
+        }
+        printf("mgrd: programming pipeline active (netlink %s)\n",
+               danos_netlink_is_real() ? "real kernel" : "mock");
+    }
     danos_prom_set("danos_objects_interface",
                    (double)danos_object_count(g_default_store,
                                               DANOS_OBJ_IFACE));
@@ -262,15 +285,19 @@ int main(int argc, char **argv)
     /* 3. northbound */
     danos_gnmi_grpc_ctx_t gnmi;
     danos_gnmi_grpc_init(&gnmi, gnmi_port);
+    danos_gnmi_grpc_set_tls(&gnmi, tls);
     if (danos_gnmi_grpc_start(&gnmi) != 0) {
         fprintf(stderr, "mgrd: gNMI gRPC server failed on :%u\n", gnmi_port);
+        danos_gnmi_tls_free(tls);
         return 1;
     }
-    printf("mgrd: gNMI (h2c) on :%u\n", gnmi_port);
+    printf("mgrd: gNMI (%s) on :%u\n", tls ? "mTLS" : "laboratory h2c", gnmi_port);
 
     /* 4. observability server */
     if (danos_prom_start_server(metrics_port) != 0) {
         fprintf(stderr, "mgrd: metrics server failed on :%u\n", metrics_port);
+        danos_gnmi_grpc_stop(&gnmi);
+        danos_gnmi_tls_free(tls);
         return 1;
     }
     printf("mgrd: prometheus /metrics on :%u\n", metrics_port);
@@ -279,12 +306,14 @@ int main(int argc, char **argv)
     while (!g_stop) pause();
 
     printf("mgrd: shutting down (config persists in %s)\n", wal);
+    danos_gnmi_grpc_stop(&gnmi);
+    danos_gnmi_tls_free(tls);
     danos_reconciler_stop();
     danos_reconciler_fini();
     danos_netlink_shutdown();
-    danos_gnmi_grpc_stop(&gnmi);
     danos_prom_stop_server();
     danos_vpp_api_disconnect();
     danos_persist_disable();
+    danos_authz_shutdown();
     return 0;
 }

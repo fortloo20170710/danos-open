@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 static const danos_backend_ops_t *g_ops;
 static danos_object_store_t *g_programmed;
@@ -31,18 +32,16 @@ static struct {
     uint64_t attempted, ok, failed;
 } g_prog_stats;
 static pthread_mutex_t g_prog_lock = PTHREAD_MUTEX_INITIALIZER;
-static volatile int g_dirty;   /* set by store mutation events */
+static atomic_int g_dirty;   /* set by store mutation events */
 
 void danos_programming_mark_dirty(void)
 {
-    g_dirty = 1;
+    atomic_store_explicit(&g_dirty, 1, memory_order_release);
 }
 
 int danos_programming_dirty_take(void)
 {
-    int d = g_dirty;
-    g_dirty = 0;
-    return d;
+    return atomic_exchange_explicit(&g_dirty, 0, memory_order_acq_rel);
 }
 
 void danos_programming_get_stats(uint64_t *attempted, uint64_t *ok,

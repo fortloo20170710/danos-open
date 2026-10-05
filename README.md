@@ -27,6 +27,11 @@ and [project status](docs/project-status.md). The release-candidate gate is
 - Linux 6.6+ (LTS)
 - GCC 13+
 - CMake 3.16+
+- OpenSSL 3 development libraries (`libssl-dev`); Python 3 and `openssl` for tests
+
+Management deployment requires [gNMI mTLS configuration](docs/management-mtls.md).
+`DANOS_ALLOW_INSECURE=1` is reserved for isolated laboratory regression runs;
+the daemon otherwise refuses plaintext startup.
 
 ### Build
 

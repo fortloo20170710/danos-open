@@ -11,52 +11,37 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ## P0 — blocks any real deployment
 
-### [~] 1. TLS transport and authentication on the management plane
+### [x] 1. Native gNMI mTLS transport and identity authorization
 
-Done so far: the enforcement layer exists and is wired. `danos-security` is
-linked into `danos-mgrd`, `danos-mgmt/src/authz/` performs one RBAC check per
-northbound RPC (gRPC returns `grpc-status 7`, NETCONF returns
-`access-denied`), every authorization decision and transaction lifecycle event
-goes to an append-only audit log, and the daemon initialises both before
-accepting a request. `DANOS_AUTHZ_DEFAULT_ROLE` can lock the daemon to
-operator/viewer before TLS exists. Covered by `authz_test`.
+The daemon requires `DANOS_TLS_CERT`, `DANOS_TLS_KEY`,
+`DANOS_TLS_CLIENT_CA` and `DANOS_TLS_ROLE_FILE` for production startup.
+OpenSSL 3 checks the certificate chain, validity and client-auth purpose;
+TLS 1.2/1.3 and HTTP/2 ALPN `h2` are supported. Each leaf-certificate
+SHA256 fingerprint maps to an explicit admin/operator/viewer role. A valid
+CA signature alone does not grant access, unknown identities are refused,
+and bearer/default-role settings cannot elevate a certificate's role.
+Get/Subscribe are reads; viewer Set is rejected with gRPC status 7.
 
-Authentication now exists. `danos_authz_configure()` accepts a bearer-token
-file (RFC 6750 `Bearer`, constant-time compare, must be mode 0600 or a
-world-readable token is refused) and/or `SO_PEERCRED` on a unix socket
-(uid 0 → admin, any other uid → the configured default role). gNMI
-authenticates per RPC from the `authorization` header and answers
-`grpc-status 16` when it is missing or wrong; NETCONF captures the credential
-from `<hello>` and rejects the session. mgrd refuses to start if a configured
-token file cannot be used, and `DANOS_AUTHZ_REQUIRE_AUTH` makes a missing
-credential source fatal instead of defaulting to open.
+Partial/invalid configuration is fatal and cannot fall back to plaintext.
+Private keys must have private permissions and role files must not be
+group/other writable. Existing bearer and Unix peer-credential APIs remain
+for laboratory/local use; `DANOS_ALLOW_INSECURE=1` explicitly opts into
+laboratory h2c only when no TLS settings are present. LIVE/kernel/smoke
+scripts declare that choice rather than silently weakening production.
 
-What remains: there is **no transport security**, so a bearer token crosses
-the wire in cleartext and must not be used on an untrusted network. mTLS is the
-remaining work, and it is why the token path exists behind a switch rather than
-being the only option. `danos_gnmi_grpc.h` still describes the listener as
-plaintext h2c; that remains true.
+`gnmi_mtls` starts the actual daemon with temporary PKI and covers both
+supported TLS versions, role-based Get/Set/Subscribe, certificate role
+precedence, concurrent sessions, absent/expired/untrusted/wrong-purpose and
+unmapped credentials, ALPN/hostname checks, fail-closed configuration,
+laboratory opt-in and joined-worker shutdown. Acceptance also fixed the
+audit ring and reconciler/metrics shutdown races exposed by TSan.
 
-The daemon serves plaintext h2c on `INADDR_ANY:57400` with no authentication
-and no authorization. `danos_gnmi_grpc.h` states this outright. Every peer that
-can reach the port has full read/write over the config and routing tables, and
-can install a gNMI `Subscribe` stream.
-
-`danos-security` (RBAC, audit, CoPP — 608 LOC) exists, is unit-tested, and is
-**not linked into `danos-mgrd`**. It has no callers anywhere in the daemon, so
-the repository currently ships a security module that provides no security.
-
-The memory-safety defects that would have compounded this exposure are fixed.
-What remains is the absence of transport security and identity.
-
-Needs an identity-source decision before implementation:
-- mTLS with a client CA (closest to the northbound model; needs cert management)
-- bearer token in `authorization` (the header is currently parsed but ignored)
-- unix-socket peer credentials (`SO_PEERCRED`) for local-only operation
-
-Suggested sequence: decide identity source → add TLS to the gRPC accept path →
-link `danos-security` → enforce `danos_rbac_check` at every handler entry →
-audit-log mutations.
+Deployment instructions and explicit limits: [management mTLS](management-mtls.md).
+Local acceptance: Debug, ASan/UBSan/LSan and TSan each pass CTest 39/39.
+This closes gNMI's transport/identity gap, **not all deployment security**:
+metrics still require isolation/TLS proxy; NETCONF-over-SSH, online rotation
+and CRL/OCSP are not included. Certificates/roles/CA reload on restart.
+No production certificate or private key is committed.
 
 ### [x] 2. Transaction engine provides staged atomicity
 

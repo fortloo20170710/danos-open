@@ -635,6 +635,7 @@ if test -e /vpp-dpdk.enabled; then
 fi
 
 export MGRD_NETLINK_REAL=1   # VM root: program the real kernel
+export DANOS_ALLOW_INSECURE=1 # laboratory LIVE regression image, not deployment
 echo "--- starting mgrd (gNMI :59200, metrics :59201, netlink real)"
 mgrd --port 59200 --metrics-port 59201 --wal /tmp/mgrd.wal --seed &
 sleep 1

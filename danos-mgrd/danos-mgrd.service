@@ -5,6 +5,8 @@ After=network.target vpp.service
 
 [Service]
 Type=simple
+# Configure DANOS_TLS_CERT/KEY/CLIENT_CA/ROLE_FILE in this protected file.
+EnvironmentFile=-/etc/danos/mgrd.env
 ExecStart=/usr/local/bin/danos-mgrd --port 59200 --metrics-port 59201 --wal /var/lib/danos/mgrd.wal
 Restart=on-failure
 RestartSec=1

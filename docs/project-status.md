@@ -1,5 +1,43 @@
 # DANOS Open Project Status
 
+## 2026-10-06 pass: P0-1 native gNMI mTLS
+
+The management daemon now requires native mTLS by default. OpenSSL 3 verifies
+client chains, validity and client-auth purpose; HTTP/2 `h2` ALPN is mandatory.
+TLS 1.2/1.3 are supported. Verified leaf-certificate SHA256 fingerprints map
+to explicit admin/operator/viewer roles; unknown identities fail closed and
+bearer/default-role settings cannot elevate a certificate's role. Viewer Get
+and Subscribe are permitted, Set is denied. Missing/invalid TLS configuration
+never falls back to plaintext. `DANOS_ALLOW_INSECURE=1` is an explicit warning-
+emitting laboratory compatibility mode, now declared by existing LIVE/kernel/
+release-smoke scripts. No production PKI is embedded into the ISO.
+
+The new `gnmi_mtls` acceptance test runs the real daemon without VPP/root,
+generates temporary PKI, exercises positive and negative transport/RBAC cases,
+concurrent sessions and shutdown with an idle TLS connection. It also exposed
+and fixed pre-existing lifecycle/audit races: reconciler and metrics running
+flags and programming dirty handoff are atomic, recovery precedes reconciler
+thread startup, the metrics accept thread is joined, the audit ring/file
+operations are mutex-protected, and gNMI workers are joined before teardown.
+
+Scope: gNMI transport/identity is closed; plaintext metrics still need network
+isolation or a TLS proxy, and NETCONF-over-SSH, CRL/OCSP and online certificate
+rotation are not claimed. See [deployment and acceptance](management-mtls.md).
+CI/OCI/LIVE dependency declarations now include OpenSSL; aarch64 CI installs
+the target-architecture development libraries rather than linking host ones.
+Local acceptance: Debug, ASan/UBSan/LSan and TSan each pass CTest 39/39,
+including actual Set/Get readback and 24 certificate-authenticated sessions
+on 12 concurrent workers. The strengthened mTLS test passes five consecutive
+TSan repetitions. Git diff and
+laboratory shell syntax checks pass. Remote CI is **ENVIRONMENT-OPEN**:
+GitHub's check annotation for the previous main run reports the account is
+locked due to a billing issue (jobs never started). An existing unquoted
+colon in an Interop step name was corrected during workflow validation.
+
+P0-2 remains accepted. The next functional item is item 7 (replace semantics
+and concrete Get object paths); capture tooling and broader item 13 work have
+not been opened in this pass. No Git history rewrite was performed.
+
 ## 2026-10-06 pass: P0-2 transactional DPA staging
 
 P0-2 is implemented and accepted locally. Public DPA CRUD stages against an
