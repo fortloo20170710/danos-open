@@ -30,6 +30,9 @@ I211_ISO_COMMIT="${V016_I211_ISO_COMMIT:-88f4bed22f2490e8aaeb081d015243636f538cb
 I211_TRAFFIC_ISO="${V016_I211_TRAFFIC_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r1.iso}"
 I211_TRAFFIC_ISO_COMMIT="${V016_I211_TRAFFIC_ISO_COMMIT:-72dcd8b04ed22db12388a4302ea38921f005932d}"
 failures=0
+dpdk_open_waived=0
+# shellcheck source=danos-test/integration/release_gate_policy.sh
+. "$ROOT/danos-test/integration/release_gate_policy.sh"
 run_gate() {
     local name="$1"; shift
     echo "=== $name ==="
@@ -128,6 +131,14 @@ elif test "$dpdk_rc" -eq 2; then
     else
         echo '[OPEN] pci-dpdk-preflight skipped; runner prerequisites are unavailable'
     fi
+    # An open lane blocks the release unless explicitly waived; see
+    # release_gate_policy.sh, which is unit-tested on its own.
+    if release_gate_open_lane_decision pci-dpdk-preflight; then
+        dpdk_open_waived="$OPEN_LANE_WAIVED"
+    else
+        dpdk_open_waived="$OPEN_LANE_WAIVED"
+        failures=$((failures + 1))
+    fi
 else
     dpdk_status=FAIL
     echo '[FAIL] pci-dpdk-preflight'
@@ -137,6 +148,7 @@ fi
 if test "$failures" -eq 0; then overall=PASS; else overall=FAIL; fi
 {
     printf 'status=%s\n' "$overall"
+    printf 'dpdk_open_waived=%s\n' "$dpdk_open_waived"
     printf 'dpdk_status=%s\n' "$dpdk_status"
     printf 'qemu_gate_status=%s\nqemu_ecmp_soak_required=%q\nqemu_ecmp_soak_count=%q\n' \
         "$qemu_gate_status" "$QEMU_ECMP_SOAK_REQUIRED" "$QEMU_ECMP_SOAK_COUNT"

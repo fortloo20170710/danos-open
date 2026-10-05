@@ -29,6 +29,64 @@ def check_rejected(name: str, value: str, expected: str) -> None:
     assert expected in output, f"{name}={value!r} missing {expected!r}:\n{output}"
 
 
+def check_open_lane_blocks() -> None:
+    """An environment-restricted lane must block the release by default.
+
+    The gate records a skipped hardware lane as ENVIRONMENT-OPEN but used to
+    leave `failures` at zero, so a release could be declared with the DPDK
+    lane never run. The policy lives in release_gate_policy.sh so it can be
+    asserted directly, without running every lane the gate would otherwise
+    execute.
+    """
+    policy = ROOT / "danos-test/integration/release_gate_policy.sh"
+
+    def decide(env_extra: dict) -> tuple[int, int, str]:
+        env = os.environ.copy()
+        env.pop("DANOS_RELEASE_ALLOW_OPEN_LANES", None)
+        env.update(env_extra)
+        script = (
+            f'. "{policy}"\n'
+            "release_gate_open_lane_decision pci-dpdk-preflight\n"
+            'echo "BLOCKS=$OPEN_LANE_BLOCKS WAIVED=$OPEN_LANE_WAIVED"\n'
+        )
+        result = subprocess.run(
+            ["bash", "-c", script],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        output = result.stdout + result.stderr
+        blocks = waived = -1
+        for line in output.splitlines():
+            if line.startswith("BLOCKS="):
+                blocks = int(line.split("BLOCKS=")[1].split()[0])
+                waived = int(line.split("WAIVED=")[1].split()[0])
+        return blocks, waived, output
+
+    blocks, waived, output = decide({})
+    assert blocks == 1 and waived == 0, (
+        "an open lane must block the release by default:\n" + output
+    )
+    assert "blocks release" in output, output
+
+    blocks, waived, output = decide({"DANOS_RELEASE_ALLOW_OPEN_LANES": "1"})
+    assert blocks == 0 and waived == 1, (
+        "an explicit waiver must unblock the lane and be marked waived:\n"
+        + output
+    )
+    assert "WAIVED" in output, output
+
+    # Any value other than exactly 1 must not waive: a typo must not silently
+    # release a gate.
+    blocks, _, output = decide({"DANOS_RELEASE_ALLOW_OPEN_LANES": "yes"})
+    assert blocks == 1, (
+        "only DANOS_RELEASE_ALLOW_OPEN_LANES=1 may waive an open lane:\n" + output
+    )
+
+
 def main() -> None:
     check_rejected(
         "QEMU_ECMP_SOAK_REQUIRED", "0", "requires QEMU_ECMP_SOAK_REQUIRED=1"
@@ -39,7 +97,11 @@ def main() -> None:
             value,
             "requires at least 1000 packets per ECMP flow",
         )
-    print("PASS: release gate rejects disabled, undersized, and invalid ECMP soak overrides")
+    check_open_lane_blocks()
+    print(
+        "PASS: release gate rejects disabled, undersized and invalid ECMP soak "
+        "overrides, and blocks on an open hardware lane unless waived"
+    )
 
 
 if __name__ == "__main__":
