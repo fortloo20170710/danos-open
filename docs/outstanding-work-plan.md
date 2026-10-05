@@ -95,6 +95,41 @@ The next step is to have the CRUD entry points stage into the transaction and
 apply via `apply_batch` at commit. That is a behavioural change to every
 write path and should land as its own series.
 
+#### Findings from an attempted implementation
+
+A first attempt was started and abandoned at the point where 12 of 38 tests
+failed. The tree was reverted; nothing from it is in the tree. These are the
+non-obvious things it established, so the next attempt does not repeat them:
+
+- **The 51 CRUD entry points are uniform.** Every one is
+  `(void)tx;` followed by a single
+  `danos_object_create/update/delete(get_default_store(), TYPE, id, ...)`.
+  Thin `crud_create/crud_update/crud_delete` wrappers plus a textual rewrite
+  converts them; the `tx` parameter is already threaded through and only has
+  to stop being discarded.
+- **Staging requires a read overlay, not just a write overlay.** Reads are 12
+  sites of the same shape. Without `crud_read` consulting the staged set, the
+  very common `create` then `read` inside one transaction fails, because nothing
+  is in the store until commit. This was the main cause of the failures.
+- **Existence probing must pass a real `out_size`.** The store signals "it
+  exists, and here is the size" by returning `DANOS_ERR_INVALID_ARG` when
+  `out == NULL`; a NULL `out_size` is a plain argument error. Passing
+  `NULL, NULL` silently makes every object look absent.
+- **Do not collapse the three operations into a boolean.** A `bool remove`
+  turns create and update into one upsert and loses the EXISTS / NOT_FOUND
+  distinction that callers depend on. Model the operation as an enum
+  (`CREATE` / `UPDATE` / `DELETE`) so each keeps its own existence rule, and so
+  that a staged create whose payload allocation fails cannot be published as a
+  delete.
+- **A staged delete does not make the object present.** The overlay lookup has
+  to report `remove` and the read path must treat it as absent.
+- **`commit` must tolerate being called from `OPEN`.** Many call sites do
+  `begin -> mutate -> commit` and today work precisely because writes bypass the
+  transaction. Once they stage, a `commit` that refuses would leave the staged
+  set unpublished and silently drop the caller's changes. Either run the
+  skipped phases inside commit, or fix all 61 call sites; do not leave it
+  strict and assume the callers were updated.
+
 Note the recorder fix from the earlier pass: transaction records are now
 correctly retired, so this work no longer sits on top of a leak.
 
@@ -325,10 +360,17 @@ Still open:
   `conf_nh_crud`, `conf_nhgroup_crud`, `conf_acl_crud` and `conf_qos_crud`
   exercise the calls but assert almost nothing about the results
 
-### [ ] 13. Build and repository hygiene
+### [~] 13. Build and repository hygiene
 
-- `build-asan/` — 57 compiled artefacts — is tracked in git
-- a 41 MB `.docx` is tracked
+Done: `build-asan/` (57 compiled artefacts, 34 MB) is untracked and ignored -
+`.gitignore` covered `build/`, `build-tsan/` and `build-fuzz/` but not
+`build-asan/`, which is how it slipped in. `tools/gen-model-paths/gen-model-paths`,
+a compiled Go binary committed alongside its own `main.go` source, is likewise
+untracked and ignored.
+
+Still open:
+- a 41 MB `.docx` is tracked. Removing it from *history* is a rewrite, so it
+  needs an explicit decision rather than a drive-by `git rm`
 - no SBOM, no artefact signing
 - CI installs VPP from the floating `noble` FDio repo; container base images use
   floating tags and `apt-get` installs are unpinned

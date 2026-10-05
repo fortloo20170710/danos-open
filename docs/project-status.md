@@ -29,11 +29,20 @@ the policy lives in its own script so it is unit-tested without executing every
 lane, and `DANOS_RELEASE_ALLOW_OPEN_LANES=1` waives it deliberately with the
 waiver written into the result file.
 
-**Not done: transaction staging (item 2).** The remaining P0 is larger than it
-looks — 51 DPA CRUD entry points plus 61 commit call sites, several of which
-call `commit` without `prepare`/`validate` and rely on writes bypassing the
-transaction entirely. A partial staging layer would silently lose writes at
-every one of those sites, so it needs its own pass rather than an increment.
+**Not done: transaction staging (item 2).** An implementation was attempted and
+abandoned with 12 of 38 tests failing; the tree was reverted and nothing from it
+remains. The attempt was useful: it established that the 51 CRUD entry points
+are uniform enough to rewrite mechanically, that staging needs a read overlay
+and not just a write overlay (a `create` then `read` in one transaction fails
+otherwise), that the store signals existence through `DANOS_ERR_INVALID_ARG`
+with a *valid* `out_size`, and that the three operations must not be collapsed
+into a boolean or they lose their EXISTS / NOT_FOUND distinction. Those findings
+are written up in the plan document so the next attempt starts from them.
+
+**Build hygiene (`this pass`).** `build-asan/` — 57 compiled artefacts, 34 MB —
+was tracked because `.gitignore` covered `build/`, `build-tsan/` and
+`build-fuzz/` but not `build-asan/`. It and a compiled Go binary committed
+alongside its own source are now untracked and ignored.
 
 ## 2026-10-04 fourth pass: gNMI POLL, unsupported nexthops
 

@@ -2,6 +2,7 @@
 build/
 build-tsan/
 build-fuzz/
+build-asan/
 *.o
 *.a
 *.so
@@ -59,3 +60,7 @@ Testing/
 
 # Large binaries (downloaded tools)
 containerlab
+
+# Compiled Go helper: built by tools/gen-model-paths/regen.sh from main.go,
+# which is the tracked source. Only the generated output belongs in git.
+tools/gen-model-paths/gen-model-paths
