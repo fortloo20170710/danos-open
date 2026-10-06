@@ -118,6 +118,15 @@ ordering checks, not an independent post-restart FIB/packet inspection.
 The original running topology has not yet emitted FRR restart begin; it is
 not qualified by the new deterministic tests.
 
+Independent post-VPP-restart inspection via this topology's own QEMU HMP
+keyboard obtained CLI `show ip fib table 0 198.51.100.0/24`. A bounded
+FIB-CAPTURE-BEGIN/END block after the restart PASS contains the exact prefix,
+API refs:1 and dpo-drop ip4, consistent with this static blackhole test
+prefix. The assertion passed against real output, not bridge programming
+logs. This does not prove forwarding through FRR-learned next hops, or the
+still-unobserved FRR daemon restart. Only the dedicated guest was inspected;
+no physical serial was accessed.
+
 ---
 
 ## P0 — blocks any real deployment
