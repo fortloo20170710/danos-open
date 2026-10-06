@@ -109,6 +109,14 @@ if ip link show eth0 >/dev/null 2>&1; then
         ip link set eth1 up 2>/dev/null || true
         echo "eth1: $DANOS_PEER_ADDR2 up" > /dev/console
     fi
+    # Optional laboratory ECMP destinations and symmetric loopback return.
+    # Empty defaults leave management and physical runner networking unchanged.
+    for peer_address in ${DANOS_PEER_EXTRA_ADDRS:-}; do
+        ip addr add "$peer_address" dev eth0 2>/dev/null || true
+    done
+    if test -n "${DANOS_PEER_RETURN_GW:-}"; then
+        ip route add 30.30.30.1/32 via "$DANOS_PEER_RETURN_GW" dev eth0 2>/dev/null || true
+    fi
     # Physical I211 acceptance must learn the real peer MACs via ARP.  Keep
     # deterministic static neighbors only for virtualized fixtures.
     if test "${VPP_STATIC_NEIGHBORS:-1}" = 1; then

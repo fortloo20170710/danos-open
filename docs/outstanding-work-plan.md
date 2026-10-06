@@ -181,6 +181,17 @@ launched under `build/qemu-current-frr-20261007-r2`. Manifest matches the
 clean fix commit and actual ISO digest. Runtime validation is pending; no
 restart PASS is inferred from the deterministic checks or launch success.
 
+VMware preflight found that matched-interface DUT/peer r2 images alone do
+not enable the existing four-destination ECMP gate. LIVE peer profiles now
+optionally serialize `DANOS_PEER_EXTRA_ADDRS` (space-separated CIDRs on eth0)
+and `DANOS_PEER_RETURN_GW` (return path for 30.30.30.1/32). Both default empty;
+normal management and physical runner networking are unchanged. The next
+VMware peer profile needs 30.30.30.2–5/24 and return via 192.168.45.3, while
+the DUT must enable the existing traffic/ECMP test. No gate is weakened to
+accept mere local-address pings; these new profiles remain runtime-unverified.
+The current QEMU r2 already reports peer readiness and is running its soak
+without an observed transaction failure at this stage.
+
 ---
 
 ## P0 — blocks any real deployment
