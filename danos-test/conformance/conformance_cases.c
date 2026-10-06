@@ -1,13 +1,12 @@
 /*
- * DPA Conformance test cases (skeleton implementations)
+ * DPA Conformance test cases (mixed lifecycle and legacy smoke coverage)
  *
  * These verify the DPA API contract. Each test creates a transaction,
- * performs operations, and checks results. Backend under test is
- * linked at build time.
+ * performs operations, and checks results. This is the storage-side contract,
+ * not a real Linux/VPP dataplane qualification.
  *
- * For v0.1 these are skeleton implementations that verify the API
- * compiles and basic invariants hold. Real backend testing happens
- * in danos-vpp/tests.
+ * Route/NH/NHGroup lifecycle cases live in route_lifecycle_cases.c.
+ * Several older object cases still cover only creation.
  */
 
 #include <danos/dpa.h>
@@ -164,56 +163,6 @@ int conf_vrf_crud(void)
     strncpy(vrf.name, "VRF100", sizeof(vrf.name) - 1);
 
     if (danos_vrf_create(&tx, &vrf) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
-}
-
-int conf_route_crud(void)
-{
-    danos_tx_t tx = {0};
-    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
-
-    danos_route_t route = {0};
-    route.vrf_id = 0;
-    route.prefix.addr.af = DANOS_AF_IPV4;
-    route.prefix.addr.addr[12] = 10; route.prefix.addr.addr[13] = 0;
-    route.prefix.addr.addr[14] = 0;  route.prefix.addr.addr[15] = 0;
-    route.prefix.prefix_len = 24;
-    route.protocol = DANOS_ROUTE_PROTO_STATIC;
-    route.admin_distance = 1;
-    route.metric = 0;
-
-    if (danos_route_create(&tx, &route) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
-}
-
-int conf_nh_crud(void)
-{
-    danos_tx_t tx = {0};
-    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
-
-    danos_nexthop_t nh = {0};
-    nh.id = 1;
-    nh.gateway.af = DANOS_AF_IPV4;
-    nh.gateway.addr[15] = 1;
-    nh.ifindex = 1;
-    nh.weight = 1;
-
-    if (danos_nh_create(&tx, &nh) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
-}
-
-int conf_nhgroup_crud(void)
-{
-    danos_tx_t tx = {0};
-    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
-
-    danos_nhgroup_t grp = {0};
-    grp.id = 1;
-    grp.nh_count = 2;
-    grp.nh_ids[0] = 1;
-    grp.nh_ids[1] = 2;
-
-    if (danos_nhgroup_create(&tx, &grp) != DANOS_OK) return 2;
     return conf_commit(&tx) == DANOS_OK ? 0 : 3;
 }
 

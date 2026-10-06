@@ -1,5 +1,26 @@
 # DANOS Open Project Status
 
+## 2026-10-07 pass: Route/NH/NHGroup contract recovery
+
+Replaced creation-only conformance with payload readback, duplicate/missing
+operation semantics, candidate visibility, committed visibility, update/delete
+abort and transaction-retirement assertions. Added mock VPP quiet idempotency,
+forget/replay, NHGroup withdraw/restore and exhausted-budget recovery tests.
+
+These exposed a pipeline gap: restored dependencies inherited the missing
+graph's retry budget. Retry now tracks desired/dependency digests and renews
+the budget on a changed graph without bypassing an explicit anti-flap park.
+Restart notification also resets old budgets for objects absent from the
+programmed ledger, while retaining desired state.
+
+The acceptance matrix now distinguishes latest deterministic checks from
+historical runtime/ISO results. Latest real FRR/VPP/QEMU/VMware/PCI qualification
+is not established by historical PASS or the mock contract gate.
+Local acceptance: backend contract gate PASS and Debug, ASan/UBSan/LSan,
+TSan CTest 41/41. The project VPP runtime image, QEMU and /dev/kvm are present;
+next gate should use a uniquely named isolated runtime and this current build,
+then assert real FIB/table/NH changes before current QEMU topology recovery.
+
 ## 2026-10-06 pass: production C coverage
 
 Added an isolated GCC coverage option and fresh-run collector, producing HTML,

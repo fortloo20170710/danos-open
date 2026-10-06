@@ -181,10 +181,22 @@ static int test_retry_backoff_and_limit(void)
     (void)danos_programming_run(&before, &fbefore);
     assert(before == 0);     /* exhausted: no further attempts */
 
+    /* Restore its dependency without rewriting the route or resetting policy:
+     * exhaustion for the missing graph must not suppress the usable graph. */
+    danos_nhgroup_t recovered = { .id = 4242, .nh_count = 1, .nh_ids = {100} };
+    assert(danos_tx_begin(&tx, "rt-recover", NULL) == DANOS_OK);
+    assert(danos_nhgroup_create(&tx, &recovered) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    before = fbefore = 0;
+    assert(danos_programming_run(&before, &fbefore) == 1);
+    assert(fbefore == 0);
+    assert(danos_netlink_mock_route_exists(rt.prefix.addr.addr, rt.prefix.prefix_len, 0));
+
     /* Remove the offending object and restore a permissive policy. */
     assert(danos_tx_begin(&tx, "rt", NULL) == DANOS_OK);
     assert(danos_route_delete(&tx, 0, rt.prefix, DANOS_ROUTE_PROTO_STATIC)
            == DANOS_OK);
+    assert(danos_nhgroup_delete(&tx, recovered.id) == DANOS_OK);
     assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
     danos_programming_set_policy(5, 1000, 60000, 5000, 3);
 
@@ -448,6 +460,81 @@ static int test_vpp_adapter_pipeline(void)
     uint64_t sent = 0, recvd = 0, conns = 0, reconns = 0;
     danos_vpp_api_get_stats(&sent, &recvd, &conns, &reconns);
     assert(sent >= 1);
+
+    /* A quiet pass must not retransmit routes or duplicate ECMP paths. */
+    uint64_t baseline_sent = sent;
+    attempted = failed = 0;
+    assert(danos_programming_run(&attempted, &failed) == 0);
+    assert(attempted == 0 && failed == 0);
+    danos_vpp_api_get_stats(&sent, &recvd, &conns, &reconns);
+    assert(sent == baseline_sent);
+
+    /* Restart notification invalidates only programmed state, not desired
+     * route/NH/group payloads. This is a mock replay gate, not a VPP restart. */
+    uint32_t desired_routes = danos_object_count(g_default_store, DANOS_OBJ_ROUTE);
+    uint32_t desired_nhs = danos_object_count(g_default_store, DANOS_OBJ_NEXTHOP);
+    uint32_t desired_groups = danos_object_count(g_default_store, DANOS_OBJ_NHGROUP);
+    assert(danos_programming_forget_programmed() >= desired_routes);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == 0);
+    attempted = failed = 0;
+    assert(danos_programming_run(&attempted, &failed) >= desired_routes);
+    assert(failed == 0);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == desired_routes);
+    assert(danos_object_count(g_default_store, DANOS_OBJ_ROUTE) == desired_routes);
+    assert(danos_object_count(g_default_store, DANOS_OBJ_NEXTHOP) == desired_nhs);
+    assert(danos_object_count(g_default_store, DANOS_OBJ_NHGROUP) == desired_groups);
+    danos_vpp_api_get_stats(&sent, &recvd, &conns, &reconns);
+    assert(sent > baseline_sent);
+
+    /* Losing the NHGroup withdraws dependent routes on this adapter too. */
+    danos_programming_set_policy(1, 1000, 60000, 5000, 0);
+    danos_nhgroup_t saved_group;
+    assert(danos_tx_begin(&tx, "vpp-group-withdraw", NULL) == DANOS_OK);
+    assert(danos_nhgroup_read(&tx, 1, &saved_group) == DANOS_OK);
+    assert(danos_nhgroup_delete(&tx, 1) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    attempted = failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed == 0);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == 0);
+    assert(danos_object_count(g_default_store, DANOS_OBJ_ROUTE) == desired_routes);
+    uint64_t deferred = 0, flapping = 0, exhausted = 0;
+    danos_programming_get_retry_stats(&deferred, &flapping, &exhausted);
+    assert(exhausted >= desired_routes);
+    assert(danos_tx_begin(&tx, "vpp-group-restore", NULL) == DANOS_OK);
+    assert(danos_nhgroup_create(&tx, &saved_group) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    attempted = failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed == 0);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == desired_routes);
+
+    /* Same candidate after a backend restart also gets a fresh budget, even
+     * when its earlier failures never produced a ledger entry. */
+    danos_route_t pending = rt;
+    pending.prefix.addr.addr[0] = 192;
+    pending.prefix.addr.addr[1] = 0;
+    pending.prefix.addr.addr[2] = 2;
+    pending.prefix.prefix_len = 24;
+    pending.nhgroup_id = 999000;
+    assert(danos_tx_begin(&tx, "vpp-pending", NULL) == DANOS_OK);
+    assert(danos_route_create(&tx, &pending) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    attempted = failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed == 1);
+    danos_programming_get_retry_stats(&deferred, &flapping, &exhausted);
+    assert(exhausted == 1);
+    (void)danos_programming_forget_programmed();
+    danos_programming_get_retry_stats(&deferred, &flapping, &exhausted);
+    assert(deferred == 0 && flapping == 0 && exhausted == 0);
+    attempted = failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed == 1); /* attempted again, not suppressed by stale exhaustion */
+    assert(danos_tx_begin(&tx, "vpp-pending-delete", NULL) == DANOS_OK);
+    assert(danos_route_delete(&tx, pending.vrf_id, pending.prefix, pending.protocol) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    danos_programming_set_policy(5, 1000, 60000, 5000, 3);
 
     /* switch back to netlink for consistency */
     danos_netlink_register_backend();

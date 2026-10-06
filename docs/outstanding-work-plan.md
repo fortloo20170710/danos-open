@@ -368,9 +368,14 @@ Still open:
   local baseline is 77.5% lines / 55.5% branches with CTest 41/41. Remote job
   execution is still blocked by GitHub billing; assertion quality and a
   coverage non-regression policy remain open (see coverage-baseline.md).
-- other conformance cases are still thin: `conf_vrf_crud`, `conf_route_crud`,
-  `conf_nh_crud`, `conf_nhgroup_crud`, `conf_acl_crud` and `conf_qos_crud`
+- other conformance cases are still thin: `conf_vrf_crud`,
+  `conf_acl_crud` and `conf_qos_crud`
   exercise the calls but assert almost nothing about the results
+
+2026-10-07: Route/NH/NHGroup creation-only cases were replaced by full
+storage lifecycle/visibility/abort/payload checks. Pipeline tests now pin
+dependency recovery after retry exhaustion, mock VPP replay/withdraw/restore
+and restart epoch retry reset. The listed VRF/ACL/QoS gaps remain open.
 
 ### [~] 13. Build and repository hygiene
 

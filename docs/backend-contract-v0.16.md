@@ -48,3 +48,24 @@
 本版本冻结上述生命周期、错误/重试、删除/tombstone、重启 replay 和观测语义。
 VLAN/VXLAN/EVPN/BFD 可增加能力和对象类型，但不得改变既有 route/NH/NHGroup
 语义；扩展前必须补充 capability、依赖顺序及 conformance case。
+
+## 6. 2026-10-07 契约回归与边界
+
+Route/NH/NHGroup 的 DPA 存储门现验证：创建/读回、重复创建 EXISTS、
+缺失 update/delete NOT_FOUND、候选读写与跨事务隔离、update/delete abort、
+提交后的完整 payload 可见性、删除后的缺失以及事务记录回收。
+这里的 DPA DELETE NOT_FOUND 与 backend 幂等删除是不同层级，不能混用。
+
+retry budget 属于特定 desired payload 和依赖图摘要。NH/NHGroup 恢复或修改后，
+未显式 anti-flap parked 的对象获得新预算；相同失败图仍执行退避/耗尽限制。
+dataplane restart 的 forget-programmed 通知创建新的编程 epoch，清理旧预算，
+包括此前 API 不可用而未进入 ledger 的对象；desired graph 不被删除。
+
+programming_pipeline 增加 VPP mock 的静默幂等、forget/replay、NHGroup 撤销/
+恢复、预算耗尽后依赖恢复、未进入 ledger 对象的 epoch reset 断言。
+Linux mock 验证耗尽预算后的 NHGroup 恢复及实际 mock FIB presence。
+
+这些都是确定性 mock/存储门，不能证明最新 build 在真实 VPP、FRR、QEMU、
+VMware 或 PCI runner 上通过。依赖真实 runtime 的 ACK/FIB、packet、恢复与
+性能证据仍需按 acceptance matrix 补齐；冻结的是目标语义，不是宣称所有
+条目已经在所有 backend 验收。

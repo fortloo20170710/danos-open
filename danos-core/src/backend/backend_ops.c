@@ -227,6 +227,8 @@ typedef struct {
     uint64_t        last_success_ns;
     uint32_t        flap_count;
     bool            flapping;
+    uint64_t        desired_digest;
+    uint64_t        dependency_digest;
 } retry_slot_t;
 
 static retry_slot_t g_retry[RETRY_SLOTS];
@@ -337,10 +339,12 @@ static void retry_clear(danos_obj_type_t type, danos_obj_id_t id,
 }
 
 static void retry_record_failure(danos_obj_type_t type, danos_obj_id_t id,
-                                 uint64_t now)
+                                 uint64_t now, uint64_t desired, uint64_t dependency)
 {
     pthread_mutex_lock(&g_retry_lock);
     retry_slot_t *s = retry_slot_for(type, id);
+    s->desired_digest = desired;
+    s->dependency_digest = dependency;
     s->attempts++;
     uint64_t delay = (uint64_t)g_backoff_initial_ms * 1000000ULL;
     for (uint32_t i = 1; i < s->attempts && delay < g_backoff_max_ms; i++)
@@ -413,6 +417,16 @@ static void program_entry(danos_object_entry_t *e, void *user)
 
     /* Backed off, attempt limit reached, or parked as flapping. */
     pthread_mutex_lock(&g_retry_lock);
+    retry_slot_t *retry = retry_find(e->type, e->id);
+    uint64_t desired_digest = hash_bytes(e->data, e->data_size);
+    /* The retry budget belongs to a candidate and its dependency graph.
+     * A restored/changed NH must not inherit exhaustion from a missing NH.
+     * Preserve an explicit anti-flap park and its history. */
+    if (retry && !retry->flapping &&
+        (retry->desired_digest != desired_digest || retry->dependency_digest != dep)) {
+        retry->attempts = 0;
+        retry->next_attempt_ns = 0;
+    }
     bool defer = retry_defer(e->type, e->id, mono_ns());
     pthread_mutex_unlock(&g_retry_lock);
     if (defer) return;
@@ -435,7 +449,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     danos_status_t st = program_one(e->type, e->id, e->data, e->data_size);
     if (st != DANOS_OK) {
         c->failed++;
-        retry_record_failure(e->type, e->id, mono_ns());
+        retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep);
         /* v0.11: a previously-programmed route whose next hop became
          * unusable must be WITHDRAWN, not left forwarding via a stale
          * gateway. */
@@ -589,6 +603,11 @@ uint64_t danos_programming_sweep(uint64_t *failed)
 
 uint64_t danos_programming_forget_programmed(void)
 {
+    /* A restarted backend is a new programming epoch, including objects
+     * that never made it into the ledger due to an earlier API outage. */
+    pthread_mutex_lock(&g_retry_lock);
+    memset(g_retry, 0, sizeof(g_retry));
+    pthread_mutex_unlock(&g_retry_lock);
     if (!g_programmed) return 0;
     g_sweep_n = 0;
     danos_object_iterate(g_programmed, sweep_collect, (void *)1);

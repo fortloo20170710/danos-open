@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 add_executable(conformance_test
   conformance/conformance_runner.c
   conformance/conformance_cases.c
+  conformance/route_lifecycle_cases.c
 )
 target_link_libraries(conformance_test PRIVATE danos-core danos-dpa pthread)
 target_compile_definitions(conformance_test PRIVATE)  # ensure no NDEBUG
