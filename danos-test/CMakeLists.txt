@@ -108,3 +108,6 @@ set_tests_properties(qemu_ecmp_result PROPERTIES TIMEOUT 30)
 add_test(NAME frr_recovery_evidence
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_frr_recovery.py)
 set_tests_properties(frr_recovery_evidence PROPERTIES TIMEOUT 30)
+add_test(NAME learned_route_fib_evidence
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_learned_route_fib.py)
+set_tests_properties(learned_route_fib_evidence PROPERTIES TIMEOUT 30)

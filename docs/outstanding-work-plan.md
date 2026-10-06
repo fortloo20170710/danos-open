@@ -265,6 +265,29 @@ Only the obsolete owned `iso-clean-frr-20261007/initramfs` extraction was remove
 to reclaim 541 MiB; its ISO, logs and disks remain for recovery/re-extraction.
 Scope limits above remain: no FRR-learned packet proof, VMware or PCI qualification.
 
+Learned-route forwarding diagnosis: current r3 detailed VPP FIB for
+198.18.0.0/24 is API-owned but its forwarding bucket is `arp-ipv4` via
+172.31.0.3 on GigabitEthernet0/3/0. FRR-1's ens4 peer link carries
+172.31.0.0/24; VPP port 2 instead connects to FRR-2 ens3 on 10.20.0.0/24.
+The existing numeric ifindex map does not make these separate L2 segments
+equivalent. The original advertised 198.18 prefix is also backed by a
+blackhole, not an echo endpoint. Thus adding ping to the current setup cannot
+close the learned-route packet gate without fixing topology and destinations.
+
+Next implementation: introduce an isolated shared L2 qualification segment
+that gives the FRR peer and mapped VPP port the same reachable next hop;
+provide a real endpoint behind an advertised prefix and a symmetric return
+path, then require learned API-owned resolved FIB, actual add/reachability,
+withdraw/non-reachability, restore/reachability and restart recovery. Preserve
+the existing two-port lane as its own historical/control-plane regression.
+Do not rewrite learned gateways or forge neighbors to hide a topology mismatch.
+New `verify_learned_route_fib.py` is only a resolved-FIB prerequisite, explicitly
+not packet acceptance. It checks the latest detailed target entry, API ownership,
+expected gateway/interface and rejects ARP/drop; four fixture tests include
+wrong gateway/interface, stale entry and an unrelated route's adjacency.
+The real r3 diagnostic correctly returns FAIL. Debug CTest now 46/46 PASS;
+this unit result does not close the real learned-route qualification.
+
 ---
 
 ## P0 — blocks any real deployment
