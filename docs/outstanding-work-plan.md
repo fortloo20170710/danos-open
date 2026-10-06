@@ -207,6 +207,19 @@ Only two owned obsolete unpacked initramfs trees were removed to free about
 1 GiB; retained ISO contents allow re-extraction. No logs/disks were removed.
 The isolated QEMU r2 continues running independently.
 
+Final r2: full strengthened verifier returned zero on live logs and frozen
+`build/qemu-current-frr-20261007-r2/accepted` copies after actual FRR restart,
+zebra disconnect/reconnect and route replay. No replay EXISTS occurred.
+Frozen hashes: DANOS log
+`b8727c082c165652da435691ea506a6a1eff6f43f642683ebc31afd211d70e7d`,
+FRR-1 log `04a945767299b7c706fbab8e308f9a916795fb26dd183bc6739fcaaac7a5219d`,
+ECMP result `41e338d7bd24cd4300586ff31406aa39a5b652904c5da1275c49e20612fe3daa`.
+Debug/ASan/TSan full suites each 45/45 and deterministic/mock contract gate
+PASS. QEMU control-plane/functional recovery qualification closes for this
+clean a783c73 ISO. VMware and real PCI remain open, and neither line rate nor
+independent packet forwarding through FRR-learned paths is inferred from the
+CLI-seeded ECMP packet lane. The full project goal remains incomplete.
+
 ---
 
 ## P0 — blocks any real deployment

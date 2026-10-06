@@ -1,6 +1,6 @@
 # DANOS Open Project Status
 
-## 2026-10-07 native FRR replay repair: current r2 recovery pending
+## 2026-10-07 native FRR replay repair: current r2 gate PASS
 
 The first current-source topology reached FRR restart but failed the stronger
 recovery gate on three replay `EXISTS` transactions. Clean fix `a783c73` now
@@ -16,6 +16,14 @@ failure observed at this stage. Complete verifier still awaits the scheduled
 FRR daemon/zserv restart; the old failing run is retained, not relabeled PASS.
 Current VMware full-profile images exist, but host vmmon is missing and
 privileged module preparation is unavailable; that lane is ENVIRONMENT-OPEN.
+
+Final r2 follow-up: the strengthened complete topology verifier returned zero
+against both live logs and frozen `accepted/` copies. FRR restart request and
+completion, actual zebra disconnect/re-registration, positive backend replay
+and post-reconnect route notifications/programming pass with no EXISTS error.
+ASan and TSan full CTest now each pass 45/45, as does Debug; deterministic
+backend contract also passes (mock scope). This closes this clean ISO's QEMU
+functional/control-plane recovery lane, not VMware/PCI or line-rate performance.
 
 ## 2026-10-07 current-source QEMU packet qualification (recovery pending)
 
