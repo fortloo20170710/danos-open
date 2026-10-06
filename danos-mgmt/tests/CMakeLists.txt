@@ -30,6 +30,11 @@ target_link_libraries(gnmi_grpc_test PRIVATE danos-mgmt danos-dpa pthread)
 target_compile_options(gnmi_grpc_test PRIVATE -UNDEBUG)
 add_test(NAME gnmi_grpc COMMAND gnmi_grpc_test)
 
+add_executable(gnmi_set_semantics_test test_set_semantics.c)
+target_link_libraries(gnmi_set_semantics_test PRIVATE danos-mgmt danos-core danos-dpa pthread)
+target_compile_options(gnmi_set_semantics_test PRIVATE -UNDEBUG)
+add_test(NAME gnmi_set_semantics COMMAND gnmi_set_semantics_test)
+
 add_executable(frontends_consistent_test test_frontends_consistent.c)
 target_link_libraries(frontends_consistent_test PRIVATE danos-mgmt danos-core danos-dpa pthread)
 target_compile_options(frontends_consistent_test PRIVATE -UNDEBUG)

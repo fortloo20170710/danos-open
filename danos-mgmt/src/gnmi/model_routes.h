@@ -19,6 +19,7 @@
 
 #include <danos/dpa.h>
 #include <stddef.h>
+#include <danos/core/object_registry.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +30,8 @@ danos_status_t gnmi_parse_prefix(const char *s, danos_ip_prefix_t *out);
 
 /* Parse "a.b.c.d" into an IPv4 danos_ip_addr_t. */
 danos_status_t gnmi_parse_ipv4(const char *s, danos_ip_addr_t *out);
+danos_status_t gnmi_format_prefix(const danos_ip_prefix_t *prefix,
+                                   char *out, size_t cap);
 
 /* Composite set: creates or updates NH + NHGroup + Route in one
  * transaction. Returns DANOS_OK; the route is then visible in desired
@@ -52,9 +55,18 @@ danos_status_t gnmi_route_set_ecmp(danos_vrf_id_t vrf_id,
 danos_status_t gnmi_route_delete(danos_vrf_id_t vrf_id,
                                  const danos_ip_prefix_t *prefix);
 
+/* Candidate variants: caller owns prepare/validate/commit/abort. */
+danos_status_t gnmi_route_stage_set(danos_tx_t *tx, danos_vrf_id_t vrf_id,
+    const danos_ip_prefix_t *prefix, const danos_ip_addr_t *gateways,
+    const uint32_t *oifs, uint32_t count, bool replace);
+danos_status_t gnmi_route_stage_delete(danos_tx_t *tx, danos_vrf_id_t vrf_id,
+                                       const danos_ip_prefix_t *prefix);
+
 /* Render route + resolved gateway/oif as compact JSON into out. */
 danos_status_t gnmi_route_to_json(const danos_route_t *route,
                                   char *out, size_t cap);
+danos_status_t gnmi_route_to_json_store(danos_object_store_t *store,
+    const danos_route_t *route, char *out, size_t cap);
 
 #ifdef __cplusplus
 }

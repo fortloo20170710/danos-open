@@ -220,9 +220,16 @@ Done:
   subscribers were never told. It also copied each type into a fixed array
   (ifaces[64], vrfs[16], routes[32]), so a larger store silently lost objects.
 
+- Set now applies delete → replace → update in one staging transaction.
+  Interface replacement resets omitted modeled fields, preserves identity,
+  and route ECMP resize retires obsolete next hops. Late failure rolls back
+  interfaces and complete route graphs together.
+- Get returns concrete keyed object paths (route prefix plus VRF), correctly
+  filters VRF entries, and no longer uses fixed collection-size caps.
+  Supported forms and deliberate exclusions are documented in
+  [Set/Get semantics](gnmi-set-get-semantics.md).
+
 Still open:
-- `replace` is decoded but never applied
-- `Get` echoes the request path for each update instead of the per-object path
 - `updates_only`, `use_models`, `encoding` are ignored; no bytes/decimal
   `TypedValue`
 - STREAM still polls on a 200 ms tick rather than subscribing to store events,

@@ -1,5 +1,21 @@
 # DANOS Open Project Status
 
+## 2026-10-06 pass: item 7 Set/Get correctness
+
+Replace is no longer ignored. Set applies delete → replace → update through
+one candidate transaction, with read-your-writes, stable interface identity,
+modeled replacement defaults, route graph rollback and obsolete ECMP next-hop
+retirement. Get now emits concrete interface/VRF/route paths; route paths have
+prefix and VRF keys, and dynamic collection snapshots remove fixed array caps.
+Whole-list replace and union_replace are explicitly rejected.
+
+See [supported contract and regression coverage](gnmi-set-get-semantics.md).
+Item 7 remains partially open for subscription/encoding/model options.
+This does not add protocols or claim hardware performance acceptance.
+Local acceptance: Debug, ASan/UBSan/LSan and TSan each pass CTest 40/40.
+GitHub-hosted CI remains separately blocked by the account billing lock;
+local results do not claim a successful remote workflow.
+
 ## 2026-10-06 pass: P0-1 native gNMI mTLS
 
 The management daemon now requires native mTLS by default. OpenSSL 3 verifies

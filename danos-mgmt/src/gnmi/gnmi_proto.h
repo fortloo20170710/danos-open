@@ -54,6 +54,9 @@ typedef struct {
     bool     has_key;
     char     key_name[GNMI_MAX_NAME];
     char     key_value[GNMI_MAX_NAME];
+    bool     has_extra_key; /* second list key, e.g. route VRF + prefix */
+    char     extra_key_name[GNMI_MAX_NAME];
+    char     extra_key_value[GNMI_MAX_NAME];
 } gnmi_path_elem_t;
 
 typedef struct {

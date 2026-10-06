@@ -215,6 +215,12 @@ void gnmi_encode_path(gnmi_pb_t *w, uint32_t field, const gnmi_path_t *path)
             gnmi_pb_put_string(w, 2, e->key_value);
             gnmi_pb_end_nested(w, ksaved);
         }
+        if (e->has_extra_key) {
+            size_t ksaved = gnmi_pb_begin_nested(w, 2);
+            gnmi_pb_put_string(w, 1, e->extra_key_name);
+            gnmi_pb_put_string(w, 2, e->extra_key_value);
+            gnmi_pb_end_nested(w, ksaved);
+        }
         gnmi_pb_end_nested(w, esaved);
     }
     gnmi_pb_end_nested(w, saved);
@@ -233,7 +239,8 @@ bool gnmi_decode_path(const uint8_t *data, size_t len, gnmi_path_t *out)
         case 2: {  /* origin */
             const uint8_t *d; size_t n;
             if (!gnmi_pbr_bytes(&r, &d, &n)) return false;
-            size_t c = n < sizeof(out->origin) - 1 ? n : sizeof(out->origin) - 1;
+            if (n >= sizeof(out->origin) || memchr(d, 0, n)) return false;
+            size_t c = n;
             memcpy(out->origin, d, c);
             out->origin[c] = '\0';
             break;
@@ -253,7 +260,8 @@ bool gnmi_decode_path(const uint8_t *data, size_t len, gnmi_path_t *out)
                 if (ef == 1 && ew == 2) {  /* name */
                     const uint8_t *nd; size_t nn;
                     if (!gnmi_pbr_bytes(&er, &nd, &nn)) return false;
-                    size_t c = nn < GNMI_MAX_NAME - 1 ? nn : GNMI_MAX_NAME - 1;
+                    if (!nn || nn >= GNMI_MAX_NAME || memchr(nd, 0, nn)) return false;
+                    size_t c = nn;
                     memcpy(e->name, nd, c);
                     e->name[c] = '\0';
                 } else if (ef == 2 && ew == 2) {  /* key entry */
@@ -266,12 +274,14 @@ bool gnmi_decode_path(const uint8_t *data, size_t len, gnmi_path_t *out)
                     char kval[GNMI_MAX_NAME] = {0};
                     while ((kf = gnmi_pbr_tag(&kr, &kw)) != 0) {
                         const uint8_t *vd; size_t vn;
-                        if (kf == 1 && gnmi_pbr_bytes(&kr, &vd, &vn)) {
-                            size_t c = vn < GNMI_MAX_NAME - 1 ? vn : GNMI_MAX_NAME - 1;
+                        if (kf == 1 && kw == 2 && gnmi_pbr_bytes(&kr, &vd, &vn)) {
+                            if (vn >= GNMI_MAX_NAME || memchr(vd, 0, vn)) return false;
+                            size_t c = vn;
                             memcpy(kname, vd, c);
                             kname[c] = '\0';
-                        } else if (kf == 2 && gnmi_pbr_bytes(&kr, &vd, &vn)) {
-                            size_t c = vn < GNMI_MAX_NAME - 1 ? vn : GNMI_MAX_NAME - 1;
+                        } else if (kf == 2 && kw == 2 && gnmi_pbr_bytes(&kr, &vd, &vn)) {
+                            if (vn >= GNMI_MAX_NAME || memchr(vd, 0, vn)) return false;
+                            size_t c = vn;
                             memcpy(kval, vd, c);
                             kval[c] = '\0';
                         } else {
@@ -279,9 +289,17 @@ bool gnmi_decode_path(const uint8_t *data, size_t len, gnmi_path_t *out)
                         }
                         if (kr.err) return false;
                     }
-                    snprintf(e->key_name, sizeof(e->key_name), "%s", kname);
-                    snprintf(e->key_value, sizeof(e->key_value), "%s", kval);
-                    e->has_key = kname[0] != '\0';
+                    if (!kname[0] || !kval[0]) return false;
+                    if (!e->has_key) {
+                        snprintf(e->key_name, sizeof(e->key_name), "%s", kname);
+                        snprintf(e->key_value, sizeof(e->key_value), "%s", kval);
+                        e->has_key = true;
+                    } else {
+                        if (e->has_extra_key || !strcmp(e->key_name, kname)) return false;
+                        snprintf(e->extra_key_name, sizeof(e->extra_key_name), "%s", kname);
+                        snprintf(e->extra_key_value, sizeof(e->extra_key_value), "%s", kval);
+                        e->has_extra_key = true;
+                    }
                 } else {
                     gnmi_pbr_skip(&er, ew);
                 }
@@ -296,57 +314,38 @@ bool gnmi_decode_path(const uint8_t *data, size_t len, gnmi_path_t *out)
     return !r.err;
 }
 
-bool gnmi_path_from_str(gnmi_path_t *p, const char *dotted)
+bool gnmi_path_from_str(gnmi_path_t *p, const char *text)
 {
     memset(p, 0, sizeof(*p));
-    if (!dotted) return false;
-    const char *s = dotted;
-    while (*s == '/') s++;   /* allow leading slash */
-
-    while (*s && p->elem_count < GNMI_MAX_ELEMS) {
+    if (!text) return false;
+    const char *s = text;
+    while (*s == '/') s++;
+    while (*s) {
+        if (p->elem_count == GNMI_MAX_ELEMS) return false;
         gnmi_path_elem_t *e = &p->elems[p->elem_count++];
-
-        /* a keyed segment may contain '/' inside its value (e.g.
-         * route[prefix=10.99.0.0/24]); when a '[' is present the
-         * segment ends after the matching ']'. */
-        const char *br0 = strchr(s, '[');
-        const char *next_slash = strchr(s, '/');
-        const char *end;
-        if (br0 && (!next_slash || br0 < next_slash)) {
-            /* keyed segment: extend to the matching ']' */
-            const char *close0 = strchr(br0, ']');
-            end = close0 ? close0 + 1 : next_slash;
-        } else {
-            end = next_slash;
+        size_t n = strcspn(s, "/[");
+        if (!n || n >= GNMI_MAX_NAME) return false;
+        memcpy(e->name, s, n); s += n;
+        unsigned keys = 0;
+        while (*s == '[') {
+            if (++keys > 2) return false;
+            const char *close = strchr(s, ']');
+            const char *eq = strchr(s, '=');
+            if (!close || !eq || eq > close || eq == s + 1) return false;
+            size_t kn = (size_t)(eq - s - 1), vn = (size_t)(close - eq - 1);
+            if (!vn || kn >= GNMI_MAX_NAME || vn >= GNMI_MAX_NAME) return false;
+            char *name = keys == 1 ? e->key_name : e->extra_key_name;
+            char *value = keys == 1 ? e->key_value : e->extra_key_value;
+            memcpy(name, s + 1, kn); memcpy(value, eq + 1, vn);
+            if (keys == 1) e->has_key = true;
+            else {
+                if (!strcmp(e->key_name, e->extra_key_name)) return false;
+                e->has_extra_key = true;
+            }
+            s = close + 1;
         }
-        size_t n = end ? (size_t)(end - s) : strlen(s);
-
-        /* check for [key=value] */
-        const char *br = memchr(s, '[', n);
-        if (br && br < s + n) {
-            size_t name_len = (size_t)(br - s);
-            if (name_len >= GNMI_MAX_NAME) return false;
-            memcpy(e->name, s, name_len);
-            e->name[name_len] = '\0';
-            const char *eq = memchr(br, '=', n - name_len);
-            const char *close = memchr(br, ']', n - name_len);
-            if (!eq || !close || eq > close) return false;
-            size_t kn = (size_t)(eq - br - 1);
-            size_t vn = (size_t)(close - eq - 1);
-            if (kn >= GNMI_MAX_NAME || vn >= GNMI_MAX_NAME) return false;
-            memcpy(e->key_name, br + 1, kn);
-            e->key_name[kn] = '\0';
-            memcpy(e->key_value, eq + 1, vn);
-            e->key_value[vn] = '\0';
-            e->has_key = true;
-        } else {
-            if (n >= GNMI_MAX_NAME) return false;
-            memcpy(e->name, s, n);
-            e->name[n] = '\0';
-        }
-
-        if (!end) break;
-        s = (*end == '/') ? end + 1 : end;
+        if (*s && *s != '/') return false;
+        if (*s == '/') s++;
     }
     return p->elem_count > 0;
 }
@@ -400,7 +399,8 @@ bool gnmi_decode_typed_value(const uint8_t *data, size_t len,
         case 1: case 10: case 11: case 12: {  /* string-ish */
             const uint8_t *d; size_t n;
             if (!gnmi_pbr_bytes(&r, &d, &n)) return false;
-            size_t c = n < GNMI_MAX_VAL - 1 ? n : GNMI_MAX_VAL - 1;
+            if (n >= GNMI_MAX_VAL || memchr(d, 0, n)) return false;
+            size_t c = n;
             memcpy(out->s, d, c);
             out->s[c] = '\0';
             out->kind = (gnmi_val_kind_t)field;
@@ -563,6 +563,8 @@ bool gnmi_decode_set_request(const uint8_t *data, size_t len,
             if (!decode_update(d, n, &out->updates[out->update_count++]))
                 return false;
             break;
+        case 6: /* union_replace is not implemented: never report a no-op success. */
+            return false;
         default:
             gnmi_pbr_skip(&r, wire);
             break;

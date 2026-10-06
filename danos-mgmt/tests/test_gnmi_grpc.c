@@ -744,10 +744,9 @@ static int test_model_unknown_path(void)
  * applied operation. Each gnmi_path_t is ~1.5 KiB, so the overflow was
  * ~12 KiB past the end of the struct. The struct was also a stack local.
  *
- * (`replace` is decoded but not applied, so it contributes no results and
- * is not exercised here.)
+ * Replaces also contribute a full operation list.
  */
-#define MAX_REPORTED_OPS (GNMI_MAX_UPDATES + GNMI_MAX_ELEMS)
+#define MAX_REPORTED_OPS (2 * GNMI_MAX_UPDATES + GNMI_MAX_ELEMS)
 
 /* Count top-level `response` entries (SetResponse field 2) in an encoded
  * SetResponse by walking the protobuf, rather than scanning for a byte
@@ -791,7 +790,18 @@ static int test_set_max_operations(void)
         gnmi_encode_typed_value(&w, 3, &u.val);
         gnmi_pb_end_nested(&w, us);
     }
-    /* Field 2 = delete. Remove GNMI_MAX_ELEMS of them. */
+    for (int i = 0; i < GNMI_MAX_UPDATES; i++) {
+        gnmi_update_t u = {0};
+        snprintf(path, sizeof(path), "interfaces/interface[name=eth%d]", i);
+        assert(gnmi_path_from_str(&u.path, path));
+        u.val.kind = GNMI_VAL_JSON_IETF;
+        strcpy(u.val.s, "{\"mtu\":1600}");
+        size_t us = gnmi_pb_begin_nested(&w, 3);
+        gnmi_encode_path(&w, 1, &u.path);
+        gnmi_encode_typed_value(&w, 3, &u.val);
+        gnmi_pb_end_nested(&w, us);
+    }
+    /* Field 2 = delete, applied before replace and update. */
     for (int i = 0; i < GNMI_MAX_ELEMS; i++) {
         gnmi_path_t p;
         snprintf(path, sizeof(path), "interfaces/interface[name=eth%d]", i);
