@@ -285,6 +285,78 @@ danos_status_t danos_tx_stage_object(danos_tx_t *tx, danos_obj_type_t type,
     return DANOS_OK;
 }
 
+typedef struct {
+    danos_object_entry_t *entries;
+    size_t count, capacity;
+    danos_obj_type_t type;
+    danos_status_t status;
+} tx_snapshot_t;
+
+static void snapshot_put(tx_snapshot_t *s, danos_obj_id_t id,
+                          const void *data, size_t size)
+{
+    if (s->status != DANOS_OK) return;
+    size_t i = 0;
+    while (i < s->count && s->entries[i].id != id) i++;
+    if (i == s->count) {
+        if (s->count == s->capacity) {
+            size_t capacity = s->capacity ? s->capacity * 2 : 16;
+            if (capacity < s->capacity || capacity > SIZE_MAX / sizeof(*s->entries)) {
+                s->status = DANOS_ERR_NO_MEMORY; return;
+            }
+            danos_object_entry_t *p = realloc(s->entries, capacity * sizeof(*p));
+            if (!p) { s->status = DANOS_ERR_NO_MEMORY; return; }
+            s->entries = p;
+            s->capacity = capacity;
+        }
+        memset(&s->entries[s->count++], 0, sizeof(*s->entries));
+    }
+    void *copy = NULL;
+    if (data && size) {
+        copy = malloc(size);
+        if (!copy) { s->status = DANOS_ERR_NO_MEMORY; return; }
+        memcpy(copy, data, size);
+    }
+    free(s->entries[i].data);
+    s->entries[i].type = s->type;
+    s->entries[i].id = id;
+    s->entries[i].data = copy;
+    s->entries[i].data_size = size;
+}
+
+static void snapshot_collect(danos_object_entry_t *e, void *user)
+{
+    tx_snapshot_t *s = user;
+    if (e->type == s->type) snapshot_put(s, e->id, e->data, e->data_size);
+}
+
+danos_status_t danos_tx_iterate_objects(danos_tx_t *tx, danos_obj_type_t type,
+                                       danos_object_iter_cb_t cb, void *user)
+{
+    if (!tx || !cb) return DANOS_ERR_INVALID_ARG;
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) return DANOS_ERR_TX_INVALID;
+    tx_snapshot_t s = { .type = type, .status = DANOS_OK };
+    /* Never hold a store lock and a tx lock together: callbacks can stage. */
+    danos_object_iterate(g_default_store, snapshot_collect, &s);
+    pthread_mutex_lock(&rec->lock);
+    if (!__atomic_load_n(&rec->in_use, __ATOMIC_SEQ_CST) || rec->pub.state > DANOS_TX_VALIDATE)
+        s.status = DANOS_ERR_TX_INVALID;
+    for (size_t i = 0; i < rec->staged_count && s.status == DANOS_OK; i++) {
+        const danos_object_mutation_t *m = &rec->staged[i];
+        if (m->type == type)
+            snapshot_put(&s, m->id, m->remove ? NULL : m->data,
+                          m->remove ? 0 : m->data_size);
+    }
+    pthread_mutex_unlock(&rec->lock);
+    if (s.status == DANOS_OK)
+        for (size_t i = 0; i < s.count; i++)
+            if (s.entries[i].data) cb(&s.entries[i], user);
+    for (size_t i = 0; i < s.count; i++) free(s.entries[i].data);
+    free(s.entries);
+    return s.status;
+}
+
 danos_status_t danos_tx_read_staged(danos_tx_t *tx, danos_obj_type_t type,
                                     danos_obj_id_t id, void *out, size_t *size,
                                     bool *handled)

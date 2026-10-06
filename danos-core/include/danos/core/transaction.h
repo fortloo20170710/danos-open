@@ -80,6 +80,10 @@ danos_status_t danos_tx_stage_object(danos_tx_t *tx, danos_obj_type_t type,
 danos_status_t danos_tx_read_staged(danos_tx_t *tx, danos_obj_type_t type,
                                     danos_obj_id_t id, void *out, size_t *size,
                                     bool *handled);
+/* Iterate a private snapshot of one type, overlaying the candidate. The
+ * callback runs without store/transaction locks and may stage changes. */
+danos_status_t danos_tx_iterate_objects(danos_tx_t *tx, danos_obj_type_t type,
+                                       danos_object_iter_cb_t cb, void *user);
 
 #ifdef __cplusplus
 }
