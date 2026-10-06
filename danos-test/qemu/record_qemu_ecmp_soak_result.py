@@ -10,6 +10,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from verify_frr_recovery import validate_vpp_packets
 
 
 class ResultError(Exception):
@@ -105,6 +106,10 @@ def validate(topology: Path, required_count: int) -> dict[str, object]:
             raise ResultError(f"missing lossless soak flow for {target}")
     if "VPP-RESTART-TEST PASS" not in serial[block_end:]:
         raise ResultError("serial log has no post-soak VPP restart/replay PASS marker")
+    try:
+        validate_vpp_packets(serial[block_end:])
+    except ValueError as error:
+        raise ResultError(f"post-soak VPP packet recovery: {error}") from error
 
     # Use only per-reply RTTs inside this soak, never boot probes or summary
     # averages. Older logs without samples remain explicitly unmeasured.

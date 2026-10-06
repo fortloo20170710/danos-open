@@ -44,7 +44,10 @@ class RecordQemuEcmpSoakResultTest(unittest.TestCase):
             "VPP-ECMP-SOAK PASS flows=4 packets_per_flow=1000 total_tx=4000 "
             f"total_rx=4000 loss=0 elapsed_ms=48730 pps=82.08 "
             f"bucket0_packets=3000 bucket1_packets={bucket1}\n"
-            + ("VPP-RESTART-TEST PASS\n" if restart else "")
+            + ("VPP-RESTART-TEST BEGIN\n"
+               "VPP-RESTART-PEER PASS address=10.10.0.2 packets=3 loss=0\n"
+               "VPP-RESTART-PEER PASS address=10.20.0.2 packets=3 loss=0\n"
+               "VPP-RESTART-TEST PASS\n" if restart else "")
         )
 
     def test_valid_qemu_soak_is_functional_not_pci_performance(self):
@@ -91,6 +94,13 @@ class RecordQemuEcmpSoakResultTest(unittest.TestCase):
     def test_restart_replay_marker_is_required(self):
         (self.topology / "danos.serial.log").write_text(self.serial(restart=False))
         with self.assertRaisesRegex(ResultError, "restart/replay"):
+            validate(self.topology, 1000)
+
+    def test_replay_without_post_restart_packets_is_rejected(self):
+        log = self.topology / "danos.serial.log"
+        log.write_text(self.serial(restart=False) +
+                       "VPP-RESTART-TEST BEGIN\nVPP-RESTART-TEST PASS\n")
+        with self.assertRaisesRegex(ResultError, "packet recovery"):
             validate(self.topology, 1000)
 
     def test_old_restart_pass_before_soak_is_not_accepted(self):
