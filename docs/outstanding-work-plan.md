@@ -141,6 +141,24 @@ no-rx-interrupts. No VMware guest was started yet, so build completion is
 not runtime/packet PASS. vmrun was available and reported zero running VMs
 at inspection. Existing project VM configurations remain untouched.
 
+The original FRR restart eventually emitted BEGIN/request rc=0/PASS and
+the bridge observed EOF/disconnect/reconnect. **Full recovery gate FAIL**:
+the strengthened verifier caught three `ZAPI command 31 transaction failed:
+EXISTS` messages after re-registration. Native FRR add dispatch currently
+calls route_create, including blackhole routes, so replay of existing desired
+routes is not idempotent. Do not promote the service marker to full PASS.
+Next fix must handle route replace/replay and NH/NHGroup ownership/cleanup
+transactionally, with tests before a fresh runtime replay.
+
+Matched current-source VMware images were also generated (no guests started):
+`danos-vmware-current-r2-20261007.iso`, SHA256
+`9157a6ea71481601714281e1842c0e0b1021f7c6bf758c4009ec7fdd66c082aa`,
+and `danos-vmware-peer-current-20261007.iso`, SHA256
+`5f7b31cf396eeb8f5f58b5895ae9c39c3df7afd5b9e987fd0b3f009dd1a6a7a6`.
+Both originate from clean a7fec40; DUT uses 192.168.45.3/46.3 with dynamic
+neighbor resolution, peer 192.168.45.2/46.2 with 1000 probes per target.
+The first default-address VMware ISO is not a matched-topology result.
+
 ---
 
 ## P0 — blocks any real deployment
