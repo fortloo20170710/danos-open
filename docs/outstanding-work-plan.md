@@ -44,6 +44,18 @@ exits. `DANOS_ISO_BUILD_IMAGE` can select a pre-provisioned trixie build image;
 source targets are still rebuilt and dependencies checked, never taken from
 host build outputs. ISO generation and topology runtime remain unverified.
 
+Follow-up: clean source commit `6d4563a8d8a577dbb2e684fec5ddb99b546c45d0`
+produced `build/danos-clean-frr-20261007.iso` (193986560 bytes), SHA256
+`1ca996ad5879aef862af954690f08f272fa02e310b284471340427d09f1d4349`.
+Build returned zero. The fresh bridge is included; the optional gnmic demo
+is omitted because no gnmic binary was supplied. Three dedicated QEMU guests
+were launched under `build/qemu-current-frr-20261007`, using separate port
+31001/31002/32001/33001/34001 segments and snapshot copies of the historical
+FRR disks, with fresh cloud-init seeds. The manifest binds this ISO/commit.
+Startup is **not PASS**: lifecycle, four-flow 1000-packet soak, independent
+identity verification and recovery assertions are still pending runtime
+events. Physical serial and other assistants' guests were not used.
+
 ---
 
 ## P0 — blocks any real deployment
