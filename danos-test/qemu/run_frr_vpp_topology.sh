@@ -104,4 +104,4 @@ qemu-system-x86_64 -enable-kvm -machine "$QEMU_MACHINE" -cpu host -m 1024 -smp 1
   -display none -serial file:"$T/frr-2.serial.log" -monitor none \
   -daemonize -pidfile "$T/frr-2.pid"
 
-echo "[PASS] QEMU topology launched; logs, manifest and pidfiles are under $T"
+echo "[STARTED] QEMU topology launched; acceptance pending; logs, manifest and pidfiles are under $T"

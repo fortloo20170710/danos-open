@@ -7,6 +7,17 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-07 acceptance harness hardening
+
+The dynamic FRR log gate now requires separate add and delete commands, a
+positive withdrawal count with no sweep failures, and one successful bridge
+summary. Zero withdrawals, one-sided events, processing failures and duplicate
+summaries are rejected by a new regression test. Its successful output is
+`OBSERVED`, not full runtime acceptance: independent VPP FIB checks and a
+current-artifact topology are still required. QEMU launch output is `STARTED`,
+not `PASS`. Debug CTest passes 42/42; shell syntax and diff checks pass.
+These deterministic checks do not close FRR/restart, packet or PCI gates.
+
 ---
 
 ## P0 — blocks any real deployment

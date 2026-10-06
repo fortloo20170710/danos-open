@@ -26,7 +26,11 @@ while [ "$#" -gt 0 ]; do
     *) echo "unknown option: $1"; exit 2 ;;
   esac
 done
-case "$PROTOCOL" in bgp) ZAPI_PROTOCOL=2 ;; ospf) ZAPI_PROTOCOL=3 ;; esac
+case "$PROTOCOL" in
+  bgp) ZAPI_PROTOCOL=2 ;;
+  ospf) ZAPI_PROTOCOL=3 ;;
+  *) echo "[FAIL] unsupported protocol: $PROTOCOL"; exit 2 ;;
+esac
 
 test -x "$BRIDGE" || { echo "[BLOCKED] bridge missing: $BRIDGE"; exit 2; }
 test -S "$ZEBRA_SOCK" || { echo "[BLOCKED] FRR zebra socket missing: $ZEBRA_SOCK"; exit 2; }
@@ -48,10 +52,5 @@ if [ "$rc" -ne 0 ]; then
   echo "[FAIL] bridge exited rc=$rc; log=$LOG"
   exit "$rc"
 fi
-grep -Eq 'zapi command=(9|10|31|32)' "$LOG" || {
-  echo "[BLOCKED] no dynamic route ZAPI add/withdraw observed; log=$LOG"; exit 2;
-}
-grep -q 'programming sweep: withdrawn=' "$LOG" || {
-  echo "[BLOCKED] no route withdrawal sweep observed; log=$LOG"; exit 2;
-}
-echo "[PASS] $PROTOCOL -> ZAPI -> DPA -> VPP dynamic route evidence"
+python3 "$ROOT/danos-test/integration/verify_frr_dynamic_log.py" "$LOG"
+echo "[OBSERVED] $PROTOCOL route events and successful withdrawal; independent VPP FIB/topology verification still required"
