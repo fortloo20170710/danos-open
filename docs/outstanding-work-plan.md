@@ -97,6 +97,17 @@ caused this run's delay; the fix has not been boot-qualified. Do not count
 pending FRR completion as PASS or restart live guests based only on elapsed
 observation time.
 
+Seed-generation verification: `FRR_SEED_ONLY=1` regenerates seeds against
+existing disks without copying them, and refuses a topology whose recorded
+guest PID is live. The idle r2 artifacts were regenerated successfully;
+attempting the mode against the original live topology was rejected with
+exit 2 before seed replacement. Both actual cloud-init route-cycle generation
+commands were executed twice in an isolated temporary directory with systemctl
+stubbed: exactly one script body, one registration delay and one unit ExecStart
+remained. This proves generation idempotency, not guest recovery. Original
+guest processes and completed route-cycle evidence remain intact; the FRR
+restart phase is still pending. No physical serial or external VM was touched.
+
 ---
 
 ## P0 — blocks any real deployment

@@ -6,6 +6,7 @@ BUILD="${BUILD_DIR:-$ROOT/build}"
 BASE="${FRR_BASE_IMAGE:-$BUILD/debian-13-generic-amd64.full.qcow2}"
 OUT="${QEMU_TOPOLOGY_DIR:-$BUILD/qemu-frr-vpp-topology}"
 FRR_REUSE_DISK_DIR="${FRR_REUSE_DISK_DIR:-}"
+FRR_SEED_ONLY="${FRR_SEED_ONLY:-0}"
 FRR_TRAFFIC_READY_PORT="${FRR_TRAFFIC_READY_PORT:-2603}"
 mkdir -p "$OUT/seed-r1" "$OUT/seed-r2"
 test -f "$BASE" || { echo "[BLOCKED] base image missing: $BASE"; exit 2; }
@@ -95,7 +96,21 @@ EOF
     xorriso -as mkisofs -quiet -V CIDATA -o "$OUT/$node-seed.iso" "$dir"
 }
 
-if [ -n "$FRR_REUSE_DISK_DIR" ]; then
+if [ "$FRR_SEED_ONLY" = 1 ]; then
+  # Rebuild seeds without duplicating disks, only in a stopped topology.
+  for node in danos frr-1 frr-2; do
+    if test -f "$OUT/$node.pid"; then
+      topology_pid=$(<"$OUT/$node.pid")
+      if [[ "$topology_pid" =~ ^[1-9][0-9]*$ ]] && kill -0 "$topology_pid" 2>/dev/null; then
+        echo "[BLOCKED] cannot replace seeds in a live topology: $node" >&2
+        exit 2
+      fi
+    fi
+  done
+  for node in 1 2; do
+    test -f "$OUT/frr-$node.qcow2" || { echo "[BLOCKED] existing disk missing: frr-$node"; exit 2; }
+  done
+elif [ -n "$FRR_REUSE_DISK_DIR" ]; then
   for node in 1 2; do
     source_disk="$FRR_REUSE_DISK_DIR/frr-$node.qcow2"
     test -f "$source_disk" || { echo "[BLOCKED] reusable FRR disk missing: $source_disk"; exit 2; }
