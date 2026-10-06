@@ -1,5 +1,22 @@
 # DANOS Open Project Status
 
+## 2026-10-07 native FRR replay repair: current r2 recovery pending
+
+The first current-source topology reached FRR restart but failed the stronger
+recovery gate on three replay `EXISTS` transactions. Clean fix `a783c73` now
+updates existing native FRR routes, keeps mapper-private path IDs stable, and
+transactionally retires removed paths/groups. Debug 45/45 and ASan/TSan FIB
+mapper/e2e subsets 3/3 each pass.
+
+Fresh `build/qemu-current-frr-20261007-r2` uses its clean fix ISO. Four-flow
+soak is 4000/4000, zero loss, 48600 ms, 82.30 pps, buckets 3000/1000,
+complete-sample RTT p50/p99 349.30/736.00 us. Actual VPP restart/replay and
+FRR route add/withdraw/restore/cycle-done pass, with no transaction/programming
+failure observed at this stage. Complete verifier still awaits the scheduled
+FRR daemon/zserv restart; the old failing run is retained, not relabeled PASS.
+Current VMware full-profile images exist, but host vmmon is missing and
+privileged module preparation is unavailable; that lane is ENVIRONMENT-OPEN.
+
 ## 2026-10-07 current-source QEMU packet qualification (recovery pending)
 
 Clean ISO commit `6d4563a` passed identity/content verification in the isolated
