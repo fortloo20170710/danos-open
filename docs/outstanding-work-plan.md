@@ -85,6 +85,18 @@ PCI performance remains ENVIRONMENT-OPEN. Full verifier next stops on the
 pending FRR route-cycle add marker; BGP add/withdraw and OSPF Full were already
 observed. Guests remain live for the scheduled FRR cycle and daemon restart.
 
+At approximately seven minutes the original guests remain active; full
+verification still lacks the FRR route-cycle markers. Source inspection
+found that route-cycle script and unit generation appended to pre-existing
+files on reused disks (unlike the other explicitly truncated generated
+files). These two writes now replace their files, preventing duplicated
+script bodies and multiple oneshot ExecStart entries on subsequent boots.
+Shell syntax and diff checks pass. This is a definite provisioning
+idempotency defect, but no guest-side inspection yet establishes that it
+caused this run's delay; the fix has not been boot-qualified. Do not count
+pending FRR completion as PASS or restart live guests based only on elapsed
+observation time.
+
 ---
 
 ## P0 — blocks any real deployment
