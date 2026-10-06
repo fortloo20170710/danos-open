@@ -170,6 +170,17 @@ mapper behavior, not the failed running ISO: rebuild and real FRR restart
 qualification are still required. Externally shared graph ownership and the
 legacy clean-room route mapper are not expanded by this native-FRR change.
 
+The fix is in clean commit `a783c73`; ASan and TSan mapper/e2e subsets each
+pass 3/3. A fresh trixie build produced
+`build/danos-frr-replay-fixed-20261007.iso`, SHA256
+`4a28468d948fc8e2fdf9848d2ffb19a03353bb7b022ca28b3d03f8b10400da27`.
+Old failing-run QEMU PIDs 527171/527184/527194 were stopped after confirming
+their owned topology paths; logs and disks were retained. Corrected seed
+generation was reapplied to idle r2, then new PIDs 577191/577204/577215 were
+launched under `build/qemu-current-frr-20261007-r2`. Manifest matches the
+clean fix commit and actual ISO digest. Runtime validation is pending; no
+restart PASS is inferred from the deterministic checks or launch success.
+
 ---
 
 ## P0 — blocks any real deployment
