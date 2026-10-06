@@ -65,6 +65,14 @@ if rg -q "unknown input .*ping|VPP-DPDK-PING-[01] FAIL|VPP-TRAFFIC-PEER-READY FA
     exit 1
 fi
 require 'VPP-RESTART-TEST PASS' "$DANOS_LOG" 'VPP process restart and route replay'
+require 'VPP-RESTART-PEER PASS address=10\.10\.0\.2 packets=3 loss=0' \
+    "$DANOS_LOG" 'first dataplane peer reachable after VPP restart'
+require 'VPP-RESTART-PEER PASS address=10\.20\.0\.2 packets=3 loss=0' \
+    "$DANOS_LOG" 'second dataplane peer reachable after VPP restart'
+if rg -q 'VPP-RESTART-(PEER|TEST) FAIL' "$DANOS_LOG"; then
+    echo '[FAIL] VPP restart packet/replay failure despite any PASS markers'
+    exit 1
+fi
 require 'frr route event type=10 add=1' "$DANOS_LOG" 'BGP route add into DANOS'
 require 'frr route event type=10 add=0' "$DANOS_LOG" 'BGP route withdraw from DANOS'
 require 'FRR-PEER-ROUTE-READY PASS' "$FRR_LOG" 'FRR BGP peer route learned before dataplane traffic'

@@ -1,5 +1,5 @@
 import unittest
-from verify_frr_recovery import validate
+from verify_frr_recovery import validate, validate_vpp_packets
 
 
 class RecoveryTest(unittest.TestCase):
@@ -10,6 +10,19 @@ class RecoveryTest(unittest.TestCase):
 
     def test_valid(self):
         validate(self.frr, self.bridge)
+
+    def test_vpp_packet_recovery_order(self):
+        begin = "VPP-RESTART-TEST BEGIN\n"
+        probes = ("VPP-RESTART-PEER PASS address=10.10.0.2 packets=3 loss=0\n"
+                  "VPP-RESTART-PEER PASS address=10.20.0.2 packets=3 loss=0\n")
+        done = "VPP-RESTART-TEST PASS\n"
+        valid = begin + probes + done
+        validate_vpp_packets(valid)
+        for log in (probes + begin + done, begin + done + probes,
+                    valid + begin, valid + "VPP-RESTART-PEER FAIL address=10.10.0.2\n",
+                    valid.replace("packets=3", "packets=0"), valid.replace("loss=0", "loss=1")):
+            with self.subTest(log=log), self.assertRaises(ValueError):
+                validate_vpp_packets(log)
 
     def test_reject_incomplete_or_failed(self):
         cases = [

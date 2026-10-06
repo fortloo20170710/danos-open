@@ -620,6 +620,20 @@ if test -e /vpp-dpdk.enabled; then
                 test -S /run/vpp/api.sock && break
                 sleep 1
             done
+            # These interface addresses/neighbors are LIVE topology fixtures,
+            # not objects owned by fib_live_bridge's route ledger. A fresh VPP
+            # process loses them. Restore the fixture explicitly before judging
+            # route replay; successful API requests alone do not prove packets.
+            if test -e /vpp-dpdk-traffic-test.enabled; then
+                /usr/bin/vppctl -s /run/vpp/cli.sock set interface state "$vpp_if1" up
+                /usr/bin/vppctl -s /run/vpp/cli.sock set interface ip address "$vpp_if1" "${VPP_IF1_ADDR:-10.10.0.1/24}"
+                /usr/bin/vppctl -s /run/vpp/cli.sock set interface state "$vpp_if2" up
+                /usr/bin/vppctl -s /run/vpp/cli.sock set interface ip address "$vpp_if2" "${VPP_IF2_ADDR:-10.20.0.1/24}"
+                if test "${VPP_STATIC_NEIGHBORS:-1}" = 1; then
+                    /usr/bin/vppctl -s /run/vpp/cli.sock set ip neighbor "$vpp_if1" "${VPP_PEER_IP1:-10.10.0.2}" "${VPP_PEER_MAC1:-52:54:00:11:01:02}"
+                    /usr/bin/vppctl -s /run/vpp/cli.sock set ip neighbor "$vpp_if2" "${VPP_PEER_IP2:-10.20.0.2}" "${VPP_PEER_MAC2:-52:54:00:12:01:02}"
+                fi
+            fi
         restart_ok=0
         for restart_check in $(seq 1 120); do
             replay_log=/var/log/fib_live_bridge.log
@@ -632,6 +646,19 @@ if test -e /vpp-dpdk.enabled; then
             fi
             sleep 1
         done
+        if test "$restart_ok" = 1 && test -e /vpp-dpdk-traffic-test.enabled; then
+            for restart_peer in "${VPP_PEER_IP1:-10.10.0.2}" "${VPP_PEER_IP2:-10.20.0.2}"; do
+                restart_ping_log=/tmp/vpp-restart-ping-$restart_peer.log
+                if /usr/bin/vppctl -s /run/vpp/cli.sock ping "$restart_peer" repeat 3 > "$restart_ping_log" 2>&1 &&
+                   grep -Fq 'Statistics: 3 sent, 3 received, 0% packet loss' "$restart_ping_log"; then
+                    say_live "VPP-RESTART-PEER PASS address=$restart_peer packets=3 loss=0"
+                else
+                    restart_ok=0
+                    say_live "VPP-RESTART-PEER FAIL address=$restart_peer"
+                fi
+                say_live_file "$restart_ping_log"
+            done
+        fi
         if test "$restart_ok" = 1; then
                 echo "VPP-RESTART-TEST PASS" | tee /dev/console /dev/ttyS0 >/dev/null
             else

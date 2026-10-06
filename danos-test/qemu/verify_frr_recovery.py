@@ -5,6 +5,22 @@ import sys
 from pathlib import Path
 
 
+def validate_vpp_packets(log: str) -> None:
+    begin = log.rfind("VPP-RESTART-TEST BEGIN")
+    if begin < 0:
+        raise ValueError("no actual VPP restart begin")
+    recovery = log[begin:]
+    completion = recovery.find("VPP-RESTART-TEST PASS")
+    if completion < 0:
+        raise ValueError("latest VPP restart is incomplete")
+    if re.search(r"VPP-RESTART-(?:PEER|TEST) FAIL", recovery):
+        raise ValueError("VPP restart packet/replay failure")
+    for address in ("10.10.0.2", "10.20.0.2"):
+        marker = f"VPP-RESTART-PEER PASS address={address} packets=3 loss=0"
+        if marker not in recovery[:completion]:
+            raise ValueError(f"no lossless {address} probe between restart and completion")
+
+
 def validate(frr: str, bridge: str) -> None:
     begin = frr.rfind("FRR-RESTART-BEGIN")
     if begin < 0:
@@ -34,8 +50,9 @@ def validate(frr: str, bridge: str) -> None:
 
 if __name__ == "__main__":
     try:
-        validate(Path(sys.argv[1]).read_text(errors="replace"),
-                 Path(sys.argv[2]).read_text(errors="replace"))
+        bridge = Path(sys.argv[2]).read_text(errors="replace")
+        validate(Path(sys.argv[1]).read_text(errors="replace"), bridge)
+        validate_vpp_packets(bridge)
     except (OSError, ValueError, IndexError) as error:
         print(f"[FAIL] FRR recovery evidence: {error}", file=sys.stderr)
         sys.exit(1)

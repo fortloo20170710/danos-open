@@ -1,5 +1,15 @@
 # DANOS Open Project Status
 
+## 2026-10-07 follow-up: post-VPP-restart packet recovery still open
+
+Additional inspection of the live r2 found both VPP interfaces down without
+addresses after process restart. A real ping sent zero packets with no egress
+source address. The older frozen PASS covers API replay/reconnect and packets
+before restart, not post-restart forwarding. The strengthened current verifier
+rejects that run until ordered, lossless post-restart probes exist. LIVE fixture
+restoration and stricter checks are implemented; a clean rebuilt ISO rerun is
+required. Historical PASS statements below retain their original gate scope.
+
 ## 2026-10-07 native FRR replay repair: current r2 gate PASS
 
 The first current-source topology reached FRR restart but failed the stronger
