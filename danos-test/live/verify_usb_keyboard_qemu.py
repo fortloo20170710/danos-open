@@ -165,7 +165,9 @@ def main() -> int:
                         r"mgrd: persistence /tmp/mgrd\.wal \(([1-9][0-9]*) records recovered\)",
                         restart_log,
                     )
-                    if match and "mgrd: gNMI (h2c) on :59200" in restart_log and \
+                    if match and re.search(
+                            r"mgrd: gNMI \((?:laboratory )?h2c\) on :59200",
+                            restart_log) and \
                        "mgrd: prometheus /metrics on :59201" in restart_log and \
                        re.search(r"^danos_programming_attempted_total [1-9][0-9]*(?:\.[0-9]+)?$",
                                  restart_log, re.MULTILINE) and \

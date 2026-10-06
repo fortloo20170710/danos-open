@@ -12,10 +12,11 @@ Fresh `build/qemu-current-frr-20261007-r2` uses its clean fix ISO. Four-flow
 soak is 4000/4000, zero loss, 48600 ms, 82.30 pps, buckets 3000/1000,
 complete-sample RTT p50/p99 349.30/736.00 us. Actual VPP restart/replay and
 FRR route add/withdraw/restore/cycle-done pass, with no transaction/programming
-failure observed at this stage. Complete verifier still awaits the scheduled
-FRR daemon/zserv restart; the old failing run is retained, not relabeled PASS.
-Current VMware full-profile images exist, but host vmmon is missing and
-privileged module preparation is unavailable; that lane is ENVIRONMENT-OPEN.
+failure observed. The scheduled FRR daemon/zserv restart subsequently passed
+the complete verifier below; the old failing run is retained, not relabeled PASS.
+Current VMware full-profile images exist. Both vmmon/vmnet modules now compile
+against host kernel 7.0.0-38-generic, but privileged installation/loading and
+host-only networking preparation remain unavailable; that lane is ENVIRONMENT-OPEN.
 
 Final r2 follow-up: the strengthened complete topology verifier returned zero
 against both live logs and frozen `accepted/` copies. FRR restart request and
