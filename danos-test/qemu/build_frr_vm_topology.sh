@@ -8,6 +8,10 @@ OUT="${QEMU_TOPOLOGY_DIR:-$BUILD/qemu-frr-vpp-topology}"
 FRR_REUSE_DISK_DIR="${FRR_REUSE_DISK_DIR:-}"
 FRR_SEED_ONLY="${FRR_SEED_ONLY:-0}"
 FRR_TRAFFIC_READY_PORT="${FRR_TRAFFIC_READY_PORT:-2603}"
+FRR_SHARED_PEER_L2="${FRR_SHARED_PEER_L2:-0}"
+[[ "$FRR_SHARED_PEER_L2" = 0 || "$FRR_SHARED_PEER_L2" = 1 ]] || {
+    echo '[FAIL] FRR_SHARED_PEER_L2 must be 0 or 1'; exit 1;
+}
 mkdir -p "$OUT/seed-r1" "$OUT/seed-r2"
 test -f "$BASE" || { echo "[BLOCKED] base image missing: $BASE"; exit 2; }
 BASE="$(realpath "$BASE")"
@@ -76,6 +80,10 @@ runcmd:
   # over each FRR node's own DANOS-facing link instead of relying on an
   # overlapping connected test subnet or the FRR peer link.
   - [sh, -c, "if [ '$node' = r1 ]; then ip route replace 30.30.30.1/32 via 10.10.0.1 dev ens3; else ip route replace 30.30.30.1/32 via 10.20.0.1 dev ens3; fi"]
+  # Optional learned-route lane shares VPP port 2 with both FRR peer NICs.
+  # Avoid weak-host ARP replies on FRR-2's other NIC on that same L2 segment.
+  # A /32 local endpoint coexists with the advertised /24 blackhole aggregate.
+  - [sh, -c, "if [ '$FRR_SHARED_PEER_L2' = 1 ]; then echo 1 > /proc/sys/net/ipv4/conf/all/arp_ignore; echo 1 > /proc/sys/net/ipv4/conf/default/arp_ignore; if [ '$node' = r2 ]; then ip addr replace 198.18.0.1/32 dev lo; fi; echo FRR-SHARED-PEER-L2 node=$node > /dev/ttyS0; fi"]
   # Put the same four test endpoints on both isolated DANOS-facing links.
   # ECMP is free to select either next hop for any 5-tuple; unique endpoint
   # ownership on one path makes half the hashed flows fail for topology reasons.
@@ -122,6 +130,7 @@ else
 fi
 make_seed r1 frr-1 10.10.0.2 10.10.0.1 65001 65002 198.51.100.0/24
 make_seed r2 frr-2 10.20.0.2 10.20.0.1 65002 65001 198.18.0.0/24
+printf 'frr_shared_peer_l2=%s\n' "$FRR_SHARED_PEER_L2" > "$OUT/topology-profile.env"
 cat > "$OUT/README" <<EOF
 QEMU topology artifacts
 

@@ -288,6 +288,27 @@ wrong gateway/interface, stale entry and an unrelated route's adjacency.
 The real r3 diagnostic correctly returns FAIL. Debug CTest now 46/46 PASS;
 this unit result does not close the real learned-route qualification.
 
+Shared-L2 implementation (qualification pending): opt-in
+`FRR_SHARED_PEER_L2=1` joins DUT port 2, FRR-2's dataplane socket and both
+FRR peer sockets on a QEMU hub. All sockets bind/connect only 127.0.0.1;
+the original point-to-point layout stays the default. The seed builder records
+its profile, and launch rejects a shared-mode/legacy-seed mismatch before
+starting guests. Shared-mode FRR seeds suppress weak-host ARP replies and
+provide a real local 198.18.0.1/32 endpoint behind the advertised aggregate.
+Build the DUT with `VPP_IF2_EXTRA_ADDRS=172.31.0.1/24`; the extra address is
+embedded in build identity/network config and restored after VPP restart.
+This changes test fixtures, not learned gateways or production route mapping.
+
+Implementation reference: [QEMU emulated hubs](https://www.qemu.org/docs/master/system/devices/net.html).
+Four launcher assembly tests cover default/shared wiring, invalid mode and
+seed mismatch. A real paused local QEMU accepted three loopback socket hub
+backends and a NIC and remained alive; that is network-startup proof only,
+not guest routing/packet acceptance. Debug CTest is 47/47 PASS. A fresh clean
+ISO and isolated three-guest run are still needed; add/withdraw/restore and
+learned-route post-restart packet probes must follow, not be inferred.
+Only old owned `iso-frr-replay-fixed-20261007/initramfs` was removed for
+541 MiB of build headroom; its ISO, frozen logs and disks are retained.
+
 ---
 
 ## P0 — blocks any real deployment
