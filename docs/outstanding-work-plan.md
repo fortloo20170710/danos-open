@@ -192,6 +192,21 @@ accept mere local-address pings; these new profiles remain runtime-unverified.
 The current QEMU r2 already reports peer readiness and is running its soak
 without an observed transaction failure at this stage.
 
+Current full-profile VMware ISO generation completed from ceaf482:
+`danos-vmware-ecmp-20261007.iso` SHA256
+`97b55371537c6508ee259a56bcc4c45a1e405a342cf99062baa2036ba341b1ee`,
+peer `danos-vmware-ecmp-peer-20261007.iso` SHA256
+`53e275811b1a3cad097eca97437de893ed8e0c71b43e18f710a81f1447a4daa5`.
+Dedicated VM configurations are under `build/vmware-current-20261007`;
+historical VM configs are unchanged. vmrun start failed before guest boot:
+the VMX diagnostic log reports missing /dev/vmmon, and modinfo reports no
+vmmon module for host kernel 7.0.0-38-generic. Noninteractive sudo modprobe
+requires authentication. VMware is ENVIRONMENT-OPEN, not packet PASS; host
+module installation/loading requires privileged environment preparation.
+Only two owned obsolete unpacked initramfs trees were removed to free about
+1 GiB; retained ISO contents allow re-extraction. No logs/disks were removed.
+The isolated QEMU r2 continues running independently.
+
 ---
 
 ## P0 — blocks any real deployment
