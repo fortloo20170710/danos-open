@@ -322,6 +322,14 @@ Generated YAML parses correctly; Debug 47/47 PASS, new FIB/wiring subsets
 2/2 in both sanitizer trees. Network boot and unit evidence do not yet qualify
 the learned-route packet lifecycle; current r4 endpoint probe is in progress.
 
+r4 initial learned-route probe now completed: API-owned 198.18.0.0/24 FIB
+resolves via 172.31.0.3 on GigabitEthernet0/3/0; strict FIB prerequisite PASS.
+Between FRR-LEARNED-PROBE-BEGIN/END, actual VPP ping to 198.18.0.1 is 3/3,
+zero loss. Snapshot `learned-initial/` preserves the log/manifest; it is not
+full lifecycle acceptance. Next required work remains withdraw/restore and
+post-VPP/FRR-restart learned-route packet probes, plus independent transit
+traffic as appropriate. Do not infer VMware/PCI or line rate from this probe.
+
 ---
 
 ## P0 — blocks any real deployment
