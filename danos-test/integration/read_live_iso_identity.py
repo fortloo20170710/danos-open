@@ -80,7 +80,7 @@ def read_identity(iso: Path) -> dict[str, str]:
         "DANOS_BUILD_ECMP_SOAK_INTERVAL", "DANOS_BUILD_TRAFFIC_READY_ENDPOINT",
         "DANOS_BUILD_PEER_MAC1", "DANOS_BUILD_PEER_MAC2", "DANOS_BUILD_PEER_IP1",
         "DANOS_BUILD_PEER_IP2", "DANOS_BUILD_IF1_ADDR", "DANOS_BUILD_IF2_ADDR",
-        "DANOS_BUILD_STATIC_NEIGHBORS",
+        "DANOS_BUILD_STATIC_NEIGHBORS", "DANOS_BUILD_IF2_EXTRA_ADDRS",
     ):
         if key in values:
             result[key.lower()] = values[key]

@@ -309,6 +309,19 @@ learned-route post-restart packet probes must follow, not be inferred.
 Only old owned `iso-frr-replay-fixed-20261007/initramfs` was removed for
 541 MiB of build headroom; its ISO, frozen logs and disks are retained.
 
+Shared-mode clean build completed: `build/danos-shared-peer-20261007.iso`,
+source 81a3821 (dirty=0), SHA256
+`e59bda64ba96d6409c44c1866af9e9ca146492cea544a640210410512ec6a15b`.
+Identity reader now exposes `danos_build_if2_extra_addrs=172.31.0.1/24`;
+the primary 10.20.0.1/24 remains unchanged. Isolated r4 topology under
+`build/qemu-current-frr-20261007-r4` launched all three guests using fresh
+snapshot overlays and matching shared-mode seeds. Both FRR guests emit their
+shared-L2 marker and BGP readiness passes. The original r3 owned guests were
+terminated after their logs were frozen; no disks/logs were removed.
+Generated YAML parses correctly; Debug 47/47 PASS, new FIB/wiring subsets
+2/2 in both sanitizer trees. Network boot and unit evidence do not yet qualify
+the learned-route packet lifecycle; current r4 endpoint probe is in progress.
+
 ---
 
 ## P0 — blocks any real deployment
