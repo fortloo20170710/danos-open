@@ -16,6 +16,14 @@ results explicitly unmeasured. Throughput and CPU remain unmeasured. FRR
 dynamic lifecycle and FRR/VPP restart verification are still pending; no
 full topology or formal release PASS is claimed from these packet results.
 
+Follow-up: real VPP restart completed (new process PID 722, sockets recreated,
+bridge replay attempted=4 failed=0). The identity-bound QEMU result adapter
+returned PASS and wrote `build/qemu-current-frr-20261007/ecmp-result.env`, with
+the measurements above and `performance_status=ENVIRONMENT-OPEN`. Complete
+topology verification also observed BGP add/withdraw, ZAPI 31/32 and OSPF Full,
+but still lacks the separate FRR route-cycle and daemon-restart completion
+markers. These pending stages must not be inferred from VPP recovery.
+
 ## 2026-10-07 pass: real VPP API/FIB lifecycle
 
 An exclusive non-root/network-none project VPP runtime passed API-driven

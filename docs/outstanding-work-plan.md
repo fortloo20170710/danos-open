@@ -76,6 +76,15 @@ all four three-packet ECMP probes were loss-free, and bucket deltas were
 delay was not a terminal failure in this run; do not attribute successful
 traffic to the revised, unbooted seed or restart the original guests.
 
+The same original topology completed the four-flow soak (4000/4000, zero
+loss, 49090 ms, 81.48 pps, buckets 3000/1000), ECMP next-hop withdraw/restore
+probes, and an actual VPP restart/replay of four objects. The current adapter
+recorded `ecmp-result.env` under that topology, including complete-sample RTT
+p50/p99 407.30/2924.30 us and a clean ISO identity. CPU/Mbps are unmeasured;
+PCI performance remains ENVIRONMENT-OPEN. Full verifier next stops on the
+pending FRR route-cycle add marker; BGP add/withdraw and OSPF Full were already
+observed. Guests remain live for the scheduled FRR cycle and daemon restart.
+
 ---
 
 ## P0 — blocks any real deployment
