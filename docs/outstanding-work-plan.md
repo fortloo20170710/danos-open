@@ -18,6 +18,14 @@ current-artifact topology are still required. QEMU launch output is `STARTED`,
 not `PASS`. Debug CTest passes 42/42; shell syntax and diff checks pass.
 These deterministic checks do not close FRR/restart, packet or PCI gates.
 
+The LIVE builder now compiles `fib_live_bridge` alongside `danos-mgrd` inside
+the same trixie container and copies that fresh binary into the initramfs.
+Host build fallbacks have been removed: they could import stale sources or a
+newer host libc ABI. A dedicated current-source e1000 ISO build and separate
+FRR disk copies were started for topology qualification. Build startup is
+not evidence of successful ISO generation or runtime acceptance; a dirty
+source identity must not be promoted to the clean release performance gate.
+
 ---
 
 ## P0 — blocks any real deployment

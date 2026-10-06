@@ -109,8 +109,9 @@ apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev 
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
 test -x /bin/busybox
 cmake -B /tmp/b -S /src -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-cmake --build /tmp/b -j\$(nproc) --target danos-mgrd >/dev/null 2>&1
+cmake --build /tmp/b -j\$(nproc) --target danos-mgrd fib_live_bridge >/dev/null 2>&1
 test -x /tmp/b/danos-mgrd/danos-mgrd
+test -x /tmp/b/danos-test/fib_live_bridge
 echo ISO-DEPS-OK
 sleep 600"
 # wait for deps to be ready (log marker), max ~6 min
@@ -348,15 +349,10 @@ for lib in libssl.so.3 libcrypto.so.3; do
   tls_lib_path=$(docker exec "$BUILD_CONTAINER" readlink -f "/lib/x86_64-linux-gnu/$lib")
   docker cp "$BUILD_CONTAINER:$tls_lib_path" "$WORK/initramfs/lib/x86_64-linux-gnu/$lib"
 done
-if test -x "$WORK/../build/danos-test/fib_live_bridge"; then
-  cp "$WORK/../build/danos-test/fib_live_bridge" "$WORK/initramfs/bin/fib_live_bridge"
-  chmod +x "$WORK/initramfs/bin/fib_live_bridge"
-elif test -x "$PROJECT_ROOT/build/danos-test/fib_live_bridge"; then
-  cp "$PROJECT_ROOT/build/danos-test/fib_live_bridge" "$WORK/initramfs/bin/fib_live_bridge"
-  chmod +x "$WORK/initramfs/bin/fib_live_bridge"
-else
-  echo "INFO: fib_live_bridge not built; ISO will omit optional FRR bridge"
-fi
+# Build the bridge from the same source and trixie toolchain as mgrd. Never
+# silently import a stale host build with a potentially newer libc ABI.
+docker cp "$BUILD_CONTAINER:/tmp/b/danos-test/fib_live_bridge" "$WORK/initramfs/bin/fib_live_bridge"
+chmod +x "$WORK/initramfs/bin/fib_live_bridge"
 test "$DANOS_FIB_BRIDGE_ENABLE" = 1 && touch "$WORK/initramfs/danos-fib-bridge.enabled"
 if test "$DANOS_FIB_BRIDGE_ENABLE" = 1 && test -n "$DANOS_ZEBRA_ENDPOINT"; then
   mkdir -p "$WORK/initramfs/etc/danos"
