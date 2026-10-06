@@ -127,6 +127,20 @@ logs. This does not prove forwarding through FRR-learned next hops, or the
 still-unobserved FRR daemon restart. Only the dedicated guest was inspected;
 no physical serial was accessed.
 
+The original FRR log subsequently emitted a second full route-cycle
+add/withdraw/restore/cycle-done sequence. This confirms repeated cycle
+execution in this run, rather than a dead guest; daemon restart remains
+pending behind it. The original guests were not restarted.
+
+A clean current-source VMware polling ISO also completed build:
+`build/danos-vmware-current-20261007.iso`, commit
+`850f60f55c84ecc610ca0f8e51fb30b11fe94bf6`, source_dirty=0, SHA256
+`a900904bb06741f54e1faead345c423c919a42245bff76280bd7c731f067f523`.
+The project runtime profile retains VMXNET3 BDFs 0b:00.0/13:00.0 and
+no-rx-interrupts. No VMware guest was started yet, so build completion is
+not runtime/packet PASS. vmrun was available and reported zero running VMs
+at inspection. Existing project VM configurations remain untouched.
+
 ---
 
 ## P0 — blocks any real deployment
