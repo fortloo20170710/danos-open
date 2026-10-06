@@ -77,6 +77,7 @@ require 'withdraw-rc=0' "$FRR_LOG" 'FRR route withdraw'
 require 'restore-rc=0' "$FRR_LOG" 'FRR route restore'
 require 'cycle-done' "$FRR_LOG" 'FRR cycle completion'
 require 'FRR-RESTART-TEST PASS' "$FRR_LOG" 'FRR daemon restart and zserv recovery'
+python3 "$ROOT/danos-test/qemu/verify_frr_recovery.py" "$FRR_LOG" "$DANOS_LOG"
 if rg -q 'programming failed|Syntax error' "$DANOS_LOG" "$FRR_LOG"; then
     echo '[FAIL] runtime error marker present'
     exit 1

@@ -108,6 +108,16 @@ remained. This proves generation idempotency, not guest recovery. Original
 guest processes and completed route-cycle evidence remain intact; the FRR
 restart phase is still pending. No physical serial or external VM was touched.
 
+FRR recovery evidence is now enforced beyond the service PASS marker: an
+ordered restart begin/request-success/completion, latest zebra disconnect
+followed by successful re-registration, positive successful VPP replay and
+subsequent route notification/programming are required. Zero-object replay,
+unrecovered later disconnect and post-reconnect processing errors fail the
+gate. Debug CTest 45/45 passes including negative fixtures. These are log
+ordering checks, not an independent post-restart FIB/packet inspection.
+The original running topology has not yet emitted FRR restart begin; it is
+not qualified by the new deterministic tests.
+
 ---
 
 ## P0 — blocks any real deployment
