@@ -220,6 +220,20 @@ clean a783c73 ISO. VMware and real PCI remain open, and neither line rate nor
 independent packet forwarding through FRR-learned paths is inferred from the
 CLI-seeded ECMP packet lane. The full project goal remains incomplete.
 
+VMware host preparation follow-up (2026-10-07): both vendor source archives
+from `/usr/lib/vmware/modules/source` compiled successfully, without source
+patches or system installation, against installed kernel headers. Artifacts:
+`build/vmware-modules-20261007-5MG2Kf/vmmon-only/vmmon.ko` and
+`build/vmware-modules-20261007-5MG2Kf/vmnet-only/vmnet.ko`. Both report vermagic
+`7.0.0-38-generic SMP preempt mod_unload modversions`, matching the running
+kernel. Missing vmlinux only skipped BTF generation; both builds returned zero.
+This closes the local compilation prerequisite, not module loading or VMware
+packet acceptance. `sudo -n /sbin/modprobe vmmon` still requires interactive
+authentication. An administrator must install/load these modules and restore
+VMware host-only networking before the dedicated DUT/peer VMs can run. If
+Secure Boot rejects the modules, administrator-managed signing is also needed;
+do not disable host security automatically. Physical serial remains untouched.
+
 ---
 
 ## P0 — blocks any real deployment
