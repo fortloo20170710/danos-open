@@ -56,6 +56,19 @@ Startup is **not PASS**: lifecycle, four-flow 1000-packet soak, independent
 identity verification and recovery assertions are still pending runtime
 events. Physical serial and other assistants' guests were not used.
 
+Runtime observation: ISO content and clean boot identity verification passes;
+VPP API/stat sockets and both e1000 ports are ready. FRR-2 emitted dataplane
+readiness, while FRR-1 remained before cloud-final with the reused disk's long
+route-cycle oneshot already starting. The fresh traffic listener was not yet
+ready. Seeds now runtime-mask that old service in bootcmd (nonblocking stop),
+then unmask it only after fresh dataplane provisioning in runcmd. Revised
+artifacts are prepared under `build/qemu-current-frr-20261007-r2`; both cloud
+config YAML files parse, shell syntax and diff checks pass. They have not yet
+been booted, so the ordering repair remains runtime-unverified. Original
+guest PIDs remain live and are not restarted for an observation timeout.
+Disk headroom dropped to approximately 1.8 GiB; do not launch additional
+builds or broadly prune another assistant's artifacts.
+
 ---
 
 ## P0 — blocks any real deployment
