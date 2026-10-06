@@ -251,6 +251,20 @@ three owned, now obsolete r2 processes were terminated; logs/disks remain.
 r3 runtime acceptance is pending; fixture restoration does not prove DPA
 interface persistence or forwarding through FRR-learned paths.
 
+r3 final: live and frozen `accepted/` logs both pass the strengthened full gate.
+Actual VPP restart restores LIVE fixtures and probes both peers 3/3 before PASS;
+FRR restart, zebra reconnect and subsequent positive replay/programming pass.
+ECMP result: 4000/4000, zero loss, 48360 ms, 82.71 pps, buckets 3000/1000,
+RTT p50/p99 346.20/762.00 us. ASan/TSan full suites each 45/45; latest stricter
+ECMP-result/recovery subsets 2/2 in Debug/ASan/TSan. Deterministic contract PASS.
+Frozen SHA256: DANOS log
+`7ddb7f8cb50d6936b8b94b72d89613b6a19f0c8bb0ee8546ddfdb028e30d3b0c`,
+FRR-1 `acefeb7e9f9773bc4bd7f1bf030ea7605678564ab2aeb56ef3fca0e0340fbba4`,
+result `bd7465fcd0ca46e9880107ba63016456f8d67357524aede4bd1503919090c407`.
+Only the obsolete owned `iso-clean-frr-20261007/initramfs` extraction was removed
+to reclaim 541 MiB; its ISO, logs and disks remain for recovery/re-extraction.
+Scope limits above remain: no FRR-learned packet proof, VMware or PCI qualification.
+
 ---
 
 ## P0 — blocks any real deployment

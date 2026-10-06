@@ -1,5 +1,16 @@
 # DANOS Open Project Status
 
+## 2026-10-07 r3 current strengthened QEMU recovery: PASS
+
+Clean 4cd9585 ISO now passes the full strengthened verifier on live and frozen
+`build/qemu-current-frr-20261007-r3/accepted` logs, including both dataplane
+peers 3/3 after actual VPP restart, followed by FRR/zserv restart/reconnect and
+positive route replay. Four-flow soak: 4000/4000, zero loss, 82.71 pps, buckets
+3000/1000; RTT p50/p99 346.20/762.00 us. Debug/ASan/TSan full suites each 45/45,
+and stricter result/recovery tests pass in all three trees. This supersedes the
+pending r3 note below, not the historical r2 gap. VMware privileged host setup,
+real PCI performance and independent FRR-learned packet forwarding remain open.
+
 ## 2026-10-07 follow-up: post-VPP-restart packet recovery still open
 
 Additional inspection of the live r2 found both VPP interfaces down without
