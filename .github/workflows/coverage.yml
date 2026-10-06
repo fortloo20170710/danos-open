@@ -1,0 +1,38 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libssl-dev openssl python3 python3-venv
+      - name: Install hash-locked coverage tool
+        run: |
+          python3 -m venv .coverage-tools
+          .coverage-tools/bin/python -m pip install --require-hashes --only-binary=:all: -r danos-test/quality/requirements-coverage.lock
+      - name: Measure deterministic production-code coverage
+        run: .coverage-tools/bin/python danos-test/quality/run_coverage.py --build-dir build-coverage --gcovr .coverage-tools/bin/gcovr --jobs 2
+      - name: Preserve coverage and test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-${{ github.sha }}
+          path: |
+            build-coverage/reports/
+            build-coverage/Testing/Temporary/LastTest.log
+          if-no-files-found: error
+          retention-days: 14

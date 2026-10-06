@@ -1,5 +1,19 @@
 # DANOS Open Project Status
 
+## 2026-10-06 pass: production C coverage
+
+Added an isolated GCC coverage option and fresh-run collector, producing HTML,
+Cobertura XML, JSON summary and command/version/hash manifest. Production-only
+filters exclude tests/generated model includes; empty reports and failed tests
+are rejected. Initial fresh local baseline: 6070/7836 lines (77.5%),
+569/668 functions (85.2%), 3393/6119 branches (55.5%); CTest 41/41 PASS.
+See [measurement and limits](coverage-baseline.md).
+
+The coverage workflow pins its two actions to upstream commit SHAs and
+gcovr/transitive packages to versions plus wheel hashes. No arbitrary coverage
+threshold, SBOM, signature, apt/container/VPP dependency lock or history rewrite
+is claimed. GitHub's billing lock still blocks remote workflow execution.
+
 ## 2026-10-06 pass: P1-3 runtime evidence tooling
 
 Added a read-only VPP CLI collector with bounded commands, raw output and

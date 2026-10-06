@@ -364,7 +364,10 @@ Done:
   recorded in the result file. Only the exact value 1 waives.
 
 Still open:
-- no code coverage measurement anywhere in CI
+- a production C coverage workflow and fresh-run collector now exist; initial
+  local baseline is 77.5% lines / 55.5% branches with CTest 41/41. Remote job
+  execution is still blocked by GitHub billing; assertion quality and a
+  coverage non-regression policy remain open (see coverage-baseline.md).
 - other conformance cases are still thin: `conf_vrf_crud`, `conf_route_crud`,
   `conf_nh_crud`, `conf_nhgroup_crud`, `conf_acl_crud` and `conf_qos_crud`
   exercise the calls but assert almost nothing about the results
@@ -383,6 +386,11 @@ Still open:
 - no SBOM, no artefact signing
 - CI installs VPP from the floating `noble` FDio repo; container base images use
   floating tags and `apt-get` installs are unpinned
+
+Partial progress: the new [coverage lane](coverage-baseline.md) pins its GitHub
+actions to upstream commit SHAs and its gcovr/transitive Python packages to
+versions plus wheel hashes. This does not pin the other workflows, apt, VPP
+or container inputs and does not close SBOM/signing/history items.
 
 ### [ ] 14. Architecture diagram accuracy
 

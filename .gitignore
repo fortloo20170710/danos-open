@@ -64,3 +64,5 @@ containerlab
 # Compiled Go helper: built by tools/gen-model-paths/regen.sh from main.go,
 # which is the tracked source. Only the generated output belongs in git.
 tools/gen-model-paths/gen-model-paths
+build-coverage/
+.coverage-tools/
