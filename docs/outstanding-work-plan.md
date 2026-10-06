@@ -26,6 +26,15 @@ FRR disk copies were started for topology qualification. Build startup is
 not evidence of successful ISO generation or runtime acceptance; a dirty
 source identity must not be promoted to the clean release performance gate.
 
+Topology verification now reads the manifest without executing shell content,
+hashes the actual ISO, and requires exactly one clean DANOS boot whose commit
+and ISO name match the manifest. Missing/mismatched/dirty identities, duplicate
+manifest keys, changed ISO contents and concatenated boot logs fail closed.
+This identity check precedes the existing lifecycle assertions. Debug CTest
+passes 43/43, including rejection fixtures; it does not itself prove runtime
+forwarding. The dedicated build remains a diagnostic build until regenerated
+from a clean, matching commit.
+
 ---
 
 ## P0 — blocks any real deployment

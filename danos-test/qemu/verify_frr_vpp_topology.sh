@@ -10,7 +10,7 @@ test -s "$T/run-manifest.env" || { echo "[FAIL] topology run manifest missing"; 
 rg -q '^danos_iso_sha256=[0-9a-f]{64}$' "$T/run-manifest.env" || {
     echo "[FAIL] topology run manifest has no ISO digest"; exit 1;
 }
-echo '[PASS] reproducible QEMU run manifest'
+python3 "$ROOT/danos-test/qemu/verify_topology_identity.py" "$T"
 
 require() {
     local pattern="$1" file="$2" label="$3"
