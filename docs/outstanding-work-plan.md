@@ -234,6 +234,23 @@ VMware host-only networking before the dedicated DUT/peer VMs can run. If
 Secure Boot rejects the modules, administrator-managed signing is also needed;
 do not disable host security automatically. Physical serial remains untouched.
 
+Post-restart packet follow-up: live r2 VPP inspection found both interfaces
+down without addresses; a real ping reported no source address and sent zero
+packets. Historical frozen PASS covers the older replay/reconnect gate, not
+post-restart forwarding. Fix 4cd9585 restores LIVE-owned interface/address/
+neighbor fixtures after VPP restart and requires both peers 3/3 before marking
+restart PASS. Ordered evidence tests reject probes before restart, after PASS,
+latest incomplete restart, failure markers, zero packets and packet loss.
+Debug CTest remains 45/45. The strengthened verifier correctly rejects the old
+frozen log, which remains unchanged. Rebuilt clean ISO:
+`build/danos-post-restart-20261007.iso`, SHA256
+`b8fb6ad44afd7077879bd5c2f07ade75e14e21765f233e47d2303fdc94d26c79`.
+Fresh r3 topology is running under `build/qemu-current-frr-20261007-r3` with
+snapshot overlays backed by retained r2 disks (no large copies). Only the
+three owned, now obsolete r2 processes were terminated; logs/disks remain.
+r3 runtime acceptance is pending; fixture restoration does not prove DPA
+interface persistence or forwarding through FRR-learned paths.
+
 ---
 
 ## P0 — blocks any real deployment
