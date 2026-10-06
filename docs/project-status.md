@@ -1,5 +1,21 @@
 # DANOS Open Project Status
 
+## 2026-10-07 current-source QEMU packet qualification (recovery pending)
+
+Clean ISO commit `6d4563a` passed identity/content verification in the isolated
+`build/qemu-current-frr-20261007` topology. Four ECMP flows each received
+1000/1000 packets: 4000 total, zero loss, 49090 ms, 81.48 pps; output bucket
+counts 3000/1000. All 4000 ICMP RTT samples give nearest-rank p50 407.30 us
+and p99 2924.30 us. These are QEMU functional measurements, not PCI/line rate.
+ECMP next-hop withdrawal converged to one bucket with all four five-packet
+probes received; restore returned two buckets and all sampled probes passed.
+
+The result adapter now exports RTT percentiles only from complete soak
+samples, rejects partial sample sets, and leaves historical sample-free
+results explicitly unmeasured. Throughput and CPU remain unmeasured. FRR
+dynamic lifecycle and FRR/VPP restart verification are still pending; no
+full topology or formal release PASS is claimed from these packet results.
+
 ## 2026-10-07 pass: real VPP API/FIB lifecycle
 
 An exclusive non-root/network-none project VPP runtime passed API-driven

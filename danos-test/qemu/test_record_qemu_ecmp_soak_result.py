@@ -124,6 +124,27 @@ class RecordQemuEcmpSoakResultTest(unittest.TestCase):
         with self.assertRaisesRegex(ResultError, "PPS disagrees"):
             validate(self.topology, 1000)
 
+    def test_rtt_uses_complete_soak_samples(self):
+        samples = "".join(
+            f"116 bytes: icmp_seq={i + 1} ttl=64 time={1 if i < 3000 else 2}.0 ms\n"
+            for i in range(4000)
+        )
+        serial = self.serial().replace("VPP-ECMP-SOAK PASS", samples + "VPP-ECMP-SOAK PASS")
+        (self.topology / "danos.serial.log").write_text(serial)
+        result = validate(self.topology, 1000)
+        self.assertEqual(result["rtt_sample_count"], 4000)
+        self.assertEqual(result["rtt_p50_us"], "1000.00")
+        self.assertEqual(result["rtt_p99_us"], "2000.00")
+
+    def test_partial_rtt_samples_rejected(self):
+        serial = self.serial().replace(
+            "VPP-ECMP-SOAK PASS",
+            "116 bytes: icmp_seq=1 ttl=64 time=.25 ms\nVPP-ECMP-SOAK PASS",
+        )
+        (self.topology / "danos.serial.log").write_text(serial)
+        with self.assertRaisesRegex(ResultError, "RTT samples"):
+            validate(self.topology, 1000)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

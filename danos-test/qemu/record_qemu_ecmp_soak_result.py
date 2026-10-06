@@ -4,6 +4,7 @@
 import argparse
 import datetime as dt
 import hashlib
+import math
 import re
 import shlex
 import subprocess
@@ -105,6 +106,16 @@ def validate(topology: Path, required_count: int) -> dict[str, object]:
     if "VPP-RESTART-TEST PASS" not in serial[block_end:]:
         raise ResultError("serial log has no post-soak VPP restart/replay PASS marker")
 
+    # Use only per-reply RTTs inside this soak, never boot probes or summary
+    # averages. Older logs without samples remain explicitly unmeasured.
+    rtts = sorted(float(value) * 1000 for value in re.findall(
+        r"icmp_seq=\d+[^\r\n]*\btime=([0-9]*\.?[0-9]+) ms\b", block
+    ))
+    if rtts and (len(rtts) != rx or any(not math.isfinite(value) for value in rtts)):
+        raise ResultError("soak RTT samples do not match received packet count")
+    p50 = f"{rtts[math.ceil(len(rtts) * 0.50) - 1]:.2f}" if rtts else ""
+    p99 = f"{rtts[math.ceil(len(rtts) * 0.99) - 1]:.2f}" if rtts else ""
+
     runner_commit = ""
     try:
         runner_commit = subprocess.run(
@@ -136,8 +147,10 @@ def validate(topology: Path, required_count: int) -> dict[str, object]:
         "duration_ms": duration,
         "pps": f"{pps:.2f}",
         "mbps": "",
-        "rtt_p50_us": "",
-        "rtt_p99_us": "",
+        "rtt_p50_us": p50,
+        "rtt_p99_us": p99,
+        "rtt_sample_count": len(rtts),
+        "rtt_method": "nearest-rank ICMP round-trip" if rtts else "unmeasured",
         "cpu_pct": "",
         "ecmp_bucket_0": bucket0,
         "ecmp_bucket_1": bucket1,

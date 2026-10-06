@@ -102,3 +102,6 @@ set_tests_properties(frr_dynamic_log_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME qemu_topology_identity
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_topology_identity.py)
 set_tests_properties(qemu_topology_identity PROPERTIES TIMEOUT 30)
+add_test(NAME qemu_ecmp_result
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_record_qemu_ecmp_soak_result.py)
+set_tests_properties(qemu_ecmp_result PROPERTIES TIMEOUT 30)
