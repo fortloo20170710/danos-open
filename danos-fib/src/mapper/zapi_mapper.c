@@ -186,7 +186,30 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
     route.prefix.prefix_len = in.prefix_len;
     memcpy(route.prefix.addr.addr, in.prefix, in.family == 2 ? 4 : 16);
     route.protocol = map_frr_protocol(in.type);
-    if (!add) return danos_route_delete(tx, route.vrf_id, route.prefix, route.protocol);
+    danos_route_t previous;
+    danos_status_t previous_status = danos_route_read(tx, route.vrf_id, route.prefix,
+                                                     route.protocol, &previous);
+    if (previous_status != DANOS_OK && previous_status != DANOS_ERR_NOT_FOUND)
+        return previous_status;
+    danos_nhgroup_t previous_group = {0};
+    if (previous_status == DANOS_OK && previous.nhgroup_id) {
+        danos_status_t st = danos_nhgroup_read(tx, previous.nhgroup_id, &previous_group);
+        if (st != DANOS_OK) return st;
+    }
+    if (!add) {
+        if (previous_status == DANOS_ERR_NOT_FOUND) return DANOS_OK;
+        danos_status_t st = danos_route_delete(tx, route.vrf_id, route.prefix, route.protocol);
+        if (st != DANOS_OK) return st;
+        if (previous_group.id) {
+            st = danos_nhgroup_delete(tx, previous_group.id);
+            if (st != DANOS_OK) return st;
+            for (uint32_t i = 0; i < previous_group.nh_count; i++) {
+                st = danos_nh_delete(tx, previous_group.nh_ids[i]);
+                if (st != DANOS_OK) return st;
+            }
+        }
+        return DANOS_OK;
+    }
     if (in.nexthop_count > 0) {
         /* The parser bounds this to ZAPI_FRR_MAX_NEXTHOPS, which currently
          * equals DANOS_NHGROUP_MAX_NH. Check here too so the mapper stays
@@ -212,18 +235,18 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
         if (in.nexthop_count == 1 &&
             in.nexthops[0].type == ZAPI_NH_BLACKHOLE) {
             route.flags |= DANOS_ROUTE_FLAG_BLACKHOLE;
-            return danos_route_create(tx, &route);
+            goto publish;
         }
 
         danos_nhgroup_t grp;
         memset(&grp, 0, sizeof(grp));
-        grp.id = g_zapi_next_id++;
+        grp.id = previous_group.id ? previous_group.id : g_zapi_next_id++;
         grp.nh_count = in.nexthop_count;
         for (uint16_t i = 0; i < in.nexthop_count; i++) {
             const zapi_frr_nexthop_t *src = &in.nexthops[i];
             danos_nexthop_t nh;
             memset(&nh, 0, sizeof(nh));
-            nh.id = g_zapi_next_id++;
+            nh.id = i < previous_group.nh_count ? previous_group.nh_ids[i] : g_zapi_next_id++;
             nh.ifindex = src->ifindex;
             if (src->has_gateway) {
                 /* Width follows the nexthop type, not the route family: an
@@ -239,16 +262,31 @@ danos_status_t zapi_dispatch_frr(const zapi_message_t *msg, danos_tx_t *tx)
             nh.weight = 1;
             nh.flags = in.nexthop_count > 1 ? DANOS_NH_FLAG_ECMP : 0;
             grp.nh_ids[i] = nh.id;
-            danos_status_t st = danos_nh_create(tx, &nh);
+            danos_status_t st = i < previous_group.nh_count
+                ? danos_nh_update(tx, &nh) : danos_nh_create(tx, &nh);
             if (st != DANOS_OK) return st;
         }
-        danos_status_t st = danos_nhgroup_create(tx, &grp);
+        danos_status_t st = previous_group.id
+            ? danos_nhgroup_update(tx, &grp) : danos_nhgroup_create(tx, &grp);
         if (st != DANOS_OK) return st;
         route.nhgroup_id = grp.id;
     } else {
         route.flags |= DANOS_ROUTE_FLAG_BLACKHOLE;
     }
-    return danos_route_create(tx, &route);
+publish:
+    /* These groups and next hops are private to the FRR route mapper. Keep
+     * their IDs stable on replay; retire removed paths in the same transaction. */
+    for (uint32_t i = route.nhgroup_id ? in.nexthop_count : 0;
+         i < previous_group.nh_count; i++) {
+        danos_status_t st = danos_nh_delete(tx, previous_group.nh_ids[i]);
+        if (st != DANOS_OK) return st;
+    }
+    if (!route.nhgroup_id && previous_group.id) {
+        danos_status_t st = danos_nhgroup_delete(tx, previous_group.id);
+        if (st != DANOS_OK) return st;
+    }
+    return previous_status == DANOS_OK
+        ? danos_route_update(tx, &route) : danos_route_create(tx, &route);
 }
 
 /* =========================================================================

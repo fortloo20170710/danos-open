@@ -601,6 +601,66 @@ int test_map_route_rejects_unsupported_nexthop(void)
     return 0;
 }
 
+static void test_frr_replay_lifecycle(void)
+{
+    danos_ip_prefix_t prefix = {.addr = {.af = DANOS_AF_IPV4,
+        .addr = {10,79,0,0}}, .prefix_len = 24};
+    danos_obj_id_t group_id = 0, ids[2] = {0};
+    for (int phase = 0; phase < 6; phase++) {
+        uint8_t buf[256], pfx[4] = {10,79,0,0};
+        uint32_t n = 0;
+        put_route_header(buf, &n, AF_INET, 24, pfx);
+        unsigned count = phase == 2 ? 1 : phase == 3 ? 0 : 2;
+        buf[n++] = 0; buf[n++] = count;
+        for (unsigned i = 0; i < count; i++) {
+            memset(buf+n, 0, 4); n += 4;
+            buf[n++] = ZAPI_NH_IPV4_IFINDEX; buf[n++] = 0;
+            buf[n++] = 192; buf[n++] = 0; buf[n++] = 2; buf[n++] = 9+i;
+            memset(buf+n, 0, 3); n += 3; buf[n++] = 4+i;
+        }
+        zapi_message_t msg = {.header = {.version=ZAPI_VERSION,
+            .command=phase == 5 ? ZEBRA_FRR_REDISTRIBUTE_ROUTE_DELETE
+                                : ZEBRA_FRR_REDISTRIBUTE_ROUTE_ADD},
+            .payload=buf, .payload_size=n};
+        danos_tx_t tx = {0};
+        assert(danos_tx_begin(&tx, "frr-replay", NULL) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_OK);
+        assert(zapi_dispatch_frr(&msg, &tx) == DANOS_OK); /* candidate replay */
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+        assert(danos_tx_begin(&tx, "frr-read", NULL) == DANOS_OK);
+        danos_route_t route;
+        danos_nhgroup_t group;
+        danos_nexthop_t nh;
+        if (phase == 5) {
+            assert(danos_route_read(&tx,0,prefix,DANOS_ROUTE_PROTO_STATIC,&route) == DANOS_ERR_NOT_FOUND);
+            assert(danos_nhgroup_read(&tx,group_id,&group) == DANOS_ERR_NOT_FOUND);
+            for (int i=0;i<2;i++) assert(danos_nh_read(&tx,ids[i],&nh) == DANOS_ERR_NOT_FOUND);
+            assert(zapi_dispatch_frr(&msg,&tx) == DANOS_OK); /* repeated withdraw */
+        } else {
+            assert(danos_route_read(&tx,0,prefix,DANOS_ROUTE_PROTO_STATIC,&route) == DANOS_OK);
+            if (phase == 3) {
+                assert(route.flags & DANOS_ROUTE_FLAG_BLACKHOLE);
+                assert(route.nhgroup_id == 0);
+                assert(danos_nhgroup_read(&tx,group_id,&group) == DANOS_ERR_NOT_FOUND);
+                assert(danos_nh_read(&tx,ids[0],&nh) == DANOS_ERR_NOT_FOUND);
+            } else {
+                assert(danos_nhgroup_read(&tx,route.nhgroup_id,&group) == DANOS_OK);
+                assert(group.nh_count == count);
+                if (phase == 1 || phase == 2) {
+                    assert(group.id == group_id);
+                    assert(group.nh_ids[0] == ids[0]);
+                    if (phase == 1) assert(group.nh_ids[1] == ids[1]);
+                    else assert(danos_nh_read(&tx,ids[1],&nh) == DANOS_ERR_NOT_FOUND);
+                }
+                group_id=group.id;
+                for (unsigned i=0;i<count;i++) ids[i]=group.nh_ids[i];
+            }
+        }
+        assert(danos_tx_abort(&tx) == DANOS_OK);
+    }
+    printf("[PASS] FRR replay stable IDs, ECMP shrink, blackhole conversion, cleanup and repeated withdraw\n");
+}
+
 int main(void)
 {
     int failed = 0;
@@ -618,6 +678,7 @@ int main(void)
     if (test_map_route_ecmp() != 0) failed++;
     if (test_map_route_nh_overflow() != 0) failed++;
     if (test_map_route_rejects_unsupported_nexthop() != 0) failed++;
+    test_frr_replay_lifecycle();
     printf("=== fib_test (zapi_mapper): %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

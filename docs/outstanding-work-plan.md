@@ -159,6 +159,17 @@ Both originate from clean a7fec40; DUT uses 192.168.45.3/46.3 with dynamic
 neighbor resolution, peer 192.168.45.2/46.2 with 1000 probes per target.
 The first default-address VMware ISO is not a matched-topology result.
 
+Native FRR dispatch now reads candidate/committed route state before add:
+existing routes update instead of returning EXISTS. Mapper-private NHGroup
+and NH identities remain stable on replay; removed ECMP paths, blackhole
+conversion and route withdrawal retire the old graph in the same transaction.
+Repeated withdraw of an absent route is a no-op. New tests cover candidate
+replay, committed replay, 2-to-1 path shrink, blackhole conversion, restoration
+and full dependency cleanup. Debug CTest 45/45 passes. This closes deterministic
+mapper behavior, not the failed running ISO: rebuild and real FRR restart
+qualification are still required. Externally shared graph ownership and the
+legacy clean-room route mapper are not expanded by this native-FRR change.
+
 ---
 
 ## P0 — blocks any real deployment
