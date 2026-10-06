@@ -23,6 +23,19 @@ def validate(topology: Path) -> None:
         raise ValueError("invalid manifest commit")
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise ValueError("invalid manifest ISO digest")
+    if 'runner_commit' in values:
+        if not re.fullmatch(r'[0-9a-f]{40}', values['runner_commit']):
+            raise ValueError('invalid runner commit')
+        source_topology = Path(values.get('topology_dir', ''))
+        if not source_topology.is_absolute():
+            raise ValueError('seed topology path must be absolute')
+        for node in (1, 2):
+            expected = values.get(f'frr_seed{node}_sha256', '')
+            seed = source_topology / f'r{node}-seed.iso'
+            if not re.fullmatch(r'[0-9a-f]{64}', expected) or not seed.is_file():
+                raise ValueError('FRR seed identity is missing')
+            if hashlib.sha256(seed.read_bytes()).hexdigest() != expected:
+                raise ValueError('FRR seed content differs from manifest')
     iso = Path(values.get("danos_iso", ""))
     if not iso.is_absolute() or not iso.is_file():
         raise ValueError("manifest ISO must be an existing absolute path")

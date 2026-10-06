@@ -7,6 +7,27 @@ from verify_topology_identity import validate
 
 
 class IdentityTest(unittest.TestCase):
+    def test_runner_and_seed_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            iso = root / 'test.iso'
+            iso.write_bytes(b'fixture')
+            commit = 'a' * 40
+            manifest = (f'git_commit={commit}\nrunner_commit={"b" * 40}\n'
+                        f'topology_dir={root}\ndanos_iso={iso}\n'
+                        f'danos_iso_sha256={hashlib.sha256(iso.read_bytes()).hexdigest()}\n')
+            for node in (1, 2):
+                seed = root / f'r{node}-seed.iso'
+                seed.write_bytes(b'seed fixture')
+                manifest += f'frr_seed{node}_sha256={hashlib.sha256(seed.read_bytes()).hexdigest()}\n'
+            (root / 'run-manifest.env').write_text(manifest)
+            (root / 'danos.serial.log').write_text(
+                f'DANOS-BUILD commit={commit} source_dirty=0 iso=test.iso\n')
+            validate(root)
+            (root / 'r2-seed.iso').write_bytes(b'changed seed')
+            with self.assertRaisesRegex(ValueError, 'seed content'):
+                validate(root)
+
     def test_identity_and_rejections(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -35,9 +35,21 @@ fi
 
 # Persist the exact inputs used by this run so a passing serial log is
 # reproducible and cannot be confused with a different ISO/topology.
+ISO_IDENTITY=$(python3 "$ROOT/danos-test/integration/read_live_iso_identity.py" "$ISO") || {
+    echo '[FAIL] cannot read ISO source identity'; exit 1;
+}
+ISO_COMMIT=$(printf '%s\n' "$ISO_IDENTITY" | sed -n 's/^iso_build_commit=//p')
+ISO_DIRTY=$(printf '%s\n' "$ISO_IDENTITY" | sed -n 's/^iso_source_dirty=//p')
+[[ "$ISO_COMMIT" =~ ^[0-9a-f]{40}$ && "$ISO_DIRTY" = 0 ]] || {
+    echo '[FAIL] topology requires a clean identity-bound ISO'; exit 1;
+}
 MANIFEST="$T/run-manifest.env"
 {
-    printf 'git_commit=%q\n' "$(git -C "$ROOT" rev-parse HEAD)"
+    printf 'git_commit=%q\n' "$ISO_COMMIT"
+    printf 'runner_commit=%q\n' "$(git -C "$ROOT" rev-parse HEAD)"
+    printf 'frr_seed1_sha256=%q\nfrr_seed2_sha256=%q\n' \
+        "$(sha256sum "$T/r1-seed.iso" | awk '{print $1}')" \
+        "$(sha256sum "$T/r2-seed.iso" | awk '{print $1}')"
     printf 'danos_iso=%q\n' "$(realpath "$ISO")"
     printf 'danos_iso_sha256=%q\n' "$(sha256sum "$ISO" | awk '{print $1}')"
     printf 'topology_dir=%q\n' "$(realpath "$T")"

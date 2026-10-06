@@ -330,6 +330,31 @@ full lifecycle acceptance. Next required work remains withdraw/restore and
 post-VPP/FRR-restart learned-route packet probes, plus independent transit
 traffic as appropriate. Do not infer VMware/PCI or line rate from this probe.
 
+Learned-route lifecycle follow-up: actual r4 VPP restart completed; dynamic
+198.19.0.1 remained reachable 3/3 with API-owned resolved FIB after restart.
+After BGP withdrawal, a source-bound probe sent 3 and received 0, with the
+target FIB entry absent. After actual FRR/zserv restart, the persistent
+198.18.0.1 endpoint again replied 3/3. These are different-prefix partial
+checks, not one complete restored-prefix lifecycle. Frozen partial log:
+`build/qemu-current-frr-20261007-r4/learned-partial/danos.serial.log`, SHA256
+`5e031b13263bcb64bc4c4835f166ff6cb1fe14edc35fbd64856a67f0b9359c0e`.
+
+Implementation for the next fresh run: shared-mode FRR-2 restores its real
+198.19.0.1 endpoint/advertisement after a 60-second withdrawn window. New
+`run_learned_route_cycle.py --topology ... --run` waits for real events,
+checks ownership/liveness of all three guest PIDs, and drives ADD, WITHDRAW,
+RESTORE and POSTFRR probes via the owned DUT HMP keyboard channel. Every phase
+requires exact three-packet statistics and positive phases require target
+replies plus API-owned resolved FIB; withdrawal requires no target entry.
+Validation-only mode runs on frozen logs. Shared-L2 topology verifier now
+requires this full cycle, so r4 cannot pass by borrowing another prefix's
+restart result. The tool is VPP-originated functional proof, not transit/PPS.
+Launcher now binds git_commit to embedded ISO identity and records runner
+commit separately, allowing safe reuse of an unchanged clean ISO with new
+seeds/tools. New manifests also hash both seed ISOs; changed/missing seed
+content fails identity checks. Debug full suite is 48/48 PASS. Fresh r5 runtime
+is still required before claiming the restored-prefix lifecycle is closed.
+
 ---
 
 ## P0 — blocks any real deployment

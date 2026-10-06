@@ -3,17 +3,27 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
 
 class SharedPeerTopologyTest(unittest.TestCase):
-    def launch(self, mode, seed_mode=None):
+    def launch(self, mode, seed_mode=None, dirty='0'):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in ('danos.iso', 'frr-1.qcow2', 'frr-2.qcow2', 'r1-seed.iso', 'r2-seed.iso'):
                 (root / name).touch()
             (root / 'topology-profile.env').write_text(f'frr_shared_peer_l2={seed_mode or mode}\n')
+            # Mock only the external ISO reader invocation. It returns a fixture
+            # source identity distinct from runner HEAD, not real ISO evidence.
+            wrapper = root / 'python3'
+            wrapper.write_text(f'#!{sys.executable}\nimport os,sys\n'
+                               'if sys.argv[1].endswith("/read_live_iso_identity.py"):\n'
+                               f' print("iso_build_commit={"b" * 40}\\niso_source_dirty={dirty}")\n'
+                               'else:\n'
+                               f' os.execv({sys.executable!r},[{sys.executable!r},*sys.argv[1:]])\n')
+            wrapper.chmod(0o755)
             stub = root / 'qemu-system-x86_64'
             stub.write_text('#!/usr/bin/env python3\nimport json,os,sys\n'
                             'with open(os.environ["DANOS_QEMU_TEST_ARGS"],"a") as out:\n'
@@ -54,6 +64,8 @@ class SharedPeerTopologyTest(unittest.TestCase):
         self.assertIn('socket,id=peer,connect=127.0.0.1:32002', args[2])
         self.assertTrue(any('netdev=lan2-nic,addr=0x3' in arg for arg in args[0]))
         self.assertIn('frr_shared_peer_l2=1', manifest)
+        self.assertIn(f'git_commit={"b" * 40}', manifest)
+        self.assertIn('runner_commit=', manifest)
 
     def test_invalid_mode_does_not_start_guests(self):
         proc, args, _ = self.launch('invalid')
@@ -62,6 +74,11 @@ class SharedPeerTopologyTest(unittest.TestCase):
 
     def test_mismatched_seed_does_not_start_guests(self):
         proc, args, _ = self.launch('1', '0')
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertEqual(args, [])
+
+    def test_dirty_iso_does_not_start_guests(self):
+        proc, args, _ = self.launch('1', dirty='1')
         self.assertNotEqual(proc.returncode, 0)
         self.assertEqual(args, [])
 
