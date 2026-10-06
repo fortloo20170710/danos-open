@@ -35,6 +35,15 @@ passes 43/43, including rejection fixtures; it does not itself prove runtime
 forwarding. The dedicated build remains a diagnostic build until regenerated
 from a clean, matching commit.
 
+The first trixie Release build failed on GCC 14's `-Wformat-truncation` in
+`resolve_rpc_path`. Origin copying now uses the fixed-size path field and
+explicit termination; both mgrd and fib_live_bridge rebuild successfully in
+the preserved trixie environment. Debug CTest remains 43/43 PASS. The ISO
+builder now exposes CMake output and fails immediately if its build container
+exits. `DANOS_ISO_BUILD_IMAGE` can select a pre-provisioned trixie build image;
+source targets are still rebuilt and dependencies checked, never taken from
+host build outputs. ISO generation and topology runtime remain unverified.
+
 ---
 
 ## P0 — blocks any real deployment

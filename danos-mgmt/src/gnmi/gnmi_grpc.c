@@ -1195,7 +1195,10 @@ static danos_status_t resolve_rpc_path(const gnmi_path_t *prefix,
         (prefix->origin[0] && path->origin[0] && strcmp(prefix->origin, path->origin)))
         return DANOS_ERR_INVALID_ARG;
     *out = *prefix;
-    if (path->origin[0]) snprintf(out->origin, sizeof(out->origin), "%s", path->origin);
+    if (path->origin[0]) {
+        memcpy(out->origin, path->origin, sizeof(out->origin));
+        out->origin[sizeof(out->origin) - 1] = '\0';
+    }
     for (uint32_t i = 0; i < path->elem_count; i++) out->elems[out->elem_count++] = path->elems[i];
     for (uint32_t i = 0; i < out->elem_count; i++) {
         gnmi_path_elem_t *e = &out->elems[i];

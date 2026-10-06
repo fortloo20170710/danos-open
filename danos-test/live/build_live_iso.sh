@@ -27,6 +27,7 @@ esac
 GNMIC_SRC="${GNMIC:-/tmp/gnmic-bin}"
 WORK="${DANOS_ISO_WORK_DIR:-/tmp/danos-iso-work-$$}"
 BUILD_CONTAINER="danos-iso-build-$$"
+ISO_BUILD_IMAGE="${DANOS_ISO_BUILD_IMAGE:-debian:trixie-slim}"
 APT_MIRROR="${APT_MIRROR:-http://repo.huaweicloud.com/debian}"
 VPP_IMAGE="${VPP_IMAGE:-}"
 VPP_DPDK_ENABLE="${VPP_DPDK_ENABLE:-1}"
@@ -94,7 +95,7 @@ mkdir -p "$WORK" "$PROJECT_ROOT/build"
 docker rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true
 trap 'docker rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true' EXIT
 docker run -d --name "$BUILD_CONTAINER" -v "$PROJECT_ROOT:/src" \
-    -w /src debian:trixie-slim sh -c "
+    -w /src "$ISO_BUILD_IMAGE" sh -c "
 set -eu
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
 cat > /etc/apt/sources.list.d/danos-mirror.sources <<EOF
@@ -108,8 +109,8 @@ apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev 
     linux-image-amd64 isolinux syslinux-common
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
 test -x /bin/busybox
-cmake -B /tmp/b -S /src -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-cmake --build /tmp/b -j\$(nproc) --target danos-mgrd fib_live_bridge >/dev/null 2>&1
+cmake -B /tmp/b -S /src -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/b -j\$(nproc) --target danos-mgrd fib_live_bridge
 test -x /tmp/b/danos-mgrd/danos-mgrd
 test -x /tmp/b/danos-test/fib_live_bridge
 echo ISO-DEPS-OK
@@ -117,6 +118,11 @@ sleep 600"
 # wait for deps to be ready (log marker), max ~6 min
 for i in $(seq 1 180); do
     docker logs "$BUILD_CONTAINER" 2>&1 | grep -q ISO-DEPS-OK && break
+    if test "$(docker inspect --format '{{.State.Running}}' "$BUILD_CONTAINER")" != true; then
+        docker logs "$BUILD_CONTAINER" >&2
+        echo "ERROR: ISO dependency/build container exited" >&2
+        exit 1
+    fi
     sleep 2
 done
 docker logs "$BUILD_CONTAINER" 2>&1 | grep -q ISO-DEPS-OK \
