@@ -137,12 +137,16 @@ int vpp_encode_ip_table_add_del(uint8_t is_add, uint32_t table_id,
                                 bool is_ip6, const char *name,
                                 uint8_t *out, uint32_t out_size)
 {
+    /* VPP 26.10 ip_table.name is a fixed 64-byte array, not api_string. */
+    if (!out || out_size < 70 || (name && strlen(name) >= 64)) return -1;
+    char fixed_name[64] = {0};
+    if (name) memcpy(fixed_name, name, strlen(name));
     vpp_buf_t b;
     vpp_buf_init(&b, 96);
     vpp_buf_put_u8(&b, is_add);
     vpp_buf_put_u32(&b, table_id);
     vpp_buf_put_u8(&b, is_ip6 ? 1 : 0);
-    vpp_buf_put_string(&b, name ? name : "");
+    vpp_buf_put_bytes(&b, fixed_name, sizeof(fixed_name));
 
     int n = -1;
     if (b.len <= out_size) {
@@ -159,16 +163,14 @@ int vpp_encode_sw_interface_set_flags(uint32_t sw_if_index, bool admin_up,
     /* interface.api:
      *     autoreply define sw_interface_set_flags {
      *       u32 client_index; u32 context; u32 sw_if_index;
-     *       u8 admin_up_down;   // 1 = up, 0 = down
+     *       vl_api_if_status_flags_t flags; // u32 in VPP 26.10
      *     }
-     * The flag is a single byte. Writing it as a u32 put a zero in the byte
-     * VPP actually reads, so every interface came up admin-down regardless of
-     * what was requested. */
-    if (!out || out_size < 5) return -1;
+     * The legacy u8 admin_up_down layout is not this runtime's schema. */
+    if (!out || out_size < 8) return -1;
     vpp_buf_t b;
-    vpp_buf_init(&b, 5);
+    vpp_buf_init(&b, 8);
     vpp_buf_put_u32(&b, sw_if_index);
-    vpp_buf_put_u8(&b, admin_up ? 0x1 : 0x0);  /* IF_STATUS_API_FLAG_ADMIN_UP */
+    vpp_buf_put_u32(&b, admin_up ? 0x1 : 0x0);  /* IF_STATUS_API_FLAG_ADMIN_UP */
     memcpy(out, b.data, b.len);
     int n = (int)b.len;
     vpp_buf_free(&b);

@@ -63,12 +63,10 @@ static int test_transaction(void)
     uint32_t blen;
     mock_vpp_get_last_request(&mid, body, &blen, sizeof(body));
     assert(mid == MOCK_MSGID_SW_IF_SET_FLAGS);
-    /* body = client_index(4) + context(4) + sw_if_index(4) + admin_up(1).
-     * interface.api declares admin_up_down as u8; a 4-byte field put a zero
-     * in the byte VPP reads, so an interface could never come admin-up. */
-    assert(blen == 13);
+    /* VPP 26.10: client_index/context/ifindex/flags are all u32. */
+    assert(blen == 16);
     assert(body[8] == 0 && body[9] == 0 && body[10] == 0 && body[11] == 3);
-    assert(body[12] == 1);
+    assert(body[12] == 0 && body[13] == 0 && body[14] == 0 && body[15] == 1);
 
     danos_vpp_api_disconnect();
     mock_vpp_stop();
@@ -78,24 +76,22 @@ static int test_transaction(void)
 
 static int test_wire_layouts(void)
 {
-    /* ip_table_add_del: is_add(1) + table_id(4) + is_ip6(1) + name(string).
-     * A VPP string is u32 length + exactly that many bytes, no padding:
-     * vl_api_to_api_string() returns len + sizeof(u32). */
+    /* VPP 26.10 fixed name[64], not a length-prefixed api_string. */
     uint8_t b[512];
     int n = vpp_encode_ip_table_add_del(1, 100, false, "danos-vrf100",
                                         b, sizeof(b));
-    assert(n == 1 + 4 + 1 + 4 + 12);
+    assert(n == 70);
     assert(b[0] == 1);
     assert(b[1] == 0 && b[2] == 0 && b[3] == 0 && b[4] == 100);
     assert(b[5] == 0);
-    assert(b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 12);
-    assert(memcmp(b + 10, "danos-vrf100", 12) == 0);
+    assert(memcmp(b + 6, "danos-vrf100", 12) == 0);
+    for (int i = 18; i < 70; i++) assert(b[i] == 0);
 
-    /* No padding either way: a 5-byte name still advances by exactly 5. */
+    /* Short names retain the same fixed width. */
     n = vpp_encode_ip_table_add_del(1, 100, false, "vrf77", b, sizeof(b));
-    assert(n == 1 + 4 + 1 + 4 + 5);
-    assert(b[6] == 0 && b[7] == 0 && b[8] == 0 && b[9] == 5);
-    assert(memcmp(b + 10, "vrf77", 5) == 0);
+    assert(n == 70);
+    assert(memcmp(b + 6, "vrf77", 5) == 0);
+    for (int i = 11; i < 70; i++) assert(b[i] == 0);
 
     /* ip_route_add_del single path IPv4 */
     vpp_prefix_t p = { .addr = { .is_ipv6 = false, .addr = {10,0,0,0} },

@@ -1,5 +1,19 @@
 # DANOS Open Project Status
 
+## 2026-10-07 pass: real VPP API/FIB lifecycle
+
+An exclusive non-root/network-none project VPP runtime passed API-driven
+default-table and VRF 777 add/repeat, two-to-one path withdraw, restore,
+route deletion and table deletion with real CLI FIB assertions. The runtime
+exposed interface flags u8/u32 and fixed table-name encoding defects, now
+corrected and golden-tested. Stats socket selection now honors VPP_STAT_SOCK
+and a failed stats connection fails the live test instead of warning.
+Evidence/limits: [control runtime gate](vpp-control-runtime-gate.md).
+This does not qualify FRR, VPP restart, packets, QEMU/VMware or physical DPDK.
+Debug, ASan/UBSan/LSan and TSan CTest each pass 41/41 after the layout fixes.
+The exclusively created runtime containers were stopped after evidence
+collection; logs/manifests remain under build/vpp-control-gate-20261007-*.
+
 ## 2026-10-07 pass: Route/NH/NHGroup contract recovery
 
 Replaced creation-only conformance with payload readback, duplicate/missing

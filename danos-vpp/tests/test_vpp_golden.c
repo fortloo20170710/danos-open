@@ -65,13 +65,14 @@ static size_t golden_put_table_entry(uint8_t *out, uint16_t index,
     return 2 + 64;
 }
 
-/* sw_interface_set_flags: u32 sw_if_index then a single u8 admin_up_down. */
+/* VPP 26.10: u32 sw_if_index followed by u32 interface-status flags. */
 static size_t golden_put_set_flags(uint8_t *out, uint32_t ifindex, bool up)
 {
     uint32_t be = htonl(ifindex);
     memcpy(out, &be, 4);
-    out[4] = up ? 1 : 0;
-    return 5;
+    be = htonl(up ? 1 : 0);
+    memcpy(out + 4, &be, 4);
+    return 8;
 }
 
 /* ---- the encoders and the production codecs must agree ---------------- */
@@ -179,10 +180,9 @@ int test_golden_message_table_fixed_name(void)
     return 0;
 }
 
-int test_golden_set_flags_is_one_byte(void)
+int test_golden_set_flags_is_u32(void)
 {
-    /* interface.api: u8 admin_up_down. A 4-byte field puts a zero in the
-     * byte VPP actually reads, so an interface can never come admin-up. */
+    /* interface.api imports the 32-bit if_status_flags enum. */
     for (int up = 0; up <= 1; up++) {
         uint8_t golden[8];
         size_t glen = golden_put_set_flags(golden, 3, up != 0);
@@ -192,20 +192,30 @@ int test_golden_set_flags_is_one_byte(void)
                                                   sizeof(got));
         assert(n == (int)glen);
         assert(memcmp(got, golden, glen) == 0);
-        assert(got[4] == (uint8_t)(up ? 1 : 0));
+        assert(got[4] == 0 && got[5] == 0 && got[6] == 0);
+        assert(got[7] == (uint8_t)(up ? 1 : 0));
     }
-    printf("[PASS] test_golden_set_flags_is_one_byte: 5-byte body per "
+    printf("[PASS] test_golden_set_flags_is_u32: 8-byte body per "
            "interface.api\n");
     return 0;
 }
 
 int main(void)
 {
+    uint8_t table[70], expected[70] = {1, 0, 0, 3, 9, 0};
+    memcpy(expected + 6, "danos-live", 10);
+    assert(vpp_encode_ip_table_add_del(1, 777, false, "danos-live", table, sizeof(table)) == 70);
+    assert(!memcmp(table, expected, sizeof(table)));
+    assert(vpp_encode_ip_table_add_del(1, 777, false, "danos-live", table, 69) == -1);
+    char oversized[65];
+    memset(oversized, 'x', 64);
+    oversized[64] = 0;
+    assert(vpp_encode_ip_table_add_del(1, 777, false, oversized, table, sizeof(table)) == -1);
     int failed = 0;
     if (test_golden_api_string_no_padding() != 0) failed++;
     if (test_golden_sockclnt_create_fixed_name() != 0) failed++;
     if (test_golden_message_table_fixed_name() != 0) failed++;
-    if (test_golden_set_flags_is_one_byte() != 0) failed++;
+    if (test_golden_set_flags_is_u32() != 0) failed++;
     printf("=== vpp_golden_test: %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

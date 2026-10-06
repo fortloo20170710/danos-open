@@ -147,6 +147,11 @@ before deletion, exercise VRF table programming and NH withdraw/re-add, then
 run the corrected backend through the full QEMU FRR/VPP topology and recovery
 gate. The loopback smoke is not packet-forwarding, DPDK, or throughput evidence.
 
+2026-10-07: the [real control runtime gate](vpp-control-runtime-gate.md) now
+asserts default/VRF 777 FIB after add/repeat/NH withdraw/restore/delete, including
+table deletion. Those control assertions are complete; full current-build
+QEMU FRR/VPP topology/recovery and physical packet/performance remain open.
+
 Read-only [runtime capture tooling](vpp-runtime-capture.md) now collects
 version/interface/FIB/load-balance/error/runtime snapshots, bounded commands,
 raw output hashes, source identity and optional exact ISO/log attachments.
