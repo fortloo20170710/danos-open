@@ -147,6 +147,13 @@ before deletion, exercise VRF table programming and NH withdraw/re-add, then
 run the corrected backend through the full QEMU FRR/VPP topology and recovery
 gate. The loopback smoke is not packet-forwarding, DPDK, or throughput evidence.
 
+Read-only [runtime capture tooling](vpp-runtime-capture.md) now collects
+version/interface/FIB/load-balance/error/runtime snapshots, bounded commands,
+raw output hashes, source identity and optional exact ISO/log attachments.
+CAPTURED is not acceptance PASS. The legacy run_vpp_verify.sh no longer labels
+kernel/mock tests or socket existence as real VPP/DPDK acceptance. Actual
+FIB/table/NH and topology gates remain open; API frame evidence is item 11.
+
 `docs/project-status.md` marks the physical I211 forwarding/ECMP result as FAIL
 already, for independent reasons (single carrier, 1000/1000 loss).
 

@@ -1,5 +1,22 @@
 # DANOS Open Project Status
 
+## 2026-10-06 pass: P1-3 runtime evidence tooling
+
+Added a read-only VPP CLI collector with bounded commands, raw output and
+attachment hashes, commit/dirty identity and CAPTURED/ERROR/SKIP results.
+Every result is acceptance=NOT_EVALUATED. The legacy verification wrapper now
+refuses misleading kernel/mock performance and end-to-end acceptance modes;
+it no longer configures hugepages. See [usage/limits](vpp-runtime-capture.md).
+
+No VPP runtime was started or borrowed from another assistant, and no serial
+or physical NIC was used. Real FIB/table/NH, topology recovery and packet gates
+remain open. Tool fixtures are not runtime acceptance.
+Local preflight wrote build/vpp-runtime-capture-20261006/manifest.json as SKIP
+(vppctl unavailable), not PASS. Debug and sanitizer suite results are recorded
+separately from that environment outcome.
+Debug, ASan/UBSan/LSan and TSan pass CTest 41/41, including the collector's
+five deterministic cases. GitHub billing-lock status is unchanged.
+
 ## 2026-10-06 pass: item 7 Set/Get correctness
 
 Replace is no longer ignored. Set applies delete → replace → update through
