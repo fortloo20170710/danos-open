@@ -69,6 +69,13 @@ guest PIDs remain live and are not restarted for an observation timeout.
 Disk headroom dropped to approximately 1.8 GiB; do not launch additional
 builds or broadly prune another assistant's artifacts.
 
+The original run subsequently progressed without intervention: FRR-1
+readiness passed before the 180-second deadline, both path pings passed,
+all four three-packet ECMP probes were loss-free, and bucket deltas were
+11/3. The 1000-packet-per-flow soak started. Thus the earlier provisioning
+delay was not a terminal failure in this run; do not attribute successful
+traffic to the revised, unbooted seed or restart the original guests.
+
 ---
 
 ## P0 — blocks any real deployment
