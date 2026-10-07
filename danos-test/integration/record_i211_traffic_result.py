@@ -39,21 +39,50 @@ def result_from_log(text: str, *, identity: dict[str, str], iso_name: str,
             text,
         )
         if observed_failures:
+            # A serial capture may attach after boot has finished. If an
+            # interactive shell then prints the embedded build-info file,
+            # bind the failure to this ISO only when commit, dirty bit, and
+            # image name all match the independently inspected ISO metadata.
+            runtime_identity: dict[str, str] = {}
+            for key in ("COMMIT", "SOURCE_DIRTY", "ISO"):
+                match = re.search(
+                    rf"(?m)^DANOS_BUILD_{key}=([^\r\n]+)\r?$", text
+                )
+                if match:
+                    runtime_identity[key] = match.group(1).strip().strip("'\"")
+            expected_name = identity.get("danos_build_iso", iso_name)
+            identity_verified = (
+                runtime_identity.get("COMMIT", "").lower()
+                == identity.get("iso_build_commit", "").lower()
+                and runtime_identity.get("SOURCE_DIRTY")
+                == identity.get("iso_source_dirty")
+                and runtime_identity.get("ISO") == expected_name == iso_name
+            )
             details = "; ".join(dict.fromkeys(
                 re.sub(r"[^\x20-\x7e]", "", marker).strip()
                 for marker in observed_failures
             ))
-            return {
+            result = {
                 "schema_version": "1", "status": "FAIL",
                 "functional_status": "FAIL",
                 "performance_status": "ENVIRONMENT-OPEN",
                 "stage": "physical-functional", "lane": "i211-vpp-ecmp",
-                "identity_status": "UNVERIFIED",
-                "failure_reason": (
-                    "serial log has no live-init identity marker; explicit VPP failure "
-                    f"evidence was observed: {details}"
-                ),
+                "identity_status": "VERIFIED" if identity_verified else "UNVERIFIED",
+                "failure_reason": f"explicit VPP failure evidence was observed: {details}",
             }
+            if identity_verified:
+                result.update({
+                    "iso_name": iso_name, "iso_sha256": iso_sha256,
+                    "iso_build_commit": identity["iso_build_commit"],
+                    "iso_source_dirty": identity["iso_source_dirty"],
+                    "runner_commit": runner_commit,
+                })
+            else:
+                result["failure_reason"] = (
+                    "serial log has no live-init identity marker or matching runtime "
+                    f"build-info; explicit VPP failure evidence was observed: {details}"
+                )
+            return result
         return {"status": "SKIP", "functional_status": "SKIP",
                 "identity_status": "UNVERIFIED",
                 "failure_reason": "serial log has no live-init boot marker or traffic failure marker"}

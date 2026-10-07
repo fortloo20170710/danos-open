@@ -462,6 +462,39 @@ giving the transaction engine actual atomicity.
 
 ## Current assessment
 
+### 2026-10-08 r5 physical I211 LIVE run
+
+The latest physical traffic candidate is
+`build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r5.iso`, SHA256
+`3858343c55600cdc345e7ac39f8b30667a96a97c8c1e4e0ea3112f751127da81`, built
+clean from commit `efef90f7e3c3b12bf912e826277d5ba8b148e18f`. Its traffic
+profile validator passed. The user flashed it to the 14.8G USB device and
+reported a successful LIVE boot. A late interactive UART capture read the
+running `/etc/danos/build-info.env`, binding the runtime to this exact ISO name,
+commit, and clean-source marker; the capture began after boot, so the original
+`DANOS-INIT-ENTER` banner was not present. Evidence is in
+`build/i211-physical-traffic-20261008-live-r5.serial.log` and the runtime-bound
+result in `build/i211-physical-traffic-20261008-live-r5.runtime-bound.env`.
+
+VPP exposed I211 BDFs `0000:01:00.0` and `0000:02:00.0` with PCI ID
+`8086:1539`; port 1 negotiated 1 Gbps carrier, while port 2 was carrier-down.
+The automated traffic run is a functional **FAIL**, not a performance result:
+each of `30.30.30.2`–`.5` had 5 sent/0 received, the
+`30.30.30.0/24` FIB resolved to one bucket, and path failover/restore failed.
+Port 1 counters showed 4,067 transmitted packets, all broadcast, with 97
+received packets (mostly broadcast); no usable peer neighbor was learned. The
+structured result is `status=FAIL`, `identity_status=VERIFIED`,
+`performance_status=ENVIRONMENT-OPEN`.
+
+The traffic profile requires two independent peer links, peers at
+`10.10.0.2/24` and `10.20.0.2/24`, responses for `30.30.30.2`–`.5`, and return
+routing to `30.30.30.1`; one connected cable is insufficient. Do not change
+the development host's network configuration to compensate. Re-run only after
+both target ports show carrier and peer endpoints/routes are ready. USB write
+completed with `dd` and `conv=fsync`, but an independent read-back hash was
+unavailable under the current narrow sudo rule; the runtime serial identity
+matches the ISO. No throughput claim is made.
+
 Latest general LIVE/polling runner (2026-10-04) remains r13:
 `build/danos-open-v0.16.0-rc1-i211-dpdk-polling-runner-r13.iso`, SHA256
 `2e19f2a26314222251bbd2a01545837207407e4d1190f594199007fd03e9720e`, clean source

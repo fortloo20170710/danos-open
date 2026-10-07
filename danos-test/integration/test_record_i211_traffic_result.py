@@ -88,6 +88,19 @@ class RecordI211TrafficResultTest(unittest.TestCase):
         self.assertEqual(result["identity_status"], "UNVERIFIED")
         self.assertIn("PATH-UP-FLOW-FAIL", result["failure_reason"])
 
+    def test_late_capture_can_bind_matching_runtime_build_info(self):
+        text = (
+            "DANOS_BUILD_COMMIT=0123456789abcdef\r\n"
+            "DANOS_BUILD_SOURCE_DIRTY=0\r\n"
+            "DANOS_BUILD_ISO=traffic.iso\r\n"
+            "VPP-ECMP-PATH-UP-FLOW-FAIL target=30.30.30.2\r\n"
+        )
+        result = self.qualify(text, dict(IDENTITY, danos_build_iso="traffic.iso"))
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["identity_status"], "VERIFIED")
+        self.assertEqual(result["iso_build_commit"], IDENTITY["iso_build_commit"])
+        self.assertEqual(result["iso_sha256"], "a" * 64)
+
     def test_unbound_log_without_failure_evidence_remains_skip(self):
         result = self.qualify("LIVE-SHELL-READY\\r\\n")
         self.assertEqual(result["status"], "SKIP")
