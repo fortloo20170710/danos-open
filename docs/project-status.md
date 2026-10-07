@@ -462,6 +462,19 @@ giving the transaction engine actual atomicity.
 
 ## Current assessment
 
+### ISO installability requirement (2026-10-08)
+
+Per the user's standing requirement, every ISO handed off for installation,
+deployment, or hardware acceptance must include a supported, explicit
+install-to-disk path and pass the gates in
+`docs/iso-installation-acceptance.md`. LIVE/test-only images must be labeled as
+such and cannot be represented as installable deliverables. The current
+`build_live_iso.sh` produces only a kernel/initramfs/ISOLINUX LIVE image; it
+has no persistent root filesystem or disk installer. Consequently r5 and
+other existing LIVE runner ISOs are not installable. An installer/rootfs build
+path plus VM installation, ISO-detach cold boot, and persistence tests is an
+open requirement for future delivery ISOs.
+
 ### 2026-10-08 r5 physical I211 LIVE run
 
 The latest physical traffic candidate is
