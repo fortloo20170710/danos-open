@@ -5,6 +5,7 @@ name: Interop Gate
 # Runs on every push/PR so interop breakage is caught at the gate.
 
 on:
+  workflow_dispatch:
   push:
     branches: [main, v0.1]
   pull_request:
