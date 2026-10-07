@@ -161,7 +161,7 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j$(nproc) --target danos-mgrd --target programming_pipeline_test
       - name: "K4/K5 verification (root runner: real netns + ping)"
-        run: sudo -E env PATH="$PATH" bash danos-test/integration/run_v0.10_kernel.sh
+        run: sudo -E env PATH="$PATH" GNMIC=/usr/local/bin/gnmic bash danos-test/integration/run_v0.10_kernel.sh
 
   vpp-interop:
     name: VPP interop (V1-V5)
