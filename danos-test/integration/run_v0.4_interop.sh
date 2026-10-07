@@ -65,7 +65,7 @@ else
 fi
 
 # --- I3: set + verify -----------------------------------------------------
-R="$("$GNMIC" $T set --update /interfaces/interface[name=ethi3]:::json_ietf:::{"mtu":7777,"admin_up":1} 2>&1)"
+R="$("$GNMIC" $T set --update '/interfaces/interface[name=ethi3]:::json_ietf:::{"mtu":7777,"admin_up":true}' 2>&1)"
 if echo "$R" | grep -q '"operation": "UPDATE"' &&
    "$GNMIC" $T get --path "/interfaces/interface[name=ethi3]" 2>&1 | grep -q '"mtu": 7777'; then
     pass "I3: gnmic set -> UPDATE ack + get verifies value"
@@ -88,7 +88,7 @@ fi
 timeout 12 "$GNMIC" $T subscribe --path /interfaces --mode stream > "$OUT" 2>&1 &
 SUB=$!
 sleep 2
-"$GNMIC" $T set --update /interfaces/interface[name=ethi5]:::json_ietf:::{"mtu":5555,"admin_up":1} >/dev/null 2>&1
+I5_SET_OUT="$("$GNMIC" $T set --update '/interfaces/interface[name=ethi5]:::json_ietf:::{"mtu":5555,"admin_up":true}' 2>&1)"
 sleep 3
 if kill -0 $SUB 2>/dev/null; then kill $SUB 2>/dev/null; fi
 wait $SUB 2>/dev/null
@@ -96,7 +96,7 @@ if grep -q '"name": "ethi5"' "$OUT"; then
     pass "I5: gnmic subscribe STREAM -> Set pushed to subscriber"
 else
     fail "I5: gnmic subscribe STREAM push"
-    echo "I5 Set response:"
+    echo "I5 Set response: $I5_SET_OUT"
     "$GNMIC" $T get --path "/interfaces/interface[name=ethi5]" 2>&1 || true
     echo "I5 subscription output:"
     cat "$OUT"
