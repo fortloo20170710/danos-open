@@ -1,5 +1,26 @@
 # DANOS Open Project Status
 
+## 2026-10-07 r5 current QEMU acceptance: PASS
+
+The clean shared-L2 ISO (`81a38214`, SHA256
+`e59bda64ba96d6409c44c1866af9e9ca146492cea544a640210410512ec6a15b`) completed
+the same-prefix FRR-learned route lifecycle on fresh QEMU guests: add and
+resolved-FIB verification, three-packet reachability, withdrawal and absent
+FIB, restoration and reachability, then FRR/zserv restart and post-restart
+reachability. The strict topology verifier passed on both live and frozen
+`build/qemu-current-frr-20261007-r5/accepted` evidence. Four-flow ECMP was
+4000/4000 with zero loss, 82.49 pps, RTT p50/p99 340.70/477.90 us, and bucket
+deltas 3000/1000. `restart_replay=PASS`; this is a QEMU functional baseline,
+not line-rate or PCI performance. Source identity is clean commit `81a3821`,
+runner commit `04f27e6`; ISO and FRR seed digests are bound in the manifest.
+Frozen log/result SHA256s are recorded in `docs/v0.16-acceptance-matrix.md`.
+Debug, ASan and TSan full CTest suites each pass 48/48. Physical PCI/DPDK
+performance and VMware host-driver qualification remain ENVIRONMENT-OPEN.
+
+This r5 result supersedes the earlier r3/r4 pending learned-route lifecycle
+notes below. Historical entries retain their original scope and are not
+retroactively relabeled.
+
 ## 2026-10-07 r3 current strengthened QEMU recovery: PASS
 
 Clean 4cd9585 ISO now passes the full strengthened verifier on live and frozen

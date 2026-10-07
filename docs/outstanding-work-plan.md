@@ -7,6 +7,19 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-07 r5 QEMU learned-route lifecycle closeout
+
+Closed the same-prefix real FRR-learned add/withdraw/restore/post-FRR-restart
+packet gate with a fresh clean shared-L2 ISO and isolated three-guest QEMU
+topology. Strict verification passed on live logs and their frozen accepted
+copies; four-flow ECMP delivered 4000/4000 packets with zero loss, 3000/1000
+bucket deltas, and VPP restart/replay passed. Debug, ASan and TSan full CTest
+are each 48/48. Reproducibility identities and artifact digests are in the
+acceptance matrix. This closes the QEMU functional learned-route lifecycle
+item, not transit throughput or hardware qualification. VMware host modules
+and real PCI/DPDK performance remain open external lanes; keep them reported
+as ENVIRONMENT-OPEN and do not promote QEMU measurements to line-rate claims.
+
 ### 2026-10-07 acceptance harness hardening
 
 The dynamic FRR log gate now requires separate add and delete commands, a
@@ -346,14 +359,15 @@ checks ownership/liveness of all three guest PIDs, and drives ADD, WITHDRAW,
 RESTORE and POSTFRR probes via the owned DUT HMP keyboard channel. Every phase
 requires exact three-packet statistics and positive phases require target
 replies plus API-owned resolved FIB; withdrawal requires no target entry.
-Validation-only mode runs on frozen logs. Shared-L2 topology verifier now
-requires this full cycle, so r4 cannot pass by borrowing another prefix's
-restart result. The tool is VPP-originated functional proof, not transit/PPS.
+Validation-only mode runs on frozen logs. Shared-L2 topology verifier requires
+this full cycle, so r4 cannot pass by borrowing another prefix's restart
+result. The tool is VPP-originated functional proof, not transit/PPS.
 Launcher now binds git_commit to embedded ISO identity and records runner
 commit separately, allowing safe reuse of an unchanged clean ISO with new
 seeds/tools. New manifests also hash both seed ISOs; changed/missing seed
-content fails identity checks. Debug full suite is 48/48 PASS. Fresh r5 runtime
-is still required before claiming the restored-prefix lifecycle is closed.
+content fails identity checks. Fresh r5 runtime subsequently passed the strict
+live and frozen verifier; see the closeout above and
+`docs/v0.16-acceptance-matrix.md` for identities and digests.
 
 ---
 
