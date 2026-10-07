@@ -161,7 +161,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     memset(&v, 0, sizeof(v));
     gnmi_decode_path(data, size, &p);
     gnmi_decode_typed_value(data, size, &v);
-    gnmi_path_from_str(&p, (const char *)data);
+    /* gnmi_path_from_str() consumes a C string, while libFuzzer input is
+     * an arbitrary byte span and is not guaranteed to be NUL terminated. */
+    char *path_text = malloc(size + 1);
+    if (path_text) {
+        memcpy(path_text, data, size);
+        path_text[size] = '\0';
+        gnmi_path_from_str(&p, path_text);
+        free(path_text);
+    }
     gnmi_model_binding_t b;
     gnmi_model_resolve(&p, &b);
     return 0;
