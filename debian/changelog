@@ -1,3 +1,11 @@
+danos-open (0.16.0~rc1-1) unstable; urgency=medium
+
+  * Align the installable package version with the v0.16.0-rc1 release candidate.
+  * Add CMake installation rules for the runtime daemon, systemd unit, public
+    development headers/libraries, and YANG models.
+
+ -- DANOS-Open Project <i-danos@users.noreply.github.com>  Thu, 08 Oct 2026 00:00:00 +0800
+
 danos-open (0.1.0-1) unstable; urgency=low
 
   * Initial release

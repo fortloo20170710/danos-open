@@ -475,6 +475,16 @@ other existing LIVE runner ISOs are not installable. An installer/rootfs build
 path plus VM installation, ISO-detach cold boot, and persistence tests is an
 open requirement for future delivery ISOs.
 
+The installable payload work has started: CMake now stages `danos-mgrd`, its
+systemd unit, public DPA/core headers and static libraries, and the YANG model
+tree. A Debian trixie package build validated those paths as a `.deb`, and the
+source/package version is aligned to `0.16.0~rc1`. CTest remains 48/48 PASS.
+This is only the software-package layer: no persistent disk image or installer
+ISO has been generated yet. The VPP 26.10 runtime package, installed-system
+service/configuration, disk-image build, safe installer, and QEMU cold-boot /
+persistence gates remain open. Do not use this intermediate package or any
+existing LIVE ISO for physical disk installation.
+
 ### 2026-10-08 r5 physical I211 LIVE run
 
 The latest physical traffic candidate is

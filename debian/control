@@ -6,6 +6,7 @@ Build-Depends: debhelper-compat (= 13),
                cmake (>= 3.16),
                gcc (>= 13),
                libc6-dev,
+               libssl-dev,
                libpthread-stubs0-dev
 Standards-Version: 4.6.0
 Homepage: https://github.com/Aikon-INT/danos-open

@@ -21,6 +21,17 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build -j$(nproc)
+      - name: Verify installable package payload
+        run: |
+          stage="$RUNNER_TEMP/danos-install-stage"
+          DESTDIR="$stage" cmake --install build --prefix /usr
+          test -x "$stage/usr/bin/danos-mgrd"
+          test -f "$stage/usr/lib/systemd/system/danos-mgrd.service"
+          grep -Fq 'ExecStart=/usr/bin/danos-mgrd ' \
+            "$stage/usr/lib/systemd/system/danos-mgrd.service"
+          test -f "$stage/usr/share/danos/yang/danos-route/danos-route.yang"
+          find "$stage/usr/lib" -name libdanos-core.a -print -quit | grep -q .
+          find "$stage/usr/lib" -name libdanos-dpa.a -print -quit | grep -q .
       - name: Verify test registration
         run: |
           TEST_COUNT=$(ctest --test-dir build -N 2>&1 | grep "Total Tests:" | awk '{print $3}')

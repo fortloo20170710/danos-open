@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
-project(danos-open VERSION 0.2.0 LANGUAGES C)
+project(danos-open VERSION 0.16.0 LANGUAGES C)
+
+include(GNUInstallDirs)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -81,6 +83,24 @@ add_subdirectory(danos-netlink)
 if(DANOS_BUILD_MGMT AND DANOS_BUILD_VPP)
   add_subdirectory(danos-mgrd)
 endif()
+
+# Installable runtime payload.  Keep the daemon and its systemd unit in the
+# binary package; all libraries it uses are linked into danos-mgrd.  Ship the
+# source YANG models as package data so an installed system has the same model
+# artifacts as the source tree.
+if(DANOS_BUILD_MGMT AND DANOS_BUILD_VPP)
+  install(TARGETS danos-mgrd
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES danos-mgrd/danos-mgrd.service
+    DESTINATION lib/systemd/system)
+endif()
+install(TARGETS danos-dpa danos-core
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY danos-dpa/include/danos/ danos-core/include/danos/
+  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/danos)
+install(DIRECTORY danos-models/yang/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/danos/yang
+  FILES_MATCHING PATTERN "*.yang")
 
 if(DANOS_BUILD_TESTS)
   add_subdirectory(danos-test)

@@ -1,3 +1,3 @@
-usr/lib/*/libdanos-*.so*
-usr/bin/*
-usr/share/danos/*
+usr/bin/danos-mgrd
+usr/lib/systemd/system/danos-mgrd.service
+usr/share/danos/yang

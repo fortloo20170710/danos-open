@@ -8,7 +8,7 @@ FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libssl3t64 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY build/danos-mgrd/danos-mgrd /usr/local/bin/danos-mgrd
+COPY build/danos-mgrd/danos-mgrd /usr/bin/danos-mgrd
 COPY danos-mgrd/danos-mgrd.service /lib/systemd/system/danos-mgrd.service
 
 RUN mkdir -p /var/lib/danos && useradd --system danos || true
@@ -17,5 +17,5 @@ EXPOSE 59200 59201
 VOLUME /var/lib/danos
 
 # Control plane only: gNMI mTLS (mount/configure certificates) + /metrics
-ENTRYPOINT ["/usr/local/bin/danos-mgrd"]
+ENTRYPOINT ["/usr/bin/danos-mgrd"]
 CMD ["--port", "59200", "--metrics-port", "59201", "--wal", "/var/lib/danos/mgrd.wal", "--seed"]
