@@ -91,8 +91,12 @@ add_test(NAME route_composite COMMAND route_composite_test)
 
 add_test(NAME dpdk_pci_bind_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/live/test_bind_dpdk_pci.sh)
+add_test(NAME install_disk_safety
+  COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_install_disk.sh)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_test(NAME install_iso_wiring
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/danos-test/installer/test_installer_wiring.py)
 add_test(NAME vpp_runtime_capture
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_capture_vpp_runtime.py)
 set_tests_properties(vpp_runtime_capture PROPERTIES TIMEOUT 30)

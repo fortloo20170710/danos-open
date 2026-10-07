@@ -1,12 +1,42 @@
 # DANOS Open Project Status
 
+## 2026-10-08 I211 installable lab ISO and QEMU disk-install gate: PASS
+
+Generated `build/danos-open-v0.16.0-rc1-i211-installable-20261007T233815Z.iso`
+(530,579,456 bytes; SHA256
+`008ae0146820b58ecc8d1895be1075af2f1275feac7a1e0383628fc78de32a1e`). This is
+an I211 physical-lab runner installer for Legacy BIOS, not a general release
+installer and not a UEFI-qualified image. The ISO offers LIVE, VGA-keyboard
+install, and serial `ttyS0` install entries. Installation lists whole disks,
+requires typing the exact target and `ERASE <target>`, checks capacity, then
+reads the complete disk back and verifies SHA256.
+
+QEMU installation to a disposable 4 GiB `/dev/vda` passed. The embedded 3 GiB
+raw payload digest was verified during write/readback; with the ISO detached,
+the installed Debian trixie disk cold-booted and rebooted. On both boots FRR
+and VPP were active; VPP API and stats sockets existed, and VPP reported
+26.10. A marker written after first boot survived a further reboot. Full CTest
+is 50/50 PASS, including installer write-safety and ISO boot-path wiring.
+Console/evidence logs and hashes are indexed in
+`docs/iso-installation-acceptance.md`.
+
+The ISO is a restricted lab image: root autologin is enabled on local
+consoles, SSH is disabled, and mgrd stays disabled until management mTLS is
+configured. Keep it on an isolated test network. Physical installation and
+I211 forwarding qualification remain pending; no host disk has been written.
+The exact physical target disk must be confirmed before destructive
+installation. The image is 3 GiB, so the selected disk must be at least
+3,221,225,472 bytes. Build provenance is commit `9230c2c` plus uncommitted
+installer changes (`DANOS_SOURCE_DIRTY=1`): validated candidate, not clean
+release artifact.
+
 ## 2026-10-08 DPA conformance lifecycle assertions strengthened
 
 VRF, ACL-table/ACL-rule and QoS conformance cases now assert persisted payload
 readback, duplicate-create rejection, update behavior and deletion/missing
 object results instead of treating create+commit as sufficient. This is
 deterministic storage/API conformance only; it does not claim Linux/VPP backend
-programming or forwarding for those object families. Full CTest passes 48/48
+programming or forwarding for those object families. Full CTest passes 50/50
 in Debug, ASan and TSan builds. ASan passed in a serialized full-suite rerun
 after transient daemon shutdown timeouts during concurrent sanitizer suites.
 The previous r5 FRR/VPP QEMU acceptance and external PCI/VMware qualification
@@ -467,23 +497,14 @@ giving the transaction engine actual atomicity.
 Per the user's standing requirement, every ISO handed off for installation,
 deployment, or hardware acceptance must include a supported, explicit
 install-to-disk path and pass the gates in
-`docs/iso-installation-acceptance.md`. LIVE/test-only images must be labeled as
-such and cannot be represented as installable deliverables. The current
-`build_live_iso.sh` produces only a kernel/initramfs/ISOLINUX LIVE image; it
-has no persistent root filesystem or disk installer. Consequently r5 and
-other existing LIVE runner ISOs are not installable. An installer/rootfs build
-path plus VM installation, ISO-detach cold boot, and persistence tests is an
-open requirement for future delivery ISOs.
-
-The installable payload work has started: CMake now stages `danos-mgrd`, its
-systemd unit, public DPA/core headers and static libraries, and the YANG model
-tree. A Debian trixie package build validated those paths as a `.deb`, and the
-source/package version is aligned to `0.16.0~rc1`. CTest remains 48/48 PASS.
-This is only the software-package layer: no persistent disk image or installer
-ISO has been generated yet. The VPP 26.10 runtime package, installed-system
-service/configuration, disk-image build, safe installer, and QEMU cold-boot /
-persistence gates remain open. Do not use this intermediate package or any
-existing LIVE ISO for physical disk installation.
+`docs/iso-installation-acceptance.md`. The separate
+`danos-test/installer/build_i211_installable_iso.sh` now packages a persistent
+Debian trixie/VPP 26.10 runner and safe installer. Its QEMU installation,
+readback, ISO-detached cold boot, services/sockets and persistence gates passed
+as recorded above. This does not retroactively make r5 or any other LIVE-only
+ISO installable. Physical-disk installation and hardware qualification remain
+open; this candidate is BIOS-only and its lab security limitations must be
+accepted before use.
 
 ### 2026-10-08 r5 physical I211 LIVE run
 

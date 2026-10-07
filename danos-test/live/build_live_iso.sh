@@ -68,6 +68,20 @@ DANOS_PEER_NEIGH2_MAC="${DANOS_PEER_NEIGH2_MAC:-}"
 DANOS_FIB_BRIDGE_ENABLE="${DANOS_FIB_BRIDGE_ENABLE:-0}"
 DANOS_ZEBRA_ENDPOINT="${DANOS_ZEBRA_ENDPOINT:-}"
 DANOS_ZAPI_HELLO_ONLY="${DANOS_ZAPI_HELLO_ONLY:-0}"
+DANOS_INSTALLER_ENABLE="${DANOS_INSTALLER_ENABLE:-0}"
+DANOS_INSTALLER_DISK_IMAGE="${DANOS_INSTALLER_DISK_IMAGE:-}"
+DANOS_INSTALLER_DISK_MANIFEST="${DANOS_INSTALLER_DISK_MANIFEST:-}"
+
+if test "$DANOS_INSTALLER_ENABLE" = 1; then
+  test -r "$DANOS_INSTALLER_DISK_IMAGE" || {
+    echo 'ERROR: installer mode requires DANOS_INSTALLER_DISK_IMAGE' >&2
+    exit 2
+  }
+  test -r "$DANOS_INSTALLER_DISK_MANIFEST" || {
+    echo 'ERROR: installer mode requires DANOS_INSTALLER_DISK_MANIFEST' >&2
+    exit 2
+  }
+fi
 
 # The live traffic/ECMP acceptance path invokes VPP's CLI `ping` command.
 # That command is provided by ping_plugin.so, not by the base VPP runtime or
@@ -108,7 +122,7 @@ Suites: trixie trixie-updates
 Components: main contrib non-free non-free-firmware
 EOF
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev openssl python3 busybox-static zstd \
+apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev openssl python3 busybox-static zstd kmod \
     linux-image-amd64 isolinux syslinux-common
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
 test -x /bin/busybox
@@ -134,6 +148,7 @@ docker logs "$BUILD_CONTAINER" 2>&1 | grep -q ISO-DEPS-OK \
 # --- 2. extract pieces ---------------------------------------------------
 mkdir -p "$WORK"
 VKERNEL=$(docker exec "$BUILD_CONTAINER" sh -c 'ls /boot/vmlinuz-* | head -1')
+KERNEL_VERSION=${VKERNEL##*/vmlinuz-}
 docker cp "$BUILD_CONTAINER:$VKERNEL" "$WORK/vmlinuz"
 docker cp "$BUILD_CONTAINER:/bin/busybox" "$WORK/busybox"
 docker cp "$BUILD_CONTAINER:/usr/lib/ISOLINUX/isolinux.bin" "$WORK/isolinux.bin"
@@ -172,6 +187,28 @@ for module in usb_common usbcore input_core hid xhci_hcd xhci_pci \
     docker cp "$BUILD_CONTAINER:$source" "$WORK/${module}.ko.raw"
   fi
 done
+
+if test "$DANOS_INSTALLER_ENABLE" = 1; then
+  declare -A installer_module_seen=()
+  : > "$WORK/installer-modules.map"
+  for root_module in usb_storage uas ahci ata_piix isofs sr_mod virtio_blk nvme mmc_block; do
+    dependency_lines=$(docker exec "$BUILD_CONTAINER" \
+      modprobe --show-depends --set-version "$KERNEL_VERSION" "$root_module") || {
+        echo "ERROR: cannot resolve installer storage module $root_module" >&2
+        exit 1
+      }
+    while read -r action module_path; do
+      test "$action" = insmod || continue
+      module_file=${module_path##*/}
+      module_name=${module_file%%.ko*}
+      module_name=${module_name//-/_}
+      test -n "${installer_module_seen[$module_name]:-}" && continue
+      installer_module_seen[$module_name]=1
+      docker cp "$BUILD_CONTAINER:$module_path" "$WORK/$module_file.raw"
+      printf '%s %s\n' "$module_name" "$module_path" >> "$WORK/installer-modules.map"
+    done <<< "$dependency_lines"
+  done
+fi
 if test -x "$GNMIC_SRC"; then
     cp "$GNMIC_SRC" "$WORK/gnmic"
 else
@@ -418,6 +455,23 @@ for module in usb_common usbcore input_core hid xhci_hcd xhci_pci \
   esac
 done
 
+if test "$DANOS_INSTALLER_ENABLE" = 1; then
+  : > "$WORK/installer-modules.load"
+  while read -r module_name module_path; do
+    module_file=${module_path##*/}
+    case "$module_path" in
+      *.xz) xz -q -d -c "$WORK/$module_file.raw" > "$WORK/initramfs/modules/$module_name.ko" ;;
+      *.zst) docker exec "$BUILD_CONTAINER" zstd -q -d -c "$module_path" > "$WORK/initramfs/modules/$module_name.ko" ;;
+      *) cp "$WORK/$module_file.raw" "$WORK/initramfs/modules/$module_name.ko" ;;
+    esac
+    printf '%s\n' "$module_name" >> "$WORK/installer-modules.load"
+  done < "$WORK/installer-modules.map"
+  cp "$WORK/installer-modules.load" "$WORK/initramfs/modules.load"
+  cp "$PROJECT_ROOT/danos-test/installer/install_disk.sh" \
+    "$WORK/initramfs/bin/danos-install"
+  chmod +x "$WORK/initramfs/bin/danos-install"
+fi
+
 # --- 4. pack initramfs ----------------------------------------------------
 cd "$WORK/initramfs"
 find . | cpio -o -H newc --quiet | gzip -6 > "$WORK/initramfs.cpio.gz"
@@ -426,24 +480,54 @@ find . | cpio -o -H newc --quiet | gzip -6 > "$WORK/initramfs.cpio.gz"
 rm -rf "$WORK/isoroot"; mkdir -p "$WORK/isoroot/isolinux"
 cp "$WORK/vmlinuz" "$WORK/initramfs.cpio.gz" "$WORK/isoroot/"
 cp "$WORK/isolinux.bin" "$WORK/ldlinux.c32" "$WORK/isoroot/isolinux/"
-cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
+if test "$DANOS_INSTALLER_ENABLE" = 1; then
+  mkdir -p "$WORK/isoroot/installer"
+  cp "$DANOS_INSTALLER_DISK_IMAGE" \
+    "$WORK/isoroot/installer/danos-i211-installed.raw.gz"
+  cp "$DANOS_INSTALLER_DISK_MANIFEST" \
+    "$WORK/isoroot/installer/disk-image.env"
+  cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
+SERIAL 0 115200
+DEFAULT live
+PROMPT 1
+TIMEOUT 100
+DISPLAY /isolinux/boot.msg
+LABEL live
+  KERNEL /vmlinuz
+  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0
+LABEL install
+  KERNEL /vmlinuz
+  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0 danos.install=1
+LABEL install-serial
+  KERNEL /vmlinuz
+  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0 danos.install=1 danos.install.input=serial
+EOF
+  cat > "$WORK/isoroot/isolinux/boot.msg" <<'EOF'
+DANOS-Open I211 physical lab runner
+
+  <Enter>       Start LIVE diagnostics (does not write to disk)
+  install       Install via VGA keyboard (selected disk erased after confirmation)
+  install-serial Install via serial ttyS0 (selected disk erased after confirmation)
+
+This lab image enables root autologin on local consoles; do not expose it to
+untrusted networks. Select the installer only when you intend to overwrite a disk.
+
+EOF
+else
+  cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
 SERIAL 0 115200
 DEFAULT danos
 PROMPT 0
 TIMEOUT 20
 LABEL danos
   KERNEL /vmlinuz
-  # Keep serial diagnostics for QEMU, but make the VMware/PC VGA console
-  # the primary console.  With only ttyS0, VMware's display remains black
-  # after ISOLINUX has loaded the kernel and initramfs.
-  # Make /dev/console resolve to the VGA console for VMware users while
-  # retaining the serial kernel console for automated QEMU diagnostics.
   APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0
 EOF
+fi
 xorriso -as mkisofs -o "$OUT_ISO" -isohybrid-mbr "$WORK/isohdpfx.bin" \
     -isohybrid-gpt-basdat -b isolinux/isolinux.bin \
     -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 \
     -boot-info-table -J -R "$WORK/isoroot" 2>&1 | tail -1
 
-echo "=== live ISO: $OUT_ISO ==="
+echo "=== ISO: $OUT_ISO ==="
 ls -la "$OUT_ISO"
