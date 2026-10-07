@@ -7,6 +7,16 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-08 DPA conformance lifecycle assertions
+
+The previously thin VRF, ACL and QoS conformance cases now read back and
+compare object payloads, reject duplicate create, verify updates, and confirm
+delete plus missing-object behavior. ACL coverage includes table lifecycle and
+a full rule payload add/read/duplicate/delete cycle. These are storage/API
+contract checks, not backend forwarding qualification. Full Debug, ASan and
+TSan CTest suites each pass 48/48. ASan passed in a serialized rerun after a
+transient daemon shutdown timeout during concurrent sanitizer suites.
+
 ### 2026-10-07 r5 QEMU learned-route lifecycle closeout
 
 Closed the same-prefix real FRR-learned add/withdraw/restore/post-FRR-restart
@@ -735,9 +745,10 @@ Still open:
   local baseline is 77.5% lines / 55.5% branches with CTest 41/41. Remote job
   execution is still blocked by GitHub billing; assertion quality and a
   coverage non-regression policy remain open (see coverage-baseline.md).
-- other conformance cases are still thin: `conf_vrf_crud`,
-  `conf_acl_crud` and `conf_qos_crud`
-  exercise the calls but assert almost nothing about the results
+2026-10-08: `conf_vrf_crud`, `conf_acl_crud` and `conf_qos_crud` now exercise
+and assert readback, duplicate, update and deletion semantics. This closes the
+listed thin-case gap but does not address the separate storage-vs-backend
+scope limitation.
 
 2026-10-07: Route/NH/NHGroup creation-only cases were replaced by full
 storage lifecycle/visibility/abort/payload checks. Pipeline tests now pin

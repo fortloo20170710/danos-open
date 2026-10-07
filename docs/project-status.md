@@ -1,5 +1,17 @@
 # DANOS Open Project Status
 
+## 2026-10-08 DPA conformance lifecycle assertions strengthened
+
+VRF, ACL-table/ACL-rule and QoS conformance cases now assert persisted payload
+readback, duplicate-create rejection, update behavior and deletion/missing
+object results instead of treating create+commit as sufficient. This is
+deterministic storage/API conformance only; it does not claim Linux/VPP backend
+programming or forwarding for those object families. Full CTest passes 48/48
+in Debug, ASan and TSan builds. ASan passed in a serialized full-suite rerun
+after transient daemon shutdown timeouts during concurrent sanitizer suites.
+The previous r5 FRR/VPP QEMU acceptance and external PCI/VMware qualification
+boundaries remain unchanged.
+
 ## 2026-10-07 r5 current QEMU acceptance: PASS
 
 The clean shared-L2 ISO (`81a38214`, SHA256

@@ -1,12 +1,12 @@
 /*
- * DPA Conformance test cases (mixed lifecycle and legacy smoke coverage)
+ * DPA Conformance test cases
  *
  * These verify the DPA API contract. Each test creates a transaction,
  * performs operations, and checks results. This is the storage-side contract,
  * not a real Linux/VPP dataplane qualification.
  *
- * Route/NH/NHGroup lifecycle cases live in route_lifecycle_cases.c.
- * Several older object cases still cover only creation.
+ * Route/NH/NHGroup lifecycle cases live in route_lifecycle_cases.c. The
+ * remaining object cases below assert the public storage CRUD contract.
  */
 
 #include <danos/dpa.h>
@@ -158,12 +158,47 @@ int conf_vrf_crud(void)
     if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
 
     danos_vrf_t vrf = {0};
-    vrf.vrf_id = 100;
+    vrf.vrf_id = 31001;
     vrf.ipv4_active = true;
     strncpy(vrf.name, "VRF100", sizeof(vrf.name) - 1);
 
     if (danos_vrf_create(&tx, &vrf) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
+    if (conf_commit(&tx) != DANOS_OK) return 3;
+
+    danos_vrf_t out = {0};
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 4;
+    if (danos_vrf_read(&tx, vrf.vrf_id, &out) != DANOS_OK) return 5;
+    if (out.vrf_id != vrf.vrf_id || strcmp(out.name, vrf.name) != 0 ||
+        !out.ipv4_active || out.ipv6_active) return 6;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 7;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 8;
+    if (danos_vrf_create(&tx, &vrf) != DANOS_ERR_EXISTS) return 9;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 10;
+
+    vrf.ipv4_active = false;
+    vrf.ipv6_active = true;
+    strncpy(vrf.name, "VRF100-updated", sizeof(vrf.name) - 1);
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 11;
+    if (danos_vrf_update(&tx, &vrf) != DANOS_OK) return 12;
+    if (conf_commit(&tx) != DANOS_OK) return 13;
+
+    memset(&out, 0, sizeof(out));
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 14;
+    if (danos_vrf_read(&tx, vrf.vrf_id, &out) != DANOS_OK) return 15;
+    if (out.vrf_id != vrf.vrf_id || strcmp(out.name, vrf.name) != 0 ||
+        out.ipv4_active || !out.ipv6_active) return 16;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 17;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 18;
+    if (danos_vrf_delete(&tx, vrf.vrf_id) != DANOS_OK) return 19;
+    if (conf_commit(&tx) != DANOS_OK) return 20;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 21;
+    if (danos_vrf_read(&tx, vrf.vrf_id, &out) != DANOS_ERR_NOT_FOUND) return 22;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 23;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 24;
+    if (danos_vrf_delete(&tx, vrf.vrf_id) != DANOS_ERR_NOT_FOUND) return 25;
+    return danos_tx_abort(&tx) == DANOS_OK ? 0 : 26;
 }
 
 int conf_acl_crud(void)
@@ -172,12 +207,120 @@ int conf_acl_crud(void)
     if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
 
     danos_acl_table_t tbl = {0};
-    tbl.table_id = 1;
+    tbl.table_id = 31002;
+    tbl.bind_ifindex = 77;
     strncpy(tbl.name, "ACL1", sizeof(tbl.name) - 1);
     tbl.ingress = true;
 
     if (danos_acl_table_create(&tx, &tbl) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
+    if (conf_commit(&tx) != DANOS_OK) return 3;
+
+    danos_acl_table_t out = {0};
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 4;
+    if (danos_acl_table_read(&tx, tbl.table_id, &out) != DANOS_OK) return 5;
+    if (out.table_id != tbl.table_id || strcmp(out.name, tbl.name) != 0 ||
+        out.bind_ifindex != tbl.bind_ifindex || !out.ingress) return 6;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 7;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 8;
+    if (danos_acl_table_create(&tx, &tbl) != DANOS_ERR_EXISTS) return 9;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 10;
+
+    tbl.bind_ifindex = 88;
+    tbl.ingress = false;
+    strncpy(tbl.name, "ACL1-updated", sizeof(tbl.name) - 1);
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 11;
+    if (danos_acl_table_update(&tx, &tbl) != DANOS_OK) return 12;
+    if (conf_commit(&tx) != DANOS_OK) return 13;
+
+    memset(&out, 0, sizeof(out));
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 14;
+    if (danos_acl_table_read(&tx, tbl.table_id, &out) != DANOS_OK) return 15;
+    if (out.table_id != tbl.table_id || strcmp(out.name, tbl.name) != 0 ||
+        out.bind_ifindex != tbl.bind_ifindex || out.ingress) return 16;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 17;
+
+    danos_acl_rule_t rule = {0}, rule_out = {0};
+    rule.rule_id = 31003;
+    rule.priority = 20;
+    rule.match.fields_mask = DANOS_ACL_FIELD_ETHER_TYPE | DANOS_ACL_FIELD_SRC_MAC |
+        DANOS_ACL_FIELD_DST_MAC | DANOS_ACL_FIELD_VLAN_ID | DANOS_ACL_FIELD_SRC_IP |
+        DANOS_ACL_FIELD_DST_IP | DANOS_ACL_FIELD_L4_PROTO |
+        DANOS_ACL_FIELD_L4_SRC_PORT | DANOS_ACL_FIELD_L4_DST_PORT | DANOS_ACL_FIELD_DSCP;
+    rule.match.ether_type = 0x0800;
+    const uint8_t src_mac[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55};
+    const uint8_t dst_mac[6] = {0x06, 0xaa, 0xbb, 0xcc, 0xdd, 0xee};
+    memcpy(rule.match.src_mac, src_mac, sizeof(src_mac));
+    memcpy(rule.match.dst_mac, dst_mac, sizeof(dst_mac));
+    rule.match.vlan_id = 123;
+    rule.match.src_ip.addr.af = DANOS_AF_IPV4;
+    rule.match.src_ip.addr.addr[12] = 192;
+    rule.match.src_ip.addr.addr[14] = 2;
+    rule.match.src_ip.prefix_len = 24;
+    rule.match.dst_ip.addr.af = DANOS_AF_IPV4;
+    rule.match.dst_ip.addr.addr[12] = 198;
+    rule.match.dst_ip.addr.addr[13] = 51;
+    rule.match.dst_ip.addr.addr[14] = 100;
+    rule.match.dst_ip.prefix_len = 24;
+    rule.match.l4_proto = 17;
+    rule.match.dscp = 12;
+    rule.match.l4_src_port_start = 1000;
+    rule.match.l4_src_port_end = 2000;
+    rule.match.l4_dst_port_start = 3000;
+    rule.match.l4_dst_port_end = 4000;
+    rule.act.action = DANOS_ACL_ACTION_DENY;
+    rule.act.redirect_ifindex = 91;
+    rule.act.police_rate_kbps = 54321;
+    rule.act.set_dscp = 26;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 18;
+    if (danos_acl_rule_add(&tx, tbl.table_id, &rule) != DANOS_OK) return 19;
+    if (conf_commit(&tx) != DANOS_OK) return 20;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 21;
+    if (danos_acl_rule_read(&tx, tbl.table_id, rule.rule_id, &rule_out) != DANOS_OK) return 22;
+    if (rule_out.rule_id != rule.rule_id || rule_out.priority != rule.priority ||
+        rule_out.match.fields_mask != rule.match.fields_mask ||
+        rule_out.match.ether_type != rule.match.ether_type ||
+        memcmp(rule_out.match.src_mac, rule.match.src_mac, sizeof(rule.match.src_mac)) != 0 ||
+        memcmp(rule_out.match.dst_mac, rule.match.dst_mac, sizeof(rule.match.dst_mac)) != 0 ||
+        rule_out.match.vlan_id != rule.match.vlan_id ||
+        rule_out.match.src_ip.addr.af != rule.match.src_ip.addr.af ||
+        memcmp(rule_out.match.src_ip.addr.addr, rule.match.src_ip.addr.addr,
+               sizeof(rule.match.src_ip.addr.addr)) != 0 ||
+        rule_out.match.src_ip.prefix_len != rule.match.src_ip.prefix_len ||
+        rule_out.match.dst_ip.addr.af != rule.match.dst_ip.addr.af ||
+        memcmp(rule_out.match.dst_ip.addr.addr, rule.match.dst_ip.addr.addr,
+               sizeof(rule.match.dst_ip.addr.addr)) != 0 ||
+        rule_out.match.dst_ip.prefix_len != rule.match.dst_ip.prefix_len ||
+        rule_out.match.l4_proto != rule.match.l4_proto ||
+        rule_out.match.l4_src_port_start != rule.match.l4_src_port_start ||
+        rule_out.match.l4_src_port_end != rule.match.l4_src_port_end ||
+        rule_out.match.l4_dst_port_start != rule.match.l4_dst_port_start ||
+        rule_out.match.l4_dst_port_end != rule.match.l4_dst_port_end ||
+        rule_out.match.dscp != rule.match.dscp ||
+        rule_out.act.action != rule.act.action ||
+        rule_out.act.redirect_ifindex != rule.act.redirect_ifindex ||
+        rule_out.act.police_rate_kbps != rule.act.police_rate_kbps ||
+        rule_out.act.set_dscp != rule.act.set_dscp) return 23;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 24;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 25;
+    if (danos_acl_rule_add(&tx, tbl.table_id, &rule) != DANOS_ERR_EXISTS) return 26;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 27;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 28;
+    if (danos_acl_rule_delete(&tx, tbl.table_id, rule.rule_id) != DANOS_OK) return 29;
+    if (conf_commit(&tx) != DANOS_OK) return 30;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 31;
+    if (danos_acl_rule_read(&tx, tbl.table_id, rule.rule_id, &rule_out) != DANOS_ERR_NOT_FOUND) return 32;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 33;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 34;
+    if (danos_acl_table_delete(&tx, tbl.table_id) != DANOS_OK) return 35;
+    if (conf_commit(&tx) != DANOS_OK) return 36;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 37;
+    if (danos_acl_table_read(&tx, tbl.table_id, &out) != DANOS_ERR_NOT_FOUND) return 38;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 39;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 40;
+    if (danos_acl_table_delete(&tx, tbl.table_id) != DANOS_ERR_NOT_FOUND) return 41;
+    return danos_tx_abort(&tx) == DANOS_OK ? 0 : 42;
 }
 
 int conf_qos_crud(void)
@@ -186,13 +329,59 @@ int conf_qos_crud(void)
     if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 1;
 
     danos_qos_policy_t p = {0};
-    p.policy_id = 1;
+    p.policy_id = 31004;
     strncpy(p.name, "POLICE1", sizeof(p.name) - 1);
     p.cir_bps = 100000000;  /* 100 Mbps */
     p.cb_bytes = 12500000;  /* 100ms burst */
 
     if (danos_qos_policy_create(&tx, &p) != DANOS_OK) return 2;
-    return conf_commit(&tx) == DANOS_OK ? 0 : 3;
+    if (conf_commit(&tx) != DANOS_OK) return 3;
+
+    danos_qos_policy_t out = {0};
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 4;
+    if (danos_qos_policy_read(&tx, p.policy_id, &out) != DANOS_OK) return 5;
+    if (out.policy_id != p.policy_id || strcmp(out.name, p.name) != 0 ||
+        out.cir_bps != p.cir_bps || out.cb_bytes != p.cb_bytes ||
+        out.pir_bps != p.pir_bps || out.pb_bytes != p.pb_bytes ||
+        out.conform_dscp != p.conform_dscp || out.exceed_dscp != p.exceed_dscp ||
+        out.violate_dscp != p.violate_dscp) return 6;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 7;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 8;
+    if (danos_qos_policy_create(&tx, &p) != DANOS_ERR_EXISTS) return 9;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 10;
+
+    strncpy(p.name, "POLICE1-updated", sizeof(p.name) - 1);
+    p.cir_bps = 200000000;
+    p.cb_bytes = 25000000;
+    p.pir_bps = 250000000;
+    p.pb_bytes = 31250000;
+    p.conform_dscp = 10;
+    p.exceed_dscp = 20;
+    p.violate_dscp = 30;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 11;
+    if (danos_qos_policy_update(&tx, &p) != DANOS_OK) return 12;
+    if (conf_commit(&tx) != DANOS_OK) return 13;
+
+    memset(&out, 0, sizeof(out));
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 14;
+    if (danos_qos_policy_read(&tx, p.policy_id, &out) != DANOS_OK) return 15;
+    if (out.policy_id != p.policy_id || strcmp(out.name, p.name) != 0 ||
+        out.cir_bps != p.cir_bps || out.cb_bytes != p.cb_bytes ||
+        out.pir_bps != p.pir_bps || out.pb_bytes != p.pb_bytes ||
+        out.conform_dscp != p.conform_dscp || out.exceed_dscp != p.exceed_dscp ||
+        out.violate_dscp != p.violate_dscp) return 16;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 17;
+
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 18;
+    if (danos_qos_policy_delete(&tx, p.policy_id) != DANOS_OK) return 19;
+    if (conf_commit(&tx) != DANOS_OK) return 20;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 21;
+    if (danos_qos_policy_read(&tx, p.policy_id, &out) != DANOS_ERR_NOT_FOUND) return 22;
+    if (danos_tx_abort(&tx) != DANOS_OK) return 23;
+    if (danos_tx_begin(&tx, "conf", &kDefaultTimeouts) != DANOS_OK) return 24;
+    if (danos_qos_policy_delete(&tx, p.policy_id) != DANOS_ERR_NOT_FOUND) return 25;
+    return danos_tx_abort(&tx) == DANOS_OK ? 0 : 26;
 }
 
 /* ----------------------------------------------------------------------- */
