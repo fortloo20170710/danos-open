@@ -474,10 +474,17 @@ running `/etc/danos/build-info.env`, binding the runtime to this exact ISO name,
 commit, and clean-source marker; the capture began after boot, so the original
 `DANOS-INIT-ENTER` banner was not present. Evidence is in
 `build/i211-physical-traffic-20261008-live-r5.serial.log` and the runtime-bound
-result in `build/i211-physical-traffic-20261008-live-r5.runtime-bound.env`.
+result in `build/i211-physical-traffic-20261008-live-r5.runtime-bound.env`;
+follow-up device/hugepage checks are in
+`build/i211-physical-preflight-r5.runtime.serial.log`.
 
 VPP exposed I211 BDFs `0000:01:00.0` and `0000:02:00.0` with PCI ID
 `8086:1539`; port 1 negotiated 1 Gbps carrier, while port 2 was carrier-down.
+Follow-up interactive preflight confirmed `DPDK-PCI-BIND PASS` for both BDFs,
+no `/run/dpdk-pci-bind.failed` marker, both sysfs driver links at
+`uio_pci_generic`, and VPP's DPDK `igb` burst functions. HugePages were
+configured (`Total=28`, `Free=7`). Thus the physical PCI bind/runtime preflight
+passes for the selected devices, but the second cable/link is still absent.
 The automated traffic run is a functional **FAIL**, not a performance result:
 each of `30.30.30.2`–`.5` had 5 sent/0 received, the
 `30.30.30.0/24` FIB resolved to one bucket, and path failover/restore failed.
