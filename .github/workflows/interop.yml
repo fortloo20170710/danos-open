@@ -145,7 +145,7 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake iproute2 libssl-dev openssl python3
+          sudo apt-get install -y build-essential cmake iproute2 iputils-ping libssl-dev openssl python3
       - name: Setup Go (gnmic)
         uses: actions/setup-go@v5
         with:
@@ -209,9 +209,24 @@ jobs:
           VPPCFG
       - name: Start VPP
         run: |
+          # The package post-install may have already started the systemd
+          # service with its default config. Stop it before launching the
+          # isolated test instance with the explicit API/stat sockets below.
+          sudo systemctl stop vpp || true
+          sudo rm -f /run/vpp/api.sock /run/vpp/stats.sock
           sudo vpp -c /etc/vpp/startup.conf > /tmp/vpp-stdout.log 2>&1 &
-          sleep 5
-          ls -la /run/vpp/api.sock /run/vpp/stats.sock
+          for _ in $(seq 1 30); do
+            if [ -S /run/vpp/api.sock ] && [ -S /run/vpp/stats.sock ]; then
+              ls -la /run/vpp/api.sock /run/vpp/stats.sock
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "VPP failed to create both control sockets"
+          sudo cat /tmp/vpp.log || true
+          cat /tmp/vpp-stdout.log || true
+          pgrep -a vpp || true
+          exit 1
       - name: Setup Go (gnmic)
         uses: actions/setup-go@v5
         with:

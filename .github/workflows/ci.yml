@@ -42,7 +42,11 @@ jobs:
           sudo apt-get update
           sudo dpkg --add-architecture arm64
           sudo sed -i '/^Architectures:/d; /^Types: deb/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
-          echo 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe' | sudo tee /etc/apt/sources.list.d/danos-arm64.list
+          {
+            echo 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main universe'
+            echo 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main universe'
+            echo 'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main universe'
+          } | sudo tee /etc/apt/sources.list.d/danos-arm64.list
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu cmake libssl-dev:arm64 openssl python3
       - name: Configure (cross)

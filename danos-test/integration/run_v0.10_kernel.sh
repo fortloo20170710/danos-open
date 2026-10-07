@@ -27,7 +27,7 @@ pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
 fail() { echo -e "${RED}[FAIL]${NC} $1"; FAILED=1; }
 FAILED=0
 
-echo "=== DANOS-Open v0.10 kernel verification (user namespace) ==="
+echo "=== DANOS-Open v0.10 kernel verification (network namespace) ==="
 
 # Probe: prefer real root (CI/containers), fall back to a user namespace.
 ROOT_MODE=0
@@ -103,7 +103,7 @@ sleep 2
     || fail "K4a: pipeline test"
 
 # Program a REAL route into THIS namespace's kernel through the
-# pipeline: reuse the DPA CRUD path via a tiny driver
+# pipeline: reuse the DPA CRUD path via a tiny driver.
 cat > /tmp/k4-driver.c <<'EOF'
 #include <danos/core/object_registry.h>
 #include <danos/core/backend_ops.h>
@@ -119,17 +119,17 @@ int main(int argc, char **argv) {
     if (!g_default_store) g_default_store = danos_object_store_create(64);
 
     danos_tx_t tx;
-    danos_tx_begin(&tx, "k4", NULL);
+    if (danos_tx_begin(&tx, "k4", NULL) != DANOS_OK) return 10;
     danos_nexthop_t nh; memset(&nh, 0, sizeof(nh));
     nh.id = 100;
     nh.gateway.af = DANOS_AF_IPV4;
     unsigned a,b,c,d; sscanf(argv[2], "%u.%u.%u.%u", &a,&b,&c,&d);
     nh.gateway.addr[0]=a; nh.gateway.addr[1]=b; nh.gateway.addr[2]=c; nh.gateway.addr[3]=d;
     nh.ifindex = atoi(argv[3]);
-    danos_nh_create(&tx, &nh);
+    if (danos_nh_create(&tx, &nh) != DANOS_OK) return 11;
     danos_nhgroup_t grp; memset(&grp, 0, sizeof(grp));
     grp.id = 1; grp.nh_count = 1; grp.nh_ids[0] = 100;
-    danos_nhgroup_create(&tx, &grp);
+    if (danos_nhgroup_create(&tx, &grp) != DANOS_OK) return 12;
     danos_route_t rt; memset(&rt, 0, sizeof(rt));
     rt.vrf_id = 0; rt.prefix.addr.af = DANOS_AF_IPV4;
     sscanf(argv[1], "%u.%u.%u.%u/%hhu", &a,&b,&c,&d,&rt.prefix.prefix_len);
@@ -141,8 +141,8 @@ int main(int argc, char **argv) {
     } else {
         rt.nhgroup_id = 1;
     }
-    danos_route_create(&tx, &rt);
-    danos_tx_commit(&tx);
+    if (danos_route_create(&tx, &rt) != DANOS_OK) return 13;
+    if (danos_tx_commit_atomic(&tx) != DANOS_OK) return 14;
 
     uint64_t attempted=0, failed=0;
     uint64_t ok = danos_programming_run(&attempted, &failed);
@@ -152,8 +152,6 @@ int main(int argc, char **argv) {
     return (ok >= 1 && failed == 0) ? 0 : 1;
 }
 EOF
-gcc -I "$PROJECT_ROOT/danos-dpa/include" -I "$PROJECT_ROOT/danos-core/include" \
-    /tmp/k4-driver.c "$BUILD_DIR/danos-test/integration_test/programming_pipeline_test.c" 2>/dev/null;
 gcc -I "$PROJECT_ROOT/danos-dpa/include" -I "$PROJECT_ROOT/danos-core/include" -I "$PROJECT_ROOT/danos-netlink" \
     /tmp/k4-driver.c -o /tmp/k4-driver \
     "$BUILD_DIR/danos-netlink/libdanos-netlink.a" \
@@ -175,25 +173,19 @@ else
     fail "K4b: route missing from kernel FIB"
 fi
 
-# K5 (gw-routed forwarding): the pipeline programs gateway routes when
-# the link state permits. The kernel's rejection must propagate
-# honestly through the pipeline (no silent success).
+# K5 (gw-routed forwarding): a successful gNMI Set must result in a real
+# kernel route; accepting a request without programming the FIB is failure.
 # K5a via the STANDARD client: gnmic -> mgrd -> pipeline -> kernel
 "$GNMIC" -a 127.0.0.1:59450 --insecure set \
     --update '/routes/route[prefix=10.99.1.0/24]:::json_ietf:::{"gateway":"10.0.0.2"}' \
-    > /tmp/k5-gnmic.log 2>&1 || fail "K5a: gnmic set"
+    > /tmp/k5-gnmic.log 2>&1 || { fail "K5a: gnmic set"; cat /tmp/k5-gnmic.log; }
 sleep 2.5   # reconciler pass (1s period)
 if ip route show | grep -q "10.99.1.0/24"; then
     pass "K5a: gnmic route programmed into the kernel via mgrd"
 else
-    pass "K5a: route accepted; kernel install pending link state"
-fi
-
-# K5 ping: needs a usable peer address inside the child netns; the
-# sandbox's userns rejects addr-add on the moved veth. In root
-# containers / CI with real root this works. SKIP, not FAIL.
-if ! echo "NSSETUP-FAIL: addr v1" >/dev/null; then
-    :
+    fail "K5a: accepted route is absent from kernel FIB"
+    cat /tmp/k5-gnmic.log
+    cat /tmp/k4-mgrd.log
 fi
 
 # ---- K5-ping: real packet forwarding through the gnmic route ----------
@@ -218,14 +210,17 @@ EOF
             fail "K5-ping: no ping utility and raw-ICMP probe build failed"
             NSSETUP_OK=0
         fi
+        PING_CMD=/tmp/k5-ping
+        PING_ARGS=""
     else
-        cp "$(command -v ping)" /tmp/k5-ping
+        PING_CMD="$(command -v ping)"
+        PING_ARGS="-c 1 -W 2"
     fi
 fi
 if [ "${NSSETUP_OK:-0}" = "1" ]; then
     nsenter -t $NSPID -n ip addr add 10.99.1.1/32 dev lo 2>/dev/null
     nsenter -t $NSPID -n ip link set lo up 2>/dev/null
-    if /tmp/k5-ping > /tmp/k5-ping.log 2>&1; then
+    if $PING_CMD $PING_ARGS 10.99.1.1 > /tmp/k5-ping.log 2>&1; then
         pass "K5-ping: packets forwarded through the gnmic-programmed route"
     else
         fail "K5-ping: forwarding failed"; cat /tmp/k5-ping.log

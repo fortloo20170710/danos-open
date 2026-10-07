@@ -71,6 +71,9 @@ if echo "$R" | grep -q '"operation": "UPDATE"' &&
     pass "I3: gnmic set -> UPDATE ack + get verifies value"
 else
     fail "I3: gnmic set"
+    echo "I3 Set response: $R"
+    echo "I3 Get response:"
+    "$GNMIC" $T get --path "/interfaces/interface[name=ethi3]" 2>&1 || true
 fi
 
 # --- I4: subscribe ONCE ---------------------------------------------------
@@ -93,6 +96,10 @@ if grep -q '"name": "ethi5"' "$OUT"; then
     pass "I5: gnmic subscribe STREAM -> Set pushed to subscriber"
 else
     fail "I5: gnmic subscribe STREAM push"
+    echo "I5 Set response:"
+    "$GNMIC" $T get --path "/interfaces/interface[name=ethi5]" 2>&1 || true
+    echo "I5 subscription output:"
+    cat "$OUT"
 fi
 
 # --- I9: TLS front-end (socat OPENSSL terminates TLS, server stays h2c) ---
