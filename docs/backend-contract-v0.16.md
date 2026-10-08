@@ -71,16 +71,25 @@ QEMU/FRR/VPP runtime 证据与当前剩余的 PCI 边界见下节；冻结的是
 
 ## 7. 2026-10-08 运行时符合性边界
 
-clean source `b32204707ff8705bf47c134b5717bbb996316a3c` 的 52 项 CTest 与
-`run_backend_contract.sh` 确定性 contract gate 均通过。随后 clean QEMU ISO
-`danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso`（SHA256
-`dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`）通过严格
-FRR/VPP topology verifier：BGP/OSPF/ZAPI 路由 add/withdraw/restore，VPP 与
-FRR/zserv restart/replay，ECMP next-hop withdraw/restore 和恢复报文均有运行时
-证据。四流 1000 包/流为 4000/4000、0% 丢包、81.58 pps，两个 bucket 的差值
-为 3000/1000。机器结果和日志 digest 见 `docs/v0.16-acceptance-matrix.md`。
+当前共享分支 `8776da3` 的本机全量 CTest 为 52/52 PASS，且
+`danos-test/integration/run_backend_contract.sh` 的 DPA、programming pipeline、
+复合 Route/NH/NHGroup 三段确定性 contract gate 全部通过。此 gate 使用 mock
+adapter，不应被表述为真实 PCI backend 验收。
 
-这些运行时结果关闭 v0.16 QEMU 功能/recovery lane，但不替代真实 PCI DPDK
-性能验收，也不声称 Linux 与 VPP 的所有能力在物理设备上逐项符合。统一
-release gate 因目标 PCI BDF 与 hugepages 缺失，仍为 `ENVIRONMENT-OPEN`；未
-用 waiver 将该项变成 PASS。
+最新可复核的 clean QEMU 10 ms 运行来自源码
+`3881730e6b79c1dac41f58b767b86df5069f2d07`：ISO
+`danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-3881730-baseline.iso`，SHA256
+`cf63bcd23ef01f63723cd46616ab468a068aceb5e406426e5abcff624ed659ae`。严格 verifier
+对 live 日志及 `accepted-final/` 冻结证据均通过，覆盖 FRR BGP/OSPF、ZAPI route
+add/withdraw/restore、ECMP next-hop down/up、FRR/zserv 重启、VPP restart/replay
+和重启后双 peer 探测。四流共 4000/4000、0% 丢包，81.47 pps，bucket delta
+3000/1000；RTT p50/p99 为 371.10/1694.50 us。该结果是 QEMU 功能/回归基线，
+不是 PCI 吞吐或线速成绩。结构化结果、manifest 和日志 digest 见
+`docs/v0.16-acceptance-matrix.md`。
+
+2026-10-08 随后的实机观察中，串口线和网线已报告接入，但在未捕获到实机启动
+事件的 180 秒监听里 `/dev/ttyUSB0` 仍为 0 bytes；日志
+`build/physical-current-20261008Tserial-connected-2.serial.log` 的结果为
+`SKIP`（缺少 `DANOS-INIT-ENTER`）。因此不能据此判定 I211 bind、carrier 或报文
+转发。真实 PCI DPDK preflight/performance 仍为 `ENVIRONMENT-OPEN`；QEMU 与
+mock 证据不替代该物理 lane，也没有 waiver 将其改为 PASS。

@@ -36,8 +36,10 @@ real PCI performance qualification or authorize the v0.16.0 final release.
 Physical I211 qualification is still open. Although the serial and Ethernet
 leads are connected, fresh passive reads of `/dev/ttyUSB0` captured 0 bytes:
 the earlier 60-second log `build/physical-current-20261008Tserial-connected.serial.log`
-and the latest 180-second log `build/physical-current-20261008T1016Z.serial.log`.
-Both structured results are `SKIP` because neither contains `DANOS-INIT-ENTER`.
+the 180-second log `build/physical-current-20261008T1016Z.serial.log`, and the
+latest 180-second r5 traffic capture
+`build/physical-current-20261008Tserial-connected-2.serial.log`. All structured
+results are `SKIP` because none contains `DANOS-INIT-ENTER`.
 These captures cannot identify the current boot or link/traffic state. Start
 the listener before the next target cold boot to capture identity-bound
 evidence. No reboot, disk write, or host-network change was made. Do not overwrite physical
