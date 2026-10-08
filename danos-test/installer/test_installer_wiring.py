@@ -46,6 +46,8 @@ assert (root / "danos-test/installer/build_dpdk_installable_iso.sh").is_file()
 generic_iso_builder = (root / "danos-test/installer/build_dpdk_installable_iso.sh").read_text()
 assert 'ISO_DOCKER_NETWORK="${DANOS_ISO_DOCKER_NETWORK:-bridge}"' in builder
 assert '--network "$ISO_DOCKER_NETWORK"' in builder
+assert 'ISO_SKIP_APT="${DANOS_ISO_SKIP_APT:-0}"' in builder
+assert 'DANOS_ISO_SKIP_APT must be 0 or 1' in builder
 assert 'Acquire::http::Timeout=30 -o Acquire::Retries=2' in builder
 assert 'Components: main\n' in builder
 assert 'install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"' in generic_iso_builder

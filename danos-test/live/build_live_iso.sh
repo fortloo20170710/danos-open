@@ -29,6 +29,7 @@ WORK="${DANOS_ISO_WORK_DIR:-/tmp/danos-iso-work-$$}"
 BUILD_CONTAINER="danos-iso-build-$$"
 ISO_BUILD_IMAGE="${DANOS_ISO_BUILD_IMAGE:-debian:trixie-slim}"
 ISO_DOCKER_NETWORK="${DANOS_ISO_DOCKER_NETWORK:-bridge}"
+ISO_SKIP_APT="${DANOS_ISO_SKIP_APT:-0}"
 APT_MIRROR="${APT_MIRROR:-http://repo.huaweicloud.com/debian}"
 VPP_IMAGE="${VPP_IMAGE:-}"
 VPP_DPDK_ENABLE="${VPP_DPDK_ENABLE:-1}"
@@ -102,6 +103,10 @@ case "$VPP_DPDK_BIND_DRIVER" in
   none|uio_pci_generic) ;;
   *) echo "ERROR: unsupported VPP_DPDK_BIND_DRIVER=$VPP_DPDK_BIND_DRIVER" >&2; exit 2 ;;
 esac
+case "$ISO_SKIP_APT" in
+  0|1) ;;
+  *) echo "ERROR: DANOS_ISO_SKIP_APT must be 0 or 1" >&2; exit 2 ;;
+esac
 if test "$VPP_DPDK_BIND_DRIVER" != none; then
   test "$VPP_DPDK_ENABLE" = 1 || { echo 'ERROR: PCI binding requires VPP_DPDK_ENABLE=1' >&2; exit 2; }
   test -n "$VPP_DPDK_PORTS" || { echo 'ERROR: PCI binding requires explicit VPP_DPDK_PORTS' >&2; exit 2; }
@@ -116,6 +121,7 @@ docker run -d --name "$BUILD_CONTAINER" --network "$ISO_DOCKER_NETWORK" \
     -v "$PROJECT_ROOT:/src" \
     -w /src "$ISO_BUILD_IMAGE" sh -c "
 set -eu
+if test "$ISO_SKIP_APT" != 1; then
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
 cat > /etc/apt/sources.list.d/danos-mirror.sources <<EOF
 Types: deb
@@ -126,6 +132,11 @@ EOF
 apt-get update -qq -o Acquire::http::Timeout=30 -o Acquire::Retries=2
 apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev openssl python3 busybox-static zstd kmod \
     linux-image-amd64 isolinux syslinux-common
+else
+for required_tool in cmake gcc make python3 busybox zstd modprobe; do
+    command -v "\$required_tool" >/dev/null || { echo "missing preinstalled ISO build tool: \$required_tool" >&2; exit 1; }
+done
+fi
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
 test -x /bin/busybox
 cmake -B /tmp/b -S /src -DCMAKE_BUILD_TYPE=Release
