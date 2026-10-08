@@ -4,11 +4,11 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PEER_LOG="${VMWARE_PEER_LOG:-$ROOT/build/vmware-vmxnet3-test/peer.serial.log}"
-DANOS_LOG="${VMWARE_DANOS_LOG:-$ROOT/build/vmware-vmxnet3-test/danos.serial.log}"
+PEER_LOG="${VMWARE_PEER_LOG:-$ROOT/build/vmware-vmxnet3-test/peer-clean.serial.log}"
+DANOS_LOG="${VMWARE_DANOS_LOG:-$ROOT/build/vmware-vmxnet3-test/danos-clean.serial.log}"
 MIN_PPS="${VMWARE_MIN_PPS:-50}"
 RESULT_FILE="${VMWARE_RESULT_FILE:-}"
-ISO_PATH="${VMWARE_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-vmware-vmxnet3-polling.iso}"
+ISO_PATH="${VMWARE_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-vmware-vmxnet3-polling-clean.iso}"
 test -s "$PEER_LOG" && test -s "$DANOS_LOG" || {
     echo "[BLOCKED] VMware serial logs missing"; exit 2;
 }

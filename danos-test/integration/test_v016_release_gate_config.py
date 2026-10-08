@@ -9,6 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 GATE = ROOT / "danos-test/integration/run_v016_release_gate.sh"
 GATE_TEXT = GATE.read_text()
+VMWARE_VERIFIER = ROOT / "danos-test/vmware/verify_vmxnet3_packet_baseline.sh"
+VMWARE_VERIFIER_TEXT = VMWARE_VERIFIER.read_text()
 
 
 def check_rejected(name: str, value: str, expected: str) -> None:
@@ -96,6 +98,27 @@ def check_default_i211_traffic_iso_is_current_clean_profile() -> None:
     assert "traffic-runner-r1.iso" not in GATE_TEXT, "release gate default has regressed to stale r1"
 
 
+def check_vmware_verifier_defaults_match_accepted_clean_baseline() -> None:
+    expected_defaults = (
+        "build/vmware-vmxnet3-test/peer-clean.serial.log",
+        "build/vmware-vmxnet3-test/danos-clean.serial.log",
+        "danos-open-v0.16.0-rc1-vmware-vmxnet3-polling-clean.iso",
+    )
+    for value in expected_defaults:
+        assert value in VMWARE_VERIFIER_TEXT, (
+            f"VMware verifier default must use accepted clean baseline: {value}"
+        )
+    stale_defaults = (
+        "build/vmware-vmxnet3-test/peer.serial.log",
+        "build/vmware-vmxnet3-test/danos.serial.log",
+        "danos-open-v0.16.0-rc1-vmware-vmxnet3-polling.iso}",
+    )
+    for value in stale_defaults:
+        assert value not in VMWARE_VERIFIER_TEXT, (
+            f"VMware verifier default regressed to stale evidence: {value}"
+        )
+
+
 def main() -> None:
     check_rejected(
         "QEMU_ECMP_SOAK_REQUIRED", "0", "requires QEMU_ECMP_SOAK_REQUIRED=1"
@@ -108,9 +131,11 @@ def main() -> None:
         )
     check_open_lane_blocks()
     check_default_i211_traffic_iso_is_current_clean_profile()
+    check_vmware_verifier_defaults_match_accepted_clean_baseline()
     print(
         "PASS: release gate rejects disabled, undersized and invalid ECMP soak "
-        "overrides, and blocks on an open hardware lane unless waived"
+        "overrides, blocks on an open hardware lane unless waived, and pins "
+        "the VMware verifier to the accepted clean baseline"
     )
 
 

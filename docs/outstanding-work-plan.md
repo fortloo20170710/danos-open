@@ -28,6 +28,14 @@ work is local contract/recovery verification and plan/status synchronization;
 resume physical testing only after the UART owner releases it and the intended
 ISO/target identity is confirmed.
 
+This turn also caught and fixed a stale default in the standalone VMware
+verifier: it had selected old serial logs/ISO despite the unified gate using
+the accepted clean baseline. The verifier defaults now match the clean ISO and
+clean DANOS/peer logs; a CTest configuration assertion prevents regression.
+The default command passes with 2000/2000 packets, zero loss and 98.23 pps;
+full CTest is 53/53, while the stricter line-rate/ECMP-performance claim stays
+open.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
