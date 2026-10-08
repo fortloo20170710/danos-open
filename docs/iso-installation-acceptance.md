@@ -213,6 +213,22 @@ survived a subsequent reboot with the same VPP/socket checks passing. Logs:
 These are QEMU installer and persistence results, not physical PCI/forwarding
 qualification. The USB-UART adapter opened successfully when checked, but
 captured no new physical-host output in the latest passive read. The last
-physical evidence therefore remains the r6 confirmation-mismatch recovery
-shell. Do not install r8 to the internal `/dev/sda` without explicit
+UART-derived physical state therefore remains the r6 confirmation-mismatch
+recovery shell. Do not install r8 to the internal `/dev/sda` without explicit
 confirmation that its existing data may be erased.
+
+### 2026-10-09 user-provided installer photo: safety abort confirmed
+
+The latest console photo shows the `DANOS-OPEN INSTALLER — GENERIC DPDK
+PHYSICAL LAB RUNNER` prompt, `/dev/sda` selected as a 16 GB internal disk, and
+an installed image size of 3,221,225,472 bytes. At the destructive confirmation
+prompt the entered text was `/dev/sda`, but the installer requires the exact
+string `ERASE /dev/sda`. It therefore printed `confirmation did not match;
+target untouched`, exited with `rc=1`, and entered the recovery BusyBox shell.
+This is a fail-safe installer abort, not evidence that installation completed
+or that the installed system booted. The photo does not expose the ISO
+filename/digest, so this run is not attributed to a specific r-number. No
+serial device was accessed for this interpretation; it is based only on the
+image supplied in the conversation. Do not retry a destructive confirmation
+until the operator explicitly confirms that the selected internal disk may be
+erased.
