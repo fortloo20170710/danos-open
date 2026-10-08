@@ -18,9 +18,10 @@ source `3881730e6b79c1dac41f58b767b86df5069f2d07`; ISO
 `build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-3881730-baseline.iso` SHA256
 `cf63bcd23ef01f63723cd46616ab468a068aceb5e406426e5abcff624ed659ae`.
 Four flows delivered 4000/4000 packets, 0% loss, 81.47 pps, and bucket deltas
-3000/1000. This 10 ms interval run is comparable to the earlier 81.58 pps QEMU
-baseline, but remains functional/regression data—not PCI throughput or line
-rate. Frozen logs, manifest and structured result are in
+3000/1000; RTT p50/p99 were 371.10/1694.50 us. This 10 ms interval run is
+comparable to the earlier 81.58 pps QEMU baseline, but remains functional/
+regression data—not PCI throughput or line rate. Frozen logs, manifest and
+structured result are in
 `build/qemu-frr-vpp-topology-705c70b-baseline/accepted-final/`.
 
 The separate 50 ms interval run at `705c70b` is retained in its own directory

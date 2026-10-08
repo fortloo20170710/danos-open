@@ -19,8 +19,9 @@ A clean, identity-bound ISO at `3881730e6b79c1dac41f58b767b86df5069f2d07` and
 isolated three-VM QEMU topology passed the strict lifecycle gate: BGP/OSPF,
 ZAPI add/withdraw/restore, ECMP path down/up, FRR/zserv restart, VPP
 restart/replay and post-restart packets. Four 1000-packet flows were lossless
-(4000/4000), 81.47 pps at 10 ms interval, with 3000/1000 bucket deltas. This
-is a comparable QEMU functional baseline, not PCI throughput. Frozen evidence
+(4000/4000), 81.47 pps at 10 ms interval, RTT p50/p99 371.10/1694.50 us, and
+3000/1000 bucket deltas. This is a comparable QEMU functional baseline, not
+PCI throughput. Frozen evidence
 is under `build/qemu-frr-vpp-topology-705c70b-baseline/accepted-final/` and
 indexed in `docs/v0.16-acceptance-matrix.md`. Physical PCI/DPDK remains open.
 
