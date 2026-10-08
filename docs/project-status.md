@@ -30,10 +30,11 @@ files are `build/v016-release-gate-b322047.env`,
 `build/v016-qemu-soak-b322047.env`, `build/v016-vmware-vmxnet3.env`, and
 `build/v016-dpdk-b322047.env`.
 
-Physical I211 status is still open. A passive 180-second read of
-`/dev/ttyUSB0` captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`);
-without fresh boot output there is no new identity-bound physical runtime or
-link/traffic evidence. Do not overwrite the physical `/dev/sda`: prior r6
+Physical I211 status is still open. Passive reads of `/dev/ttyUSB0` for 180 and
+120 seconds both captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`
+and `build/physical-current-20261008T075027Z.serial.log`); without fresh boot
+output there is no new identity-bound physical runtime or link/traffic evidence.
+Do not overwrite the physical `/dev/sda`: prior r6
 installer evidence showed existing partitions and rejected the mismatched
 erase confirmation without touching the target. QEMU installer acceptance is
 recorded separately in `docs/iso-installation-acceptance.md`.
