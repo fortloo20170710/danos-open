@@ -170,7 +170,7 @@ jobs:
   vpp-interop:
     name: VPP interop (V1-V5)
     runs-on: ubuntu-24.04
-    continue-on-error: true   # VPP packaging/version drift: report, don't block (until stable)
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Install deps
