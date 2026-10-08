@@ -2,12 +2,13 @@
 
 ## 2026-10-09 current acceptance: CI/QEMU PASS; physical DPDK qualification open
 
-The latest previously accepted code/workflow change is clean commit
-`71361f5d5ef833c7693a44ce70aa79fe09aae0bd`; a follow-up release-gate update
-now pins the clean r5 I211 traffic ISO instead of the stale r1 default and adds
-the pin assertion to CTest. GitHub CI, Coverage, and Interop Gate passed on
-`71361f5` (runs `37761183156`, `37761183119`, `37761183168`) and later docs-only
-commits through `d87dbe8`; the updated local CTest is 53/53.
+The latest code-bearing release-gate change is clean commit
+`e63e6c1b635c48ff29f18ce3eae52206a5a61688`; it pins the clean r5 I211 traffic
+ISO instead of the stale r1 default and adds the pin assertion to CTest. The
+docs-only commit `15189dd497bf4421f1c6a6c55235e3a21a9eca9b` has GitHub CI, Coverage,
+and Interop Gate all passing (runs `37817544806`, `37817544940`,
+`37817544758`); local CTest is 53/53 and the deterministic backend contract
+gate passes all three stages.
 The Interop fixture now disables DPDK probing: VPP 26.06 on GitHub runners had
 enumerated a host PCI NIC at `sw_if_index=1`, invalidating the prior assumption
 that two loopbacks would occupy indices 1 and 2. The corrected VPP job passed
