@@ -22,7 +22,7 @@ finish_result() {
     local rc=$?
     test -n "$RESULT_FILE" || return "$rc"
     {
-        printf 'status=%s\n' "$STATUS"
+        printf 'schema_version=1\nstatus=%s\n' "$STATUS"
         preflight_status="$STATUS"
         test "$STATUS" != ENVIRONMENT-OPEN || preflight_status=PASS
         printf 'preflight_status=%s\nperformance_status=ENVIRONMENT-OPEN\nstage=preflight\n' \

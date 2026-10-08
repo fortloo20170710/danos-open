@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # Conformance test suite (A6)
 add_executable(conformance_test
@@ -91,12 +92,15 @@ add_test(NAME route_composite COMMAND route_composite_test)
 
 add_test(NAME dpdk_pci_bind_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/live/test_bind_dpdk_pci.sh)
+add_test(NAME dpdk_preflight_result_schema
+  COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_dpdk_preflight_result.py)
+set_tests_properties(dpdk_preflight_result_schema PROPERTIES TIMEOUT 30)
 add_test(NAME install_disk_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_install_disk.sh)
 add_test(NAME dpdk_pci_autodiscovery
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_prepare_i211_dpdk.sh)
 
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME install_iso_wiring
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/danos-test/installer/test_installer_wiring.py)
 add_test(NAME vpp_runtime_capture
