@@ -214,6 +214,12 @@ jobs:
           api-segment { prefix danos }
           socksvr { socket-name /run/vpp/api.sock }
           statseg { socket-name /run/vpp/stats.sock }
+          # This is an API/software-interoperability fixture, not a host-NIC
+          # test. Disable DPDK probing so hosted-runner PCI devices cannot
+          # consume sw_if_index 1 before the deterministic loopback fixture.
+          plugins {
+            plugin dpdk_plugin.so { disable }
+          }
           VPPCFG
       - name: Start VPP
         run: |
