@@ -1,6 +1,6 @@
 # DANOS Open Project Status
 
-## 2026-10-09 latest release qualification snapshot on `2bcb087`
+## 2026-10-09 latest release qualification snapshot on `fd1d7eb`
 
 The physical I211 runner profile has been advanced to r6 so its ISO metadata
 and embedded configuration include the ECMP path-down/withdraw/restore window
@@ -30,6 +30,13 @@ digest and commit. Overall release status remains `FAIL` only because the
 physical PCI preflight has no selected BDF (`ENVIRONMENT-OPEN`, no waiver).
 GitHub CI, Coverage and Interop Gate all pass on `2bcb087` (runs
 `37833643551`, `37833643565`, `37833643282`).
+
+After pinning the image provenance in the gate, the full release gate was
+rerun on `fd1d7ebd10e445a7cbde919a0d1d82c1ded7a5cf`; all software, QEMU and
+VMware subgates again passed, with the same measured packet results. The
+updated machine record is `build/v016-release-gate.env` and the QEMU soak
+record is `build/v016-qemu-ecmp-soak-fd1d7eb.env`. CI and Coverage pass on
+`fd1d7eb`; Interop Gate was still running at the time of this update.
 
 ## 2026-10-09 QEMU recovery-window and 4x1000 soak gate on `0ae8acc`
 
