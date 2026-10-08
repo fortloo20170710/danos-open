@@ -10,6 +10,7 @@ DANOS_DEB=${DANOS_OPEN_DEB:-$ROOT/build/danos-open_0.16.0~rc1-1_amd64.deb}
 OUT_DIR=${1:-$ROOT/build/dpdk-installable}
 MEMORY_MB=${DANOS_INSTALL_VM_MEMORY_MB:-4096}
 VCPUS=${DANOS_INSTALL_VM_VCPUS:-4}
+INSTALL_VM_TIMEOUT_SECONDS=${DANOS_INSTALL_VM_TIMEOUT_SECONDS:-1800}
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 SOURCE_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
@@ -161,16 +162,17 @@ qemu-system-x86_64 \
     >"$WORK/qemu.stdout.log" 2>&1 &
 QEMU_PID=$!
 set +e
-timeout 1200 bash -c 'while kill -0 "$1" 2>/dev/null; do sleep 1; done' _ "$QEMU_PID"
+timeout "$INSTALL_VM_TIMEOUT_SECONDS" bash -c 'while kill -0 "$1" 2>/dev/null; do sleep 1; done' _ "$QEMU_PID"
 WAIT_RC=$?
-wait "$QEMU_PID" 2>/dev/null
-QEMU_RC=$?
-set -e
 if test "$WAIT_RC" -eq 124; then
     kill "$QEMU_PID" 2>/dev/null || true
+    wait "$QEMU_PID" 2>/dev/null || true
     echo "ERROR: rootfs customization VM timed out; serial log: $SERIAL_LOG" >&2
     exit 1
 fi
+wait "$QEMU_PID" 2>/dev/null
+QEMU_RC=$?
+set -e
 if ! grep -Fq 'DANOS-RUNNER-ROOTFS-CONFIGURED PASS' "$SERIAL_LOG"; then
     echo "ERROR: rootfs customization gate missing; qemu_rc=$QEMU_RC serial=$SERIAL_LOG" >&2
     tail -n 100 "$SERIAL_LOG" >&2 || true

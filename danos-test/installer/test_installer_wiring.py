@@ -36,6 +36,8 @@ assert "/etc/danos/build-info.env" in runner_builder
 assert "DANOS_BUILD_SOURCE_DIRTY" in runner_builder
 assert "DANOS_OPEN_PACKAGE_SHA256" in runner_builder and "DANOS_VPP_PACKAGE_SHA256" in runner_builder
 assert "DANOS_SOURCE_DIRTY" in runner_builder and "dpkg-deb -f" in runner_builder
+assert 'INSTALL_VM_TIMEOUT_SECONDS=${DANOS_INSTALL_VM_TIMEOUT_SECONDS:-1800}' in runner_builder
+assert runner_builder.index('if test "$WAIT_RC" -eq 124; then') < runner_builder.index('wait "$QEMU_PID" 2>/dev/null\nQEMU_RC=')
 assert "systemctl restart vpp.service" in runner_builder
 assert "api.sock" in runner_builder and "vppctl -s /run/vpp/cli.sock show version" in runner_builder
 assert "/etc/modules-load.d/danos-dpdk.conf" in runner_builder
