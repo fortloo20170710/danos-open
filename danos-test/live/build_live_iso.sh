@@ -134,7 +134,7 @@ apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev 
     linux-image-amd64 isolinux syslinux-common
 else
 for required_tool in cmake gcc make python3 busybox zstd modprobe; do
-    command -v "\$required_tool" >/dev/null || { echo "missing preinstalled ISO build tool: \$required_tool" >&2; exit 1; }
+    command -v \"\$required_tool\" >/dev/null || { echo \"missing preinstalled ISO build tool: \$required_tool\" >&2; exit 1; }
 done
 fi
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
