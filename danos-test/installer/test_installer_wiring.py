@@ -32,6 +32,10 @@ assert "DANOS-INSTALLER-RECOVERY" in init
 runner_builder = (root / "danos-test/installer/build_i211_disk_image.sh").read_text()
 runtime_package = (root / "danos-test/installer/package_vpp_runtime.sh").read_text()
 assert "DANOS-RUNNER-ROOTFS-CONFIGURED PASS" in runner_builder
+assert "/etc/danos/build-info.env" in runner_builder
+assert "DANOS_BUILD_SOURCE_DIRTY" in runner_builder
+assert "DANOS_OPEN_PACKAGE_SHA256" in runner_builder and "DANOS_VPP_PACKAGE_SHA256" in runner_builder
+assert "DANOS_SOURCE_DIRTY" in runner_builder and "dpkg-deb -f" in runner_builder
 assert "systemctl restart vpp.service" in runner_builder
 assert "api.sock" in runner_builder and "vppctl -s /run/vpp/cli.sock show version" in runner_builder
 assert "/etc/modules-load.d/danos-dpdk.conf" in runner_builder

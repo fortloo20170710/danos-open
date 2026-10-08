@@ -11,13 +11,20 @@ OUT_DIR=${1:-$ROOT/build/dpdk-installable}
 MEMORY_MB=${DANOS_INSTALL_VM_MEMORY_MB:-4096}
 VCPUS=${DANOS_INSTALL_VM_VCPUS:-4}
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
+SOURCE_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
+BUILD_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 for required in "$BASE_IMAGE" "$VPP_DEB" "$DANOS_DEB"; do
     test -r "$required" || { echo "ERROR: required input missing: $required" >&2; exit 2; }
 done
-for command in qemu-img qemu-system-x86_64 xorriso gzip sha256sum timeout; do
+for command in qemu-img qemu-system-x86_64 xorriso gzip sha256sum timeout dpkg-deb; do
     command -v "$command" >/dev/null || { echo "ERROR: missing tool: $command" >&2; exit 2; }
 done
+DANOS_DEB_SHA256=$(sha256sum "$DANOS_DEB" | awk '{print $1}')
+VPP_DEB_SHA256=$(sha256sum "$VPP_DEB" | awk '{print $1}')
+DANOS_DEB_VERSION=$(dpkg-deb -f "$DANOS_DEB" Version)
+VPP_DEB_VERSION=$(dpkg-deb -f "$VPP_DEB" Version)
 
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
@@ -101,6 +108,17 @@ write_files:
       vpp=26.10
       dpdk_driver=auto (vfio-pci when IOMMU groups are safe, otherwise uio_pci_generic)
       management_service=disabled-until-mtls-configured
+  - path: /etc/danos/build-info.env
+    permissions: '0644'
+    content: |
+      DANOS_BUILD_COMMIT=__SOURCE_COMMIT__
+      DANOS_BUILD_SOURCE_DIRTY=__SOURCE_DIRTY__
+      DANOS_BUILD_UTC=__BUILD_UTC__
+      DANOS_BUILD_PROFILE=generic-dpdk-physical-lab-runner
+      DANOS_OPEN_PACKAGE_VERSION=__DANOS_DEB_VERSION__
+      DANOS_OPEN_PACKAGE_SHA256=__DANOS_DEB_SHA256__
+      DANOS_VPP_PACKAGE_VERSION=__VPP_DEB_VERSION__
+      DANOS_VPP_PACKAGE_SHA256=__VPP_DEB_SHA256__
   - path: /etc/issue
     permissions: '0644'
     content: |
@@ -118,6 +136,16 @@ runcmd:
   - [sh, -c, 'for n in $(seq 1 45); do test -S /run/vpp/api.sock && break; sleep 1; done; if ! test -S /run/vpp/api.sock; then systemctl status vpp.service --no-pager || true; journalctl -u vpp.service -n 100 --no-pager || true; cat /var/log/vpp/vpp.log 2>/dev/null || true; exit 1; fi; vpp --version; vppctl -s /run/vpp/cli.sock show version; vppctl -s /run/vpp/cli.sock show hardware-interfaces; printf "DANOS-RUNNER-ROOTFS-CONFIGURED PASS\n" > /dev/ttyS0']
   - [sh, -c, 'cloud-init clean --logs --machine-id; shutdown -h now']
 USERDATA
+
+sed -i \
+    -e "s|__SOURCE_COMMIT__|$SOURCE_COMMIT|g" \
+    -e "s|__SOURCE_DIRTY__|$SOURCE_DIRTY|g" \
+    -e "s|__BUILD_UTC__|$BUILD_UTC|g" \
+    -e "s|__DANOS_DEB_VERSION__|$DANOS_DEB_VERSION|g" \
+    -e "s|__DANOS_DEB_SHA256__|$DANOS_DEB_SHA256|g" \
+    -e "s|__VPP_DEB_VERSION__|$VPP_DEB_VERSION|g" \
+    -e "s|__VPP_DEB_SHA256__|$VPP_DEB_SHA256|g" \
+    "$SEED_TREE/user-data"
 
 xorriso -as mkisofs -quiet -o "$SEED" -V CIDATA -J -R \
     "$SEED_TREE/user-data" "$SEED_TREE/meta-data" \
@@ -154,9 +182,11 @@ RAW_BYTES=$(stat -c '%s' "$RAW_DISK")
 RAW_SHA=$(sha256sum "$RAW_DISK" | awk '{print $1}')
 gzip -1 -n -c "$RAW_DISK" > "$RAW_GZ"
 GZIP_SHA=$(sha256sum "$RAW_GZ" | awk '{print $1}')
-printf 'DANOS_INSTALLED_DISK_BYTES=%s\nDANOS_INSTALLED_DISK_SHA256=%s\nDANOS_INSTALLED_DISK_GZIP_SHA256=%s\nDANOS_SOURCE_COMMIT=%s\nDANOS_VPP_IMAGE=%s\nDANOS_BASE_IMAGE=%s\nDANOS_BASE_IMAGE_SHA256=%s\n' \
+printf 'DANOS_INSTALLED_DISK_BYTES=%s\nDANOS_INSTALLED_DISK_SHA256=%s\nDANOS_INSTALLED_DISK_GZIP_SHA256=%s\nDANOS_SOURCE_COMMIT=%s\nDANOS_SOURCE_DIRTY=%s\nDANOS_BUILD_UTC=%s\nDANOS_OPEN_PACKAGE_VERSION=%s\nDANOS_OPEN_PACKAGE_SHA256=%s\nDANOS_VPP_PACKAGE_VERSION=%s\nDANOS_VPP_PACKAGE_SHA256=%s\nDANOS_VPP_IMAGE=%s\nDANOS_BASE_IMAGE=%s\nDANOS_BASE_IMAGE_SHA256=%s\n' \
     "$RAW_BYTES" "$RAW_SHA" "$GZIP_SHA" \
-    "$(git -C "$ROOT" rev-parse HEAD)" "${VPP_IMAGE:-danos-vpp-runtime-recover:local}" \
+    "$SOURCE_COMMIT" "$SOURCE_DIRTY" "$BUILD_UTC" \
+    "$DANOS_DEB_VERSION" "$DANOS_DEB_SHA256" "$VPP_DEB_VERSION" "$VPP_DEB_SHA256" \
+    "${VPP_IMAGE:-danos-vpp-runtime-recover:local}" \
     "$BASE_IMAGE" "$(sha256sum "$BASE_IMAGE" | awk '{print $1}')" \
     > "$MANIFEST"
 mv "$OVERLAY" "$QCOW2"
