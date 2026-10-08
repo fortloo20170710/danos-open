@@ -65,8 +65,8 @@ whose profile was verified by the capture script:
 
 ```sh
 sudo bash danos-test/integration/capture_i211_serial.sh /dev/ttyUSB0 \
-  build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r5.iso \
-  build/i211-traffic-r5.serial.log 180 --traffic
+  build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r6.iso \
+  build/i211-traffic-r6.serial.log 180 --traffic
 ```
 
 Functional PASS requires both direct peer pings, at least two resolved ECMP buckets, all four

@@ -66,6 +66,16 @@ def main() -> int:
             )
             return 1
         try:
+            failover_probe_count = int(identity.get("danos_build_ecmp_failover_probe_count", ""))
+            failover_max_loss_pct = int(identity.get("danos_build_ecmp_failover_max_loss_pct", ""))
+        except ValueError:
+            failover_probe_count = 0
+            failover_max_loss_pct = -1
+        if failover_probe_count < 1 or not 0 <= failover_max_loss_pct <= 100:
+            print("FAIL: traffic ISO has invalid/missing ECMP failover probe or loss-budget metadata",
+                  file=sys.stderr)
+            return 1
+        try:
             members, contents = read_initramfs_members(
                 args.iso,
                 ["etc/danos/vpp-traffic.env", "etc/vpp/startup.conf", "init"],
@@ -89,6 +99,8 @@ def main() -> int:
         required_config = [
             ("VPP_STATIC_NEIGHBORS=0", traffic_env),
             (f"VPP_ECMP_SOAK_COUNT={soak_count}", traffic_env),
+            (f"VPP_ECMP_FAILOVER_PROBE_COUNT={failover_probe_count}", traffic_env),
+            (f"VPP_ECMP_FAILOVER_MAX_LOSS_PCT={failover_max_loss_pct}", traffic_env),
             ("plugin dpdk_plugin.so { enable }", startup),
             ("plugin ping_plugin.so { enable }", startup),
             ("VPP-DPDK-NEIGHBORS dynamic-arp", init),

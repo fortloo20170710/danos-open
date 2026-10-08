@@ -19,7 +19,7 @@ TRAFFIC_MEMBERS = {
     "etc/danos/vpp-traffic.env", "etc/vpp/startup.conf", "init",
 }
 TRAFFIC_CONTENTS = {
-    "etc/danos/vpp-traffic.env": "VPP_STATIC_NEIGHBORS=0\nVPP_ECMP_SOAK_COUNT=1000\n",
+    "etc/danos/vpp-traffic.env": "VPP_STATIC_NEIGHBORS=0\nVPP_ECMP_SOAK_COUNT=1000\nVPP_ECMP_FAILOVER_PROBE_COUNT=200\nVPP_ECMP_FAILOVER_MAX_LOSS_PCT=15\n",
     "etc/vpp/startup.conf": "plugin dpdk_plugin.so { enable }\nplugin ping_plugin.so { enable }\n",
     "init": "VPP-DPDK-NEIGHBORS dynamic-arp",
 }
@@ -49,6 +49,8 @@ class VerifyI211ISOProfileTest(unittest.TestCase):
     def test_traffic_mode_requires_traffic_and_soak_profile(self):
         identity = dict(PROFILE.EXPECTED, iso_build_commit="abcdef0",
                         danos_build_ecmp_soak_count="1000",
+                        danos_build_ecmp_failover_probe_count="200",
+                        danos_build_ecmp_failover_max_loss_pct="15",
                         danos_build_static_neighbors="0")
         identity["danos_build_dpdk_traffic_test"] = "1"
         with patch.object(PROFILE, "read_identity", return_value=identity), patch.object(
@@ -63,6 +65,11 @@ class VerifyI211ISOProfileTest(unittest.TestCase):
             with patch("sys.argv", [str(MODULE), "runner.iso", "--traffic-test"]):
                 self.assertEqual(PROFILE.main(), 1)
         identity["danos_build_ecmp_soak_count"] = "1000"
+        identity["danos_build_ecmp_failover_probe_count"] = "0"
+        with patch.object(PROFILE, "read_identity", return_value=identity):
+            with patch("sys.argv", [str(MODULE), "runner.iso", "--traffic-test"]):
+                self.assertEqual(PROFILE.main(), 1)
+        identity["danos_build_ecmp_failover_probe_count"] = "200"
         identity["danos_build_static_neighbors"] = "0"
         payload = dict(TRAFFIC_CONTENTS)
         payload["etc/vpp/startup.conf"] = "plugin dpdk_plugin.so { enable }"

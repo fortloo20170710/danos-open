@@ -26,6 +26,8 @@ def rejected(overrides: dict[str, str], expected: str) -> None:
 
 def main() -> None:
     rejected({"VPP_ECMP_SOAK_COUNT": "999"}, "at least 1000 probes")
+    rejected({"VPP_ECMP_FAILOVER_PROBE_COUNT": "0"}, "at least 1 failover probe")
+    rejected({"VPP_ECMP_FAILOVER_MAX_LOSS_PCT": "101"}, "integer from 0 to 100")
     rejected({"VPP_STATIC_NEIGHBORS": "1"}, "must use dynamic ARP")
     rejected({"VPP_DPDK_TRAFFIC_TEST": "0"}, "must remain enabled")
     print("PASS: invalid I211 traffic profiles are rejected before Docker/build side effects")
