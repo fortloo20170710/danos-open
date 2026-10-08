@@ -106,6 +106,8 @@ Validated USB-capable ISO:
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r6.iso`
 - ISO SHA256: `ba79489cc5e652307cb5077a0dc4b495d021f70203fbccf45ea3e2ddf39a5d2a`
+- Embedded build identity: commit `cbf0f65bc073785c66abbd20c4fad7555a8d4657`,
+  `DANOS_BUILD_SOURCE_DIRTY=1`, build time `2026-10-08T04:05:57Z`.
 - The installer waits up to 45 seconds for removable ISO block media and
   rescans devices. The initramfs includes the matching `sd_mod` kernel module.
   Installer failure now stays in a recovery shell rather than silently
@@ -165,7 +167,8 @@ earlier I211-specific or LIVE-only artifacts.
 
 The user booted the r6 generic installer ISO on the I211 host and supplied a
 console photo. A subsequent read-only USB-UART probe confirmed the running
-kernel command line includes `danos.install=1`; `/dev/sdb` is the removable
+kernel command line includes `danos.install=1`; `/etc/danos/build-info.env`
+matched the r6 artifact name, commit and dirty marker above. `/dev/sdb` is the removable
 USB ISO (`ProductCode`, removable=1), while `/dev/sda` is the internal
 `TS16GMSA370` disk (16,013,942,784 bytes, removable=0) with existing
 partitions. The system enumerated four Intel I211 PCI functions at

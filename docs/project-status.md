@@ -2,13 +2,15 @@
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
-The current shared branch is clean at `21dac14` (`fix(installer): detect USB
-boot media before install`), and `origin/main` matches. The generic DPDK
-installable ISO r6 passed QEMU USB-media installation to a disposable disk,
-including full readback digest verification. On the physical I211 host, the
-user-reported boot plus read-only USB-UART evidence confirms installer mode,
-USB media at `/dev/sdb`, internal `TS16GMSA370` at `/dev/sda` with existing
-partitions, and four PCI I211 functions (`8086:1539`). An incorrect destructive
+The current shared branch is clean at `3b10f9c` and `origin/main` matches. The
+generic DPDK installable ISO r6 passed QEMU USB-media installation to a
+disposable disk, including full readback digest verification. On the physical
+I211 host, the user-reported boot plus read-only USB-UART evidence confirms
+installer mode; `/etc/danos/build-info.env` binds it to r6 ISO SHA256
+`ba79489cc5e652307cb5077a0dc4b495d021f70203fbccf45ea3e2ddf39a5d2a`, source
+commit `cbf0f65`, `source_dirty=1`. Read-only inspection confirms USB media at
+`/dev/sdb`, internal `TS16GMSA370` at `/dev/sda` with existing partitions, and
+four PCI I211 functions (`8086:1539`). An incorrect destructive
 confirmation was rejected; the installer explicitly reported `target
 untouched` and stayed in recovery. This proves physical boot/media discovery
 and the fail-safe confirmation path only; **the internal disk has not been
