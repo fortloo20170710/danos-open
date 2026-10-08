@@ -84,6 +84,7 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
                 output = result.read_text()
                 self.assertEqual(proc.returncode, 1)
                 self.assertIn("preflight schema_version must be 1", output)
+                self.assertIn("schema_version=1", output)
                 self.assertIn("status=FAIL", output)
 
     def test_valid_measurements_and_thresholds_pass(self):

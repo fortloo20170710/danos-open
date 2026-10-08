@@ -170,7 +170,7 @@ def main() -> int:
         result = validate(read_env(args.preflight), read_env(args.measurement), args)
     except (OSError, ResultError) as exc:
         result = {
-            "status": "FAIL", "preflight_status": "FAIL",
+            "schema_version": 1, "status": "FAIL", "preflight_status": "FAIL",
             "performance_status": "FAIL", "stage": "single-core-64b",
             "lane": "pci-dpdk", "failure_reason": str(exc),
         }
