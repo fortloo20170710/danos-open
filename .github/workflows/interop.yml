@@ -150,6 +150,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+          # This job creates its temporary Go module under /tmp and has no
+          # repository go.sum. Disable cache lookup/save to avoid a useless
+          # post-job cache action on the VPP integration runner.
+          cache: false
       - name: Build gnmic
         run: |
           mkdir -p /tmp/gnmic-build && cd /tmp/gnmic-build
