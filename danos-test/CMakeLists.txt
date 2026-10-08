@@ -120,6 +120,9 @@ set_tests_properties(learned_route_fib_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME shared_peer_topology_wiring
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_shared_peer_topology.py)
 set_tests_properties(shared_peer_topology_wiring PROPERTIES TIMEOUT 30)
+add_test(NAME frr_ecmp_iso_config
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_frr_ecmp_iso_config.py)
+set_tests_properties(frr_ecmp_iso_config PROPERTIES TIMEOUT 30)
 add_test(NAME learned_route_cycle_evidence
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_learned_route_cycle.py)
 set_tests_properties(learned_route_cycle_evidence PROPERTIES TIMEOUT 30)
