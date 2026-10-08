@@ -99,14 +99,18 @@ def check_default_i211_traffic_iso_is_current_clean_profile() -> None:
 
 
 def check_default_qemu_topology_is_latest_accepted_lifecycle() -> None:
-    expected = "build/qemu-frr-vpp-topology-705c70b-baseline"
-    stale = "build/qemu-frr-vpp-topology-140-soak-serialized"
+    expected = "build/qemu-frr-vpp-topology-0ae8acc-failover-soak"
+    stale = (
+        "build/qemu-frr-vpp-topology-705c70b-baseline",
+        "build/qemu-frr-vpp-topology-140-soak-serialized",
+    )
     assert expected in GATE_TEXT, (
         "release gate default must use the accepted identity-bound QEMU topology"
     )
-    assert stale not in GATE_TEXT, (
-        "release gate default regressed to stale topology-140 evidence"
-    )
+    for path in stale:
+        assert path not in GATE_TEXT, (
+            f"release gate default regressed to stale QEMU evidence: {path}"
+        )
 
 
 def check_vmware_verifier_defaults_match_accepted_clean_baseline() -> None:

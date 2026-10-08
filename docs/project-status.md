@@ -1,25 +1,37 @@
 # DANOS Open Project Status
 
-## 2026-10-09 current release-gate recheck on `5ca9303`
+## 2026-10-09 latest QEMU recovery-window and 4x1000 soak gate on `0ae8acc`
 
-The unified release gate now defaults to the accepted identity-bound QEMU
-topology `build/qemu-frr-vpp-topology-705c70b-baseline`. A full rerun on clean
-commit `5ca9303` passed backend contract, all ISO/result validators, CTest
-55/55, QEMU live-console/mgrd restart, serial-shell and VPP plugin smoke tests,
-the complete FRR/VPP route/restart lifecycle, and the 4x1000 ECMP soak
-(4000/4000, zero loss, 81.47 pps, bucket deltas 3000/1000). VMware also passed
-the accepted 2000/2000 baseline at 98.23 pps, zero loss. The gate's overall
-result is intentionally `FAIL`, solely because PCI DPDK preflight is
-`ENVIRONMENT-OPEN` (no target BDF/PCI NIC/hugepages) and no waiver was applied.
-The machine-readable run is `build/v016-release-gate-5ca9303.env`.
+Commit `0ae8acc` adds concurrent four-flow ICMP measurements spanning ECMP
+path down, NH withdrawal and restore. The strict verifier now requires exact
+packet totals, elapsed time, both pre-failover bucket counters, internally
+consistent loss percentage and compliance with the configured loss budget;
+the physical I211 result parser enforces the same evidence. Local CTest is
+56/56, backend contract passes, and GitHub CI, Coverage and Interop Gate all
+pass (runs `37828919837`, `37828919907`, `37828919796`).
 
-The previous default pointed at topology-140, whose old log has a restart PASS
-marker but no post-restart peer probes; this caused a false gate failure. The
-configuration now selects topology-705 and its regression test rejects the
-stale default. CI (`37826105087`), Coverage (`37826104942`) and Interop Gate
-(`37826104905`) all pass on `5ca9303`. Physical installation and true PCI
-performance remain open; the internal disk was not written and no UART was
-accessed.
+The release-gate default is now the clean, identity-bound topology
+`build/qemu-frr-vpp-topology-0ae8acc-failover-soak`. Its full strict verifier
+passed BGP/OSPF, ZAPI add/withdraw, FRR route add/withdraw/restore, FRR/zserv
+restart recovery, VPP restart/replay and post-restart peer probes. Four ECMP
+flows delivered 4000/4000 packets with zero loss at 82.00 pps and bucket deltas
+3000/1000. During the 200-probe-per-flow path down/withdraw/restore window,
+798/800 packets arrived (0.25% loss, within the explicit 15% budget), with
+both buckets active before convergence. The machine-readable soak result is
+`build/v016-qemu-ecmp-soak-0ae8acc.env`; the ISO SHA256 is
+`3d3d9329dbf18cc2915df35c8d87ca9040967f4ef98eba8815baee56b44101e8`.
+
+This remains QEMU functional/regression evidence, not PCI throughput. Real
+PCI DPDK qualification and physical installation remain open; no physical
+serial cable was used in this round.
+
+## 2026-10-09 previous release-gate recheck on `5ca9303`
+
+The prior unified release gate passed backend contract, validators, CTest
+55/55, console/mgrd recovery, the then-current QEMU lifecycle/soak and VMware
+packet baseline. Its overall result correctly remained `FAIL` because PCI
+DPDK preflight was `ENVIRONMENT-OPEN` and no waiver was applied. Historical
+record: `build/v016-release-gate-5ca9303.env`.
 
 ## 2026-10-09 earlier verification on `947a600`
 

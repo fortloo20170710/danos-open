@@ -46,6 +46,7 @@ VPP-ECMP-NH-WITHDRAW PASS nexthop=10.20.0.2 interface=GigabitEthernet0/3/0
 VPP-ECMP-PATH-FAILOVER PASS interface=GigabitEthernet0/3/0 probes=20
 VPP-ECMP-NH-RESTORE PASS nexthop=10.20.0.2 interface=GigabitEthernet0/3/0
 VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=2 probes=20
+VPP-ECMP-FAILOVER-WINDOW PASS flows=4 probes_per_flow=200 total_tx=800 total_rx=800 loss_pct=0.00 duration_ms=20000 max_loss_pct=15 baseline_bucket0=200 baseline_bucket1=200
 """
 
     with tempfile.TemporaryDirectory(prefix="i211-traffic-capture-test-") as temp:
@@ -75,6 +76,9 @@ VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=2 probes=20
         result = resultfile.read_text()
         if "VPP-ECMP-SOAK PASS" not in captured or f"status=PASS" not in result:
             raise RuntimeError("PTY capture did not persist/qualify physical traffic markers")
+        if "VPP-ECMP-FAILOVER-WINDOW PASS" not in captured or \
+           "failover_window_packets_tx=800" not in result:
+            raise RuntimeError("PTY capture did not persist/qualify failover-window evidence")
         if "performance_status=ENVIRONMENT-OPEN" not in result:
             raise RuntimeError("functional ICMP qualification was incorrectly labeled as line-rate performance")
         if f"iso_sha256=" not in result or f"iso_build_commit={commit}" not in result:
