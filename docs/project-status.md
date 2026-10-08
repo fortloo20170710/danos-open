@@ -913,7 +913,7 @@ zero bytes and produced `SKIP` (no `DANOS-INIT-ENTER`); the physical target did
 not reboot/send serial output during the window. Local PCI inventory confirms
 only Intel Wi-Fi and RTL8168, not the remote I211 runner.
 
-## Evidence snapshot
+## Historical evidence snapshot (superseded by the current status at the top)
 
 - Latest formal release: `v0.14.0`; current release candidate: `v0.16.0-rc1`.
 - The authoritative v0.16 status is maintained in
@@ -930,14 +930,16 @@ only Intel Wi-Fi and RTL8168, not the remote I211 runner.
   and refuses a per-flow soak below 1000 packets, preventing environment
   overrides from silently weakening release acceptance. Both rejection cases
   were checked (exit 2); the full gate passed with the required defaults.
-- Latest strict FRR/VPP integration evidence: commit `b5ce9f9`, ISO
+- Historical FRR/VPP topology-140 evidence: commit `b5ce9f9`, ISO
   `build/danos-vpp-dpdk-e1000-2port-ecmp-soak-r4.iso`, SHA256
   `e164149ea4ce7e7b78f1c783c24412e24c11a8af896c406c67c4d865d1273097`, with
   `source_dirty=0`; fresh-guest topology-140 manifest and serial logs are under
-  `build/qemu-frr-vpp-topology-140-soak-serialized/`. The strict verifier passes
-  4000/4000 ECMP soak packets, bucket deltas 3000/1000, next-hop withdrawal and
-  restore, BGP ZAPI add/withdraw, OSPF, FRR/zserv restart and VPP restart/replay.
-  Aggregate QEMU soak rate is 82.08 pps and is a functional baseline, not line rate.
+  `build/qemu-frr-vpp-topology-140-soak-serialized/`. Its original verifier
+  accepted 4000/4000 ECMP packets, bucket deltas 3000/1000, route lifecycle,
+  OSPF and restart markers (82.08 pps; functional data, not line rate). A later
+  stricter verifier found the retained log lacks post-VPP-restart peer packet
+  probes; topology-140 is therefore not the current full-recovery evidence and
+  the unified gate now uses topology-705.
 - Earlier strict FRR/VPP integration evidence: commit `9d1eb81`, ISO
   `build/danos-vpp-dpdk-e1000-2port-frr-ecmp-ready-r28.iso`, SHA256
   `245e97b922cb85646eac046a06c80fe432e715e231f61f7727bdebede01fc59a`, with
