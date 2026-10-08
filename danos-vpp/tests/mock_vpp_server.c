@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/mman.h>
+#include <time.h>
 
 /* =========================================================================
  * Binary API mock server
@@ -29,7 +30,9 @@ static struct {
     uint16_t last_msg_id;
     uint8_t last_body[4096];
     uint32_t last_body_len;
+    uint32_t stale_reply_delay_ms;
 } g_api_srv;
+static uint32_t g_next_stale_reply_delay_ms;
 
 /* Send one VPP socket message: [msgbuf_t header][u16 BE msg_id][body]. */
 static int send_frame(int fd, uint16_t msg_id, const uint8_t *body, uint32_t n)
@@ -123,6 +126,30 @@ static void serve_client(int fd)
                                       ? sizeof(g_api_srv.last_body) : rbody;
         if (rbody) memcpy(g_api_srv.last_body, frame + 2, g_api_srv.last_body_len);
 
+        if (g_api_srv.stale_reply_delay_ms && rbody >= 8) {
+            uint32_t delay_ms = g_api_srv.stale_reply_delay_ms;
+            g_api_srv.stale_reply_delay_ms = 0;
+            struct timespec delay = {
+                .tv_sec = (time_t)(delay_ms / 1000),
+                .tv_nsec = (long)(delay_ms % 1000) * 1000000L,
+            };
+            while (nanosleep(&delay, &delay) < 0 && errno == EINTR) {}
+
+            /* Deliver a well-formed but unrelated reply near the transaction
+             * deadline, then deliberately omit the matching reply. */
+            uint32_t context = ((uint32_t)frame[6] << 24) |
+                               ((uint32_t)frame[7] << 16) |
+                               ((uint32_t)frame[8] << 8) | frame[9];
+            context++;
+            uint8_t stale[8] = {
+                (uint8_t)(context >> 24), (uint8_t)(context >> 16),
+                (uint8_t)(context >> 8), (uint8_t)context,
+                0, 0, 0, 0,
+            };
+            send_frame(fd, (uint16_t)(rid + 1), stale, sizeof(stale));
+            continue;
+        }
+
         /* reply: [u32 context][i32 retval=0] with the request's context */
         if (rbody >= 8) {
             uint8_t rep[8];
@@ -153,6 +180,8 @@ static void *api_accept_loop(void *arg)
 int mock_vpp_start(const char *path)
 {
     memset(&g_api_srv, 0, sizeof(g_api_srv));
+    g_api_srv.stale_reply_delay_ms = g_next_stale_reply_delay_ms;
+    g_next_stale_reply_delay_ms = 0;
     unlink(path);
 
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -173,6 +202,11 @@ int mock_vpp_start(const char *path)
         return -1;
     }
     return 0;
+}
+
+void mock_vpp_delay_next_reply_after_stale_context(uint32_t delay_ms)
+{
+    g_next_stale_reply_delay_ms = delay_ms;
 }
 
 void mock_vpp_stop(void)

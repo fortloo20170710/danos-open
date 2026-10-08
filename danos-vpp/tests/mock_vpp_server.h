@@ -14,6 +14,7 @@
 /* Binary API mock server */
 int  mock_vpp_start(const char *path);        /* 0 on success */
 void mock_vpp_stop(void);
+void mock_vpp_delay_next_reply_after_stale_context(uint32_t delay_ms);
 void mock_vpp_get_last_request(uint16_t *msg_id, uint8_t *body,
                                uint32_t *body_len, uint32_t max_body);
 /* Fake message table ids handed to the client */

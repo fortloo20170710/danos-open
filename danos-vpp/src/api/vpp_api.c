@@ -376,10 +376,26 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
     }
     if (danos_vpp_api_send(msg_id, payload, payload_size) != 0) return -1;
 
+    /* Bound the entire transaction, not each recv independently. VPP may
+     * interleave notifications or stale replies; resetting a 5s socket timeout
+     * for each one could otherwise multiply the wait by the retry count. */
+    const uint64_t deadline_ns = now_ns() +
+        (uint64_t)VPP_RECV_TIMEOUT_MS * 1000000ULL;
+
     /* Wait for the reply whose context matches our request. Replies:
      * [u32 context][i32 retval][message-specific...]. */
     uint8_t rbuf[64 * 1024];
     for (int attempt = 0; attempt < 64; attempt++) {
+        uint64_t now = now_ns();
+        if (now >= deadline_ns || g_ctx.msg_fd < 0) {
+            danos_vpp_api_disconnect();
+            return -1;
+        }
+        uint64_t remaining_ns = deadline_ns - now;
+        int remaining_ms = (int)((remaining_ns + 999999ULL) / 1000000ULL);
+        if (remaining_ms < 1) remaining_ms = 1;
+        fd_set_timeout(g_ctx.msg_fd, remaining_ms);
+
         int n = danos_vpp_api_recv(rbuf, sizeof(rbuf));
         if (n < 8) return -1;
         uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
@@ -395,6 +411,7 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
                 memcpy(reply, rbuf, copy);
             }
             (void)reply_id;
+            fd_set_timeout(g_ctx.msg_fd, VPP_RECV_TIMEOUT_MS);
             return n;
         }
         /* Not ours (e.g. an async event): keep reading. */

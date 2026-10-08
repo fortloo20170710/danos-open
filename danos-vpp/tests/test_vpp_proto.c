@@ -18,6 +18,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <time.h>
 
 #define API_SOCK  "/tmp/danos-test-vpp-api.sock"
 #define STAT_SOCK "/tmp/danos-test-vpp-stat.sock"
@@ -71,6 +72,30 @@ static int test_transaction(void)
     danos_vpp_api_disconnect();
     mock_vpp_stop();
     printf("[PASS] test_transaction: request/reply + context correlation\n");
+    return 0;
+}
+
+static int test_transaction_uses_one_deadline(void)
+{
+    /* A stale-context reply arriving after 3.5s leaves only the remainder of
+     * the 5s transaction budget. Per-recv timeouts would wait another 5s. */
+    mock_vpp_delay_next_reply_after_stale_context(3500);
+    assert(mock_vpp_start(API_SOCK) == 0);
+    danos_vpp_api_init();
+    danos_vpp_api_set_sock_path(API_SOCK);
+    assert(danos_vpp_api_connect() == 0);
+
+    struct timespec start, end;
+    assert(clock_gettime(CLOCK_MONOTONIC, &start) == 0);
+    assert(vpp_msg_control_ping() != DANOS_OK);
+    assert(clock_gettime(CLOCK_MONOTONIC, &end) == 0);
+    double elapsed = (double)(end.tv_sec - start.tv_sec) +
+                     (double)(end.tv_nsec - start.tv_nsec) / 1000000000.0;
+    assert(elapsed < 7.5);
+
+    danos_vpp_api_disconnect();
+    mock_vpp_stop();
+    printf("[PASS] test_transaction_uses_one_deadline: %.2fs\n", elapsed);
     return 0;
 }
 
@@ -191,6 +216,7 @@ int main(void)
     int failed = 0;
     if (test_handshake() != 0) failed++;
     if (test_transaction() != 0) failed++;
+    if (test_transaction_uses_one_deadline() != 0) failed++;
     if (test_wire_layouts() != 0) failed++;
     if (test_stat_segment() != 0) failed++;
     mock_statseg_stop();
