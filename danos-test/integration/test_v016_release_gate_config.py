@@ -98,6 +98,17 @@ def check_default_i211_traffic_iso_is_current_clean_profile() -> None:
     assert "traffic-runner-r1.iso" not in GATE_TEXT, "release gate default has regressed to stale r1"
 
 
+def check_default_qemu_topology_is_latest_accepted_lifecycle() -> None:
+    expected = "build/qemu-frr-vpp-topology-705c70b-baseline"
+    stale = "build/qemu-frr-vpp-topology-140-soak-serialized"
+    assert expected in GATE_TEXT, (
+        "release gate default must use the accepted identity-bound QEMU topology"
+    )
+    assert stale not in GATE_TEXT, (
+        "release gate default regressed to stale topology-140 evidence"
+    )
+
+
 def check_vmware_verifier_defaults_match_accepted_clean_baseline() -> None:
     expected_defaults = (
         "build/vmware-vmxnet3-test/peer-clean.serial.log",
@@ -131,11 +142,12 @@ def main() -> None:
         )
     check_open_lane_blocks()
     check_default_i211_traffic_iso_is_current_clean_profile()
+    check_default_qemu_topology_is_latest_accepted_lifecycle()
     check_vmware_verifier_defaults_match_accepted_clean_baseline()
     print(
         "PASS: release gate rejects disabled, undersized and invalid ECMP soak "
         "overrides, blocks on an open hardware lane unless waived, and pins "
-        "the VMware verifier to the accepted clean baseline"
+        "QEMU, VMware and I211 defaults to accepted clean evidence"
     )
 
 
