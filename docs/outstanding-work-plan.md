@@ -7,6 +7,33 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-08 705c70b current execution update
+
+Clean `705c70b8846f351d4c065c8934a78ffbd0ea8cf3` is synchronized with
+`origin/main`; GitHub CI, Coverage, and Interop Gate passed, and local CTest is
+52/52. A newly built, identity-bound QEMU e1000 ISO and isolated three-VM FRR
+topology passed strict verification for BGP/OSPF, ZAPI add/withdraw/restore,
+ECMP path down/up, FRR/zserv restart, VPP restart/replay, and post-restart
+packets. Frozen evidence and result are indexed in
+`docs/v0.16-acceptance-matrix.md` under
+`build/qemu-frr-vpp-topology-705c70b-soak1000/accepted-final/`.
+
+The 4 x 1000 QEMU packet sample was lossless (4000/4000), with 3000/1000 bucket
+deltas and 19.10 pps at a deliberately selected 50 ms probe interval. This is
+not a comparable performance run to the existing 10 ms baseline and is not
+PCI throughput. The artifact does close this source identity's QEMU functional
+gate; physical PCI/DPDK remains open.
+
+The serial and Ethernet cables are physically connected, but a fresh 60-second
+passive `/dev/ttyUSB0` capture received 0 bytes and recorded `SKIP` for missing
+`DANOS-INIT-ENTER`. No reboot, host-network change, or disk write was performed.
+For identity-bound physical evidence, start the serial capture before a target
+cold boot; then check both peer links/carriers and configure the two independent
+peer paths before attempting traffic/ECMP. The earlier r5 physical test passed
+I211 binding/runtime preflight but failed traffic because the second path and
+peer return path were unavailable. Do not infer hardware qualification from
+QEMU or the no-byte serial capture.
+
 ### 2026-10-08 v0.16 runtime and release engineering closeout
 
 The tested source `b32204707ff8705bf47c134b5717bbb996316a3c` has 52/52 local

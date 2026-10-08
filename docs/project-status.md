@@ -1,47 +1,43 @@
 # DANOS Open Project Status
 
-## 2026-10-08 current acceptance: QEMU FRR/VPP lifecycle and 1000-packet ECMP soak PASS
+## 2026-10-08 current acceptance: 705c70b CI and QEMU lifecycle PASS; PCI lane open
 
-The tested source was clean commit `b32204707ff8705bf47c134b5717bbb996316a3c`;
-its local CTest was 52/52 PASS. This status update is documentation-only. The identity-bound QEMU e1000 run at
-`build/qemu-frr-vpp-topology-b322047-soak1000` passed the strict topology
-verifier with `QEMU_ECMP_SOAK_REQUIRED=1`: BGP/OSPF readiness, ZAPI IPv4 add,
-withdraw and restore, FRR/zserv restart recovery, VPP restart/replay, two
-post-restart peer probes, ECMP multipath traffic, and next-hop withdrawal and
-restoration.
+Current clean source is `705c70b8846f351d4c065c8934a78ffbd0ea8cf3`, matching
+`origin/main`. GitHub CI, Coverage, and Interop Gate all completed successfully;
+the VPP job passed startup, isolated loopback fixture setup, and V1–V5 runtime
+verification. Local CTest on this source is 52/52 PASS.
 
-The 4-flow soak sent and received 4000/4000 packets with 0% loss in 49,030 ms
-(81.58 pps); ECMP bucket deltas were 3000/1000 and RTT p50/p99 were 373.10 /
-1689.50 us. Machine-readable result:
-`build/qemu-frr-vpp-topology-b322047-soak1000/performance-result.env`.
-The clean QEMU ISO is
-`build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso` (SHA256
-`dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`). These
-are QEMU functional/regression measurements, not PCI throughput or line-rate
-claims. Real PCI performance remains ENVIRONMENT-OPEN.
+The identity-bound QEMU e1000 run
+`build/qemu-frr-vpp-topology-705c70b-soak1000` passed strict live-log and
+`accepted-final/` verification. It covers BGP/OSPF readiness, ZAPI route
+add/withdraw/restore, FRR/zserv reconnect, VPP restart/replay and peer probes,
+ECMP next-hop down/up and restored forwarding. The clean ISO
+`build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-705c70b.iso` has SHA256
+`764625c6c1e09a3e21033a659ab1c09cd84423ce0fd134635573736ea5aa48ae`.
+Four flows delivered 4000/4000 packets, 0% loss, 3000/1000 bucket deltas,
+19.10 pps, and 209390 ms elapsed. This run deliberately used a 50 ms ping
+interval, so its rate is not directly comparable to the earlier 10 ms run's
+81.58 pps. Both are QEMU functional/regression data, never PCI throughput or
+line-rate claims. Frozen logs, manifest, and structured result are under
+`build/qemu-frr-vpp-topology-705c70b-soak1000/accepted-final/`.
 
-The unified `run_v016_release_gate.sh` was also rerun against this QEMU result:
-QEMU soak/lifecycle PASS, VMware VMXNET3 polling baseline PASS (2000/2000,
-0% loss, 98.23 pps), and all deterministic/console checks PASS. The PCI DPDK
-preflight returned structured SKIP because this runner exposed no target
-`DPDK_PCI_BDF` and zero hugepages. Accordingly the unified gate is correctly
-`status=FAIL`, `dpdk_status=ENVIRONMENT-OPEN`, with no open-lane waiver. Result
-files are `build/v016-release-gate-b322047.env`,
-`build/v016-qemu-soak-b322047.env`, `build/v016-vmware-vmxnet3.env`, and
-`build/v016-dpdk-b322047.env`.
+The previous unified release-gate run remains the `b322047` record: its
+QEMU/VMware/console lanes passed, but real PCI DPDK preflight was open, so the
+overall release gate failed without waiver. The new 705c70b run verifies the
+QEMU and CI lanes only; it does not close real PCI qualification or authorize
+the v0.16.0 final release.
 
-Physical I211 status is still open. Passive reads of `/dev/ttyUSB0` for 180 and
-120 seconds both captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`
-and `build/physical-current-20261008T075027Z.serial.log`); without fresh boot
-output there is no new identity-bound physical runtime or link/traffic evidence.
-After the user confirmed the serial and Ethernet cables were connected, a new
-180-second capture also received 0 bytes (`build/physical-current-20261008T0758Z.serial.log`, UTC).
-Host `enp4s0` carrier was up at `192.168.71.1/24`; an exploratory ping to the
-unconfirmed `192.168.71.2` had no reply, which is inconclusive about the target.
-Do not overwrite the physical `/dev/sda`: prior r6
-installer evidence showed existing partitions and rejected the mismatched
-erase confirmation without touching the target. QEMU installer acceptance is
-recorded separately in `docs/iso-installation-acceptance.md`.
+Physical I211 qualification is still open. After the user confirmed serial
+and Ethernet leads were connected, a fresh 60-second passive read of
+`/dev/ttyUSB0` captured 0 bytes
+(`build/physical-current-20261008Tserial-connected.serial.log`); the structured
+result is `SKIP` because no `DANOS-INIT-ENTER` marker was present. This cannot
+identify the current boot or link/traffic state. A boot-time capture requires
+the listener to be started before the target is cold-booted. No restart, disk
+write, or host-network change was made. Do not overwrite physical `/dev/sda`:
+prior installer evidence shows existing partitions and confirms the explicit
+erase guard correctly left the target untouched. QEMU installer acceptance
+is recorded in `docs/iso-installation-acceptance.md`.
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
