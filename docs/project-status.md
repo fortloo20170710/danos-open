@@ -1,19 +1,28 @@
 # DANOS Open Project Status
 
-## 2026-10-09 current acceptance: CI/QEMU PASS; physical DPDK qualification open
+## 2026-10-09 current acceptance: CI/QEMU/VMware regression PASS; physical qualification open
 
-The latest code-bearing release-gate change is clean commit
-`e63e6c1b635c48ff29f18ce3eae52206a5a61688`; it pins the clean r5 I211 traffic
-ISO instead of the stale r1 default and adds the pin assertion to CTest. The
-docs-only commit `15189dd497bf4421f1c6a6c55235e3a21a9eca9b` has GitHub CI, Coverage,
-and Interop Gate all passing (runs `37817544806`, `37817544940`,
-`37817544758`); local CTest is 53/53 and the deterministic backend contract
-gate passes all three stages.
-The Interop fixture now disables DPDK probing: VPP 26.06 on GitHub runners had
+Latest code-bearing commit `0d0cb81d5af4e97af4af5aec330f99e0c5a095c6`
+fixes the standalone VMware VMXNET3 packet verifier's defaults to use the
+accepted clean peer/DANOS serial logs and clean polling ISO, matching the
+unified release gate. Its static default-path anti-regression test is part of
+CTest. GitHub CI, Coverage and Interop Gate all pass for this commit (runs
+`37818837774`, `37818837850`, `37818837878`); local CTest is 53/53, and the
+deterministic backend contract passes all three stages.
+
+With no per-run overrides, the VMware verifier now passes against the frozen
+clean evidence: 2000/2000 packets, 0% loss, 98.23 pps, p50/p99 206/449 us,
+and traffic observed on both ECMP buckets. This is a low-rate ICMP packet
+regression only—not high-load ECMP or line-rate performance. The source ISO
+SHA256 is `1ba4a1516a005741fd691809450b25ef6433807449ccc2619345e28490672d1b`.
+The identity-bound QEMU topology also passes strict verification on live and
+frozen evidence, including BGP/OSPF, ZAPI route add/withdraw/restore, ECMP
+path down/up, FRR/zserv restart, VPP restart/replay and post-restart probes.
+
+The Interop fixture disables DPDK probing: VPP 26.06 on GitHub runners had
 enumerated a host PCI NIC at `sw_if_index=1`, invalidating the prior assumption
 that two loopbacks would occupy indices 1 and 2. The corrected VPP job passed
 fixture setup and V1–V5 verification.
-
 The identity-bound QEMU e1000 run
 `build/qemu-frr-vpp-topology-705c70b-baseline` passed strict live and frozen-log
 verification for BGP/OSPF, ZAPI add/withdraw/restore, ECMP path down/up,
