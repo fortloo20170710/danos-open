@@ -2,15 +2,16 @@
 
 ## 2026-10-09 current acceptance: CI/QEMU/VMware regression PASS; physical qualification open
 
-Latest code-bearing commit `1008898` makes the PCI DPDK measurement recorder
-reject missing/unsupported preflight schema versions and registers its
-validator in CTest. Local CTest is now 55/55. The preceding commits `b3efd92`
-and `0d0cb81d5af4e97af4af5aec330f99e0c5a095c6` unify both preflight result
-schemas and fix the VMware VMXNET3 verifier's defaults to use the
+Latest code-bearing commit `c77bb32` makes even DPDK validation-failure records
+carry schema v1. The preceding commit `1008898` made the PCI DPDK measurement
+recorder reject missing/unsupported preflight schema versions and registered
+its validator in CTest. Local CTest is 55/55. Commits `b3efd92` and
+`0d0cb81d5af4e97af4af5aec330f99e0c5a095c6` unify both preflight result schemas
+and fix the VMware VMXNET3 verifier's defaults to use the
 accepted clean peer/DANOS serial logs and clean polling ISO, matching the
 unified release gate. Its static default-path anti-regression test is part of
 CTest. GitHub CI, Coverage and Interop Gate passed for `f0f3037` (runs
-`37821585986`, `37821586034`, `37821585936`); the latest recorder change is
+`37821585986`, `37821586034`, `37821585936`); the latest recorder changes are
 covered by local 55/55 CTest and remote workflows will validate the pushed head.
 The deterministic backend contract passes all three stages.
 

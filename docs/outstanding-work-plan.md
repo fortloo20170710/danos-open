@@ -62,7 +62,8 @@ consistent but does not supply the still-missing real traffic measurement.
 `1008898` closes the consumer side of that schema seam: the DPDK measurement
 recorder now rejects a missing or unsupported preflight schema, and its
 compatibility tests run under CTest. Full local CTest is 55/55; PCI hardware
-and real-generator performance remain open.
+and real-generator performance remain open. Commit `c77bb32` also ensures
+validation failures themselves retain the current schema-v1 envelope.
 
 ### 2026-10-08 71361f5 current execution update
 
