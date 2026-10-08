@@ -40,12 +40,19 @@ the 180-second log `build/physical-current-20261008T1016Z.serial.log`, and the
 latest 180-second r5 traffic capture
 `build/physical-current-20261008Tserial-connected-2.serial.log`. All structured
 results are `SKIP` because none contains `DANOS-INIT-ENTER`.
-These captures cannot identify the current boot or link/traffic state. Start
-the listener before the next target cold boot to capture identity-bound
-evidence. No reboot, disk write, or host-network change was made. Do not overwrite physical
-`/dev/sda`: prior installer evidence shows existing partitions and confirms
-the explicit erase guard left the disk untouched. QEMU installer acceptance
-is recorded separately in `docs/iso-installation-acceptance.md`.
+An interactive read-only UART snapshot now identifies the current state: kernel
+cmdline contains `danos.install=1`; `/etc/danos/build-info.env` identifies the
+generic installable r6 image (`source_dirty=1`); `/sys/class/net` contains only
+`lo`, `/run/vpp` is absent, and `vppctl` is unavailable. PCI sysfs lists four
+functions at `01:00.0`–`04:00.0`, but this installer-recovery shell has not
+initialized them. `/proc/partitions` still shows the internal `sda` with four
+partitions and USB media `sdb`; no disk writes were issued. Thus the 0-byte
+passive captures were not evidence of a failed traffic-runner boot: the target
+is currently in installer recovery, not the I211 LIVE traffic lane. The clean
+r5 traffic ISO still passes profile validation, but must be booted in LIVE mode
+before PCI/VPP testing. Do not retry installation or overwrite `/dev/sda` as
+part of dataplane qualification. QEMU installer acceptance is recorded
+separately in `docs/iso-installation-acceptance.md`.
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
