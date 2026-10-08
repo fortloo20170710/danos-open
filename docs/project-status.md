@@ -20,6 +20,16 @@ The clean QEMU ISO is
 are QEMU functional/regression measurements, not PCI throughput or line-rate
 claims. Real PCI performance remains ENVIRONMENT-OPEN.
 
+The unified `run_v016_release_gate.sh` was also rerun against this QEMU result:
+QEMU soak/lifecycle PASS, VMware VMXNET3 polling baseline PASS (2000/2000,
+0% loss, 98.23 pps), and all deterministic/console checks PASS. The PCI DPDK
+preflight returned structured SKIP because this runner exposed no target
+`DPDK_PCI_BDF` and zero hugepages. Accordingly the unified gate is correctly
+`status=FAIL`, `dpdk_status=ENVIRONMENT-OPEN`, with no open-lane waiver. Result
+files are `build/v016-release-gate-b322047.env`,
+`build/v016-qemu-soak-b322047.env`, `build/v016-vmware-vmxnet3.env`, and
+`build/v016-dpdk-b322047.env`.
+
 Physical I211 status is still open. A passive 180-second read of
 `/dev/ttyUSB0` captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`);
 without fresh boot output there is no new identity-bound physical runtime or
