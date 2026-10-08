@@ -27,8 +27,8 @@ VMWARE_PEER_LOG="${V016_VMWARE_PEER_LOG:-$ROOT/build/vmware-vmxnet3-test/peer-cl
 # suitable generic live-console smoke image.
 USB_KEYBOARD_ISO="${V016_USB_KEYBOARD_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-i211-dpdk-polling-runner-r13.iso}"
 I211_ISO_COMMIT="${V016_I211_ISO_COMMIT:-88f4bed22f2490e8aaeb081d015243636f538cb6}"
-I211_TRAFFIC_ISO="${V016_I211_TRAFFIC_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r1.iso}"
-I211_TRAFFIC_ISO_COMMIT="${V016_I211_TRAFFIC_ISO_COMMIT:-72dcd8b04ed22db12388a4302ea38921f005932d}"
+I211_TRAFFIC_ISO="${V016_I211_TRAFFIC_ISO:-$ROOT/build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r5.iso}"
+I211_TRAFFIC_ISO_COMMIT="${V016_I211_TRAFFIC_ISO_COMMIT:-efef90f7e3c3b12bf912e826277d5ba8b148e18f}"
 failures=0
 dpdk_open_waived=0
 # shellcheck source=danos-test/integration/release_gate_policy.sh
