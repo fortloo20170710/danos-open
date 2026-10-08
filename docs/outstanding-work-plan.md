@@ -7,6 +7,53 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-09 current v0.16 closeout checkpoint (`42d220e`)
+
+Authoritative current state is the latest project snapshot in
+`docs/project-status.md` and the acceptance matrix in
+`docs/v0.16-acceptance-matrix.md`; entries below this checkpoint are retained
+as dated history and must not override it.
+
+Completed and reverified:
+
+- Route/NH/NHGroup backend contract gate: PASS (DPA conformance, programming
+  pipeline/reconcile behavior, and composite lifecycle).
+- FRR/ZAPI/VPP route add/withdraw/restore, FRR/zserv reconnect, VPP restart
+  and replay, plus post-restart peer packets: PASS in the identity-bound QEMU
+  topology.
+- QEMU four-flow ECMP soak: 4000/4000, zero loss, 82.00 pps, bucket deltas
+  3000/1000. Path-down/withdraw/restore window: 798/800, 0.25% loss against
+  an explicit 15% budget.
+- VMware VMXNET3 polling-only regression: 2000/2000, zero loss, 98.23 pps;
+  this is functional regression data, not line-rate qualification.
+- I211 traffic LIVE runner r6: clean ISO provenance and embedded profile
+  verified, including dynamic ARP, 1000-probe soak and 200 failover probes per
+  flow. This is a test LIVE image, not an installer.
+- Generic DPDK installer r8 remains the separate QEMU-qualified installable
+  image (install, cold boot, reboot and persistence); no physical disk install
+  is claimed.
+- Local CTest 56/56 and GitHub CI, Coverage, Interop Gate pass on `42d220e`.
+
+Still open; do not waive or relabel:
+
+- Real PCI/VFIO DPDK preflight and 64-byte/multicore performance remain
+  `ENVIRONMENT-OPEN`. The latest full gate on `fd1d7eb` reports `FAIL` only
+  because no runner BDF was selected; no real-hardware throughput number is
+  available.
+- Physical I211 traffic/install acceptance is not complete. The physical UART
+  is currently assigned to another assistant; do not access it, reboot the
+  target, or write a disk until it is released and target/test topology are
+  confirmed.
+
+Next execution order: (1) after UART release, capture the current DANOS LIVE
+identity and PCI binding on the intended I211 machine; (2) validate two
+independent peer links and bidirectional reachability; (3) run the r6 add/
+withdraw/restore traffic verifier; (4) run the real PCI DPDK preflight and
+64-byte single-core result recorder, then multicore/ECMP distribution; (5)
+revisit release status only with identity-bound evidence. Keep QEMU/VMware
+results separate from PCI throughput. VLAN/VXLAN/EVPN/BFD remain deferred
+until the v0.16 hardware lane is closed or explicitly dispositioned.
+
 ### 2026-10-09 unified release gate topology correction
 
 The complete unified gate on clean commit `5ca9303` exposed a stale default:
