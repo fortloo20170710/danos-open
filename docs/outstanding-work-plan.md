@@ -7,32 +7,32 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
-### 2026-10-08 705c70b current execution update
+### 2026-10-08 71361f5 current execution update
 
-Clean `705c70b8846f351d4c065c8934a78ffbd0ea8cf3` is synchronized with
-`origin/main`; GitHub CI, Coverage, and Interop Gate passed, and local CTest is
-52/52. A newly built, identity-bound QEMU e1000 ISO and isolated three-VM FRR
-topology passed strict verification for BGP/OSPF, ZAPI add/withdraw/restore,
-ECMP path down/up, FRR/zserv restart, VPP restart/replay, and post-restart
-packets. Frozen evidence and result are indexed in
-`docs/v0.16-acceptance-matrix.md` under
-`build/qemu-frr-vpp-topology-705c70b-soak1000/accepted-final/`.
+`71361f5d5ef833c7693a44ce70aa79fe09aae0bd` is clean and synchronized with
+`origin/main`; GitHub CI, Coverage, and Interop Gate all pass, local CTest is
+52/52. The Interop failure on `3881730` was isolated to VPP 26.06 probing a
+host NIC before the loopback fixture; disabling `dpdk_plugin.so` in this
+software-only job fixed the index collision, and the next workflow run passed.
 
-The 4 x 1000 QEMU packet sample was lossless (4000/4000), with 3000/1000 bucket
-deltas and 19.10 pps at a deliberately selected 50 ms probe interval. This is
-not a comparable performance run to the existing 10 ms baseline and is not
-PCI throughput. The artifact does close this source identity's QEMU functional
-gate; physical PCI/DPDK remains open.
+A clean, identity-bound ISO at `3881730e6b79c1dac41f58b767b86df5069f2d07` and
+isolated three-VM QEMU topology passed the strict lifecycle gate: BGP/OSPF,
+ZAPI add/withdraw/restore, ECMP path down/up, FRR/zserv restart, VPP
+restart/replay and post-restart packets. Four 1000-packet flows were lossless
+(4000/4000), 81.47 pps at 10 ms interval, with 3000/1000 bucket deltas. This
+is a comparable QEMU functional baseline, not PCI throughput. Frozen evidence
+is under `build/qemu-frr-vpp-topology-705c70b-baseline/accepted-final/` and
+indexed in `docs/v0.16-acceptance-matrix.md`. Physical PCI/DPDK remains open.
 
-The serial and Ethernet cables are physically connected, but a fresh 60-second
-passive `/dev/ttyUSB0` capture received 0 bytes and recorded `SKIP` for missing
-`DANOS-INIT-ENTER`. No reboot, host-network change, or disk write was performed.
-For identity-bound physical evidence, start the serial capture before a target
-cold boot; then check both peer links/carriers and configure the two independent
-peer paths before attempting traffic/ECMP. The earlier r5 physical test passed
-I211 binding/runtime preflight but failed traffic because the second path and
-peer return path were unavailable. Do not infer hardware qualification from
-QEMU or the no-byte serial capture.
+After the user confirmed serial and Ethernet leads were connected, a fresh
+60-second passive `/dev/ttyUSB0` capture still received 0 bytes and recorded
+`SKIP` (no `DANOS-INIT-ENTER`). No reboot, host-network change, or disk write
+was performed. Start serial capture before the next target cold boot, then
+check both peer links/carriers and configure two independent peer paths before
+attempting traffic/ECMP. Earlier r5 physical testing passed I211 bind/runtime
+preflight but failed traffic because the second path/peer return path was
+unavailable. Do not infer hardware qualification from QEMU or no-byte serial
+output.
 
 ### 2026-10-08 v0.16 runtime and release engineering closeout
 
