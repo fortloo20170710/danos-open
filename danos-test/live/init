@@ -469,6 +469,42 @@ if test -e /vpp-dpdk.enabled; then
                 fi
             fi
             ecmp_failover_ok=1
+            failover_probe_count=${VPP_ECMP_FAILOVER_PROBE_COUNT:-200}
+            failover_max_loss_pct=${VPP_ECMP_FAILOVER_MAX_LOSS_PCT:-15}
+            failover_window_ok=1
+            failover_window_start_cs=$(awk '{printf "%d", $1 * 100}' /proc/uptime 2>/dev/null || echo 0)
+            /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if1" \
+                > /tmp/vpp-failover-if0-before.log 2>&1 || true
+            /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if2" \
+                > /tmp/vpp-failover-if1-before.log 2>&1 || true
+            failover_if0_before=$(awk '$1 == "rx" && $2 == "packets" {rx=$3} $1 == "tx" && $2 == "packets" {tx=$3} END {printf "%d %d", rx, tx}' /tmp/vpp-failover-if0-before.log)
+            failover_if1_before=$(awk '$1 == "rx" && $2 == "packets" {rx=$3} $1 == "tx" && $2 == "packets" {tx=$3} END {printf "%d %d", rx, tx}' /tmp/vpp-failover-if1-before.log)
+            set -- $failover_if0_before; failover_if0_rx_before=$1; failover_if0_tx_before=$2
+            set -- $failover_if1_before; failover_if1_rx_before=$1; failover_if1_tx_before=$2
+            : > /tmp/vpp-ecmp-failover-pids
+            say_live "VPP-ECMP-FAILOVER-WINDOW BEGIN flows=4 probes_per_flow=$failover_probe_count interval=0.1 max_loss_pct=$failover_max_loss_pct"
+            for failover_dst in 30.30.30.2 30.30.30.3 30.30.30.4 30.30.30.5; do
+                /usr/bin/vppctl -s /run/vpp/cli.sock ping "$failover_dst" \
+                    source "$ecmp_source_if" repeat "$failover_probe_count" interval 0.1 \
+                    > "/tmp/vpp-failover-${failover_dst}.log" 2>&1 &
+                echo "$failover_dst $!" >> /tmp/vpp-ecmp-failover-pids
+            done
+            # Give all four hash-pinned ping flows a baseline interval on both buckets.
+            sleep 2
+            /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if1" \
+                > /tmp/vpp-failover-if0-warm.log 2>&1 || true
+            /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if2" \
+                > /tmp/vpp-failover-if1-warm.log 2>&1 || true
+            failover_if0_warm=$(awk '$1 == "rx" && $2 == "packets" {rx=$3} $1 == "tx" && $2 == "packets" {tx=$3} END {printf "%d %d", rx, tx}' /tmp/vpp-failover-if0-warm.log)
+            failover_if1_warm=$(awk '$1 == "rx" && $2 == "packets" {rx=$3} $1 == "tx" && $2 == "packets" {tx=$3} END {printf "%d %d", rx, tx}' /tmp/vpp-failover-if1-warm.log)
+            set -- $failover_if0_warm; failover_if0_rx_warm=$1; failover_if0_tx_warm=$2
+            set -- $failover_if1_warm; failover_if1_rx_warm=$1; failover_if1_tx_warm=$2
+            failover_window_bucket0_baseline=$((failover_if0_rx_warm - failover_if0_rx_before + failover_if0_tx_warm - failover_if0_tx_before))
+            failover_window_bucket1_baseline=$((failover_if1_rx_warm - failover_if1_rx_before + failover_if1_tx_warm - failover_if1_tx_before))
+            say_live "VPP-ECMP-FAILOVER-WINDOW-BASELINE bucket0_packets=$failover_window_bucket0_baseline bucket1_packets=$failover_window_bucket1_baseline"
+            if test "$failover_window_bucket0_baseline" -le 0 || test "$failover_window_bucket1_baseline" -le 0; then
+                failover_window_ok=0
+            fi
             say_live "VPP-ECMP-PATH-DOWN BEGIN interface=$vpp_if2"
             if /usr/bin/vppctl -s /run/vpp/cli.sock set interface state "$vpp_if2" down \
                 >/tmp/vpp-ecmp-path-down.log 2>&1; then
@@ -575,6 +611,43 @@ if test -e /vpp-dpdk.enabled; then
                 fi
                 say_live_file "/tmp/vpp-ecmp-up-${ecmp_dst}.log"
             done
+            failover_window_tx=0
+            failover_window_rx=0
+            while read -r failover_dst failover_pid; do
+                wait "$failover_pid" || failover_window_ok=0
+                failover_summary=$(tr -d '\r' < "/tmp/vpp-failover-${failover_dst}.log" | \
+                    sed -n 's/^Statistics: \([0-9][0-9]*\) sent, \([0-9][0-9]*\) received, \([0-9][0-9]*\)% packet loss$/\1 \2 \3/p' | tail -1)
+                if test -z "$failover_summary"; then
+                    failover_window_ok=0
+                    say_live "VPP-ECMP-FAILOVER-WINDOW-FLOW-FAIL target=$failover_dst missing-summary"
+                    continue
+                fi
+                set -- $failover_summary
+                failover_flow_tx=$1; failover_flow_rx=$2; failover_flow_loss=$3
+                failover_window_tx=$((failover_window_tx + failover_flow_tx))
+                failover_window_rx=$((failover_window_rx + failover_flow_rx))
+                say_live "VPP-ECMP-FAILOVER-WINDOW-FLOW target=$failover_dst tx=$failover_flow_tx rx=$failover_flow_rx loss_pct=$failover_flow_loss"
+            done < /tmp/vpp-ecmp-failover-pids
+            failover_window_end_cs=$(awk '{printf "%d", $1 * 100}' /proc/uptime 2>/dev/null || echo "$failover_window_start_cs")
+            failover_window_elapsed_cs=$((failover_window_end_cs - failover_window_start_cs))
+            test "$failover_window_elapsed_cs" -gt 0 || failover_window_elapsed_cs=1
+            failover_window_elapsed_ms=$((failover_window_elapsed_cs * 10))
+            failover_window_loss_pct=$(awk -v tx="$failover_window_tx" -v rx="$failover_window_rx" 'BEGIN { if (tx > 0) printf "%.2f", (tx-rx)*100/tx; else print "100.00" }')
+            if test "$failover_window_tx" -ne $((failover_probe_count * 4)) \
+                || test "$failover_window_rx" -gt "$failover_window_tx" \
+                || test "$failover_window_bucket0_baseline" -le 0 \
+                || test "$failover_window_bucket1_baseline" -le 0; then
+                failover_window_ok=0
+            fi
+            if ! awk -v loss="$failover_window_loss_pct" -v max="$failover_max_loss_pct" 'BEGIN { exit !(loss <= max) }'; then
+                failover_window_ok=0
+            fi
+            if test "$failover_window_ok" = 1; then
+                say_live "VPP-ECMP-FAILOVER-WINDOW PASS flows=4 probes_per_flow=$failover_probe_count total_tx=$failover_window_tx total_rx=$failover_window_rx loss_pct=$failover_window_loss_pct duration_ms=$failover_window_elapsed_ms max_loss_pct=$failover_max_loss_pct baseline_bucket0=$failover_window_bucket0_baseline baseline_bucket1=$failover_window_bucket1_baseline"
+            else
+                ecmp_failover_ok=0
+                say_live "VPP-ECMP-FAILOVER-WINDOW FAIL flows=4 probes_per_flow=$failover_probe_count total_tx=$failover_window_tx total_rx=$failover_window_rx loss_pct=$failover_window_loss_pct duration_ms=$failover_window_elapsed_ms max_loss_pct=$failover_max_loss_pct baseline_bucket0=$failover_window_bucket0_baseline baseline_bucket1=$failover_window_bucket1_baseline"
+            fi
             if test "$ecmp_failover_ok" = 1; then
                 say_live "VPP-ECMP-PATH-FAILOVER PASS interface=$vpp_if2 probes=20"
                 say_live "VPP-ECMP-PATH-RESTORE PASS interface=$vpp_if2 buckets=$ecmp_restored_buckets probes=20"

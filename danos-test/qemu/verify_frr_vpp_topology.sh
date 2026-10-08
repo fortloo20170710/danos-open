@@ -60,6 +60,9 @@ require 'VPP-ECMP-NH-RESTORE PASS nexthop=10\.20\.0\.2 interface=GigabitEthernet
     "$DANOS_LOG" 'second ECMP next hop restored into VPP FIB'
 require 'VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=([2-9]|[1-9][0-9]+) probes=20' \
     "$DANOS_LOG" 'restored path rejoins ECMP and sampled destinations recover'
+python3 "$ROOT/danos-test/qemu/verify_ecmp_failover_window.py" "$DANOS_LOG" \
+    --probes-per-flow "${QEMU_ECMP_FAILOVER_PROBE_COUNT:-200}" \
+    --max-loss-pct "${QEMU_ECMP_FAILOVER_MAX_LOSS_PCT:-15}"
 if rg -q "unknown input .*ping|VPP-DPDK-PING-[01] FAIL|VPP-TRAFFIC-PEER-READY FAIL|VPP-ECMP-FIB FAIL|VPP-ECMP-SOURCE FAIL|VPP-ECMP-FLOW FAIL|VPP-ECMP-MULTI-FLOW FAIL|VPP-ECMP-(NH-(WITHDRAW|RESTORE)|PATH-(DOWN|UP))-FAIL|VPP-ECMP-PATH-(DOWN|UP)-FLOW-FAIL|VPP-ECMP-PATH-(FAILOVER|RESTORE) FAIL" "$DANOS_LOG"; then
     echo '[FAIL] VPP ping/ECMP command failed despite any PASS markers'
     exit 1

@@ -137,3 +137,6 @@ set_tests_properties(learned_route_cycle_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME v016_release_gate_config
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_v016_release_gate_config.py)
 set_tests_properties(v016_release_gate_config PROPERTIES TIMEOUT 30)
+add_test(NAME qemu_ecmp_failover_window
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_ecmp_failover_window.py)
+set_tests_properties(qemu_ecmp_failover_window PROPERTIES TIMEOUT 30)

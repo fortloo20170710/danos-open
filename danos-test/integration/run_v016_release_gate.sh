@@ -45,6 +45,8 @@ run_gate release-gate-soak-config python3 \
     "$ROOT/danos-test/integration/test_v016_release_gate_config.py"
 run_gate qemu-soak-result-validator python3 \
     "$ROOT/danos-test/qemu/test_record_qemu_ecmp_soak_result.py"
+run_gate qemu-ecmp-failover-window-validator python3 \
+    "$ROOT/danos-test/qemu/test_verify_ecmp_failover_window.py"
 run_gate pci-result-validator python3 "$ROOT/danos-test/integration/test_record_dpdk_perf_result.py"
 run_gate dpdk-preflight-result-schema python3 \
     "$ROOT/danos-test/integration/test_dpdk_preflight_result.py"

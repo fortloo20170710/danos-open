@@ -160,7 +160,33 @@ def result_from_log(text: str, *, identity: dict[str, str], iso_name: str,
                 missing.append("VPP soak pps is inconsistent with packet count and elapsed time")
         if "loss=0" not in soak_line:
             missing.append("VPP soak loss=0")
-    if re.search(r"VPP-(?:DPDK-PING-[01]|ECMP-(?:MULTI-FLOW|SOAK|PATH-FAILOVER|PATH-RESTORE|NH-WITHDRAW|NH-RESTORE)) FAIL", boot_text):
+    failover_lines = re.findall(
+        r"(?m)^.*VPP-ECMP-FAILOVER-WINDOW PASS flows=4 .*?$", boot_text
+    )
+    if not failover_lines:
+        missing.append("VPP-ECMP-FAILOVER-WINDOW PASS")
+    else:
+        failover_line = failover_lines[-1]
+        try:
+            failover_per_flow = _number(failover_line, "probes_per_flow")
+            failover_tx = _number(failover_line, "total_tx")
+            failover_rx = _number(failover_line, "total_rx")
+            failover_loss = float(re.search(r"(?:^|\s)loss_pct=(\d+(?:\.\d+)?)", failover_line).group(1))
+            failover_max_loss = _number(failover_line, "max_loss_pct")
+            failover_bucket0 = _number(failover_line, "baseline_bucket0")
+            failover_bucket1 = _number(failover_line, "baseline_bucket1")
+        except (QualificationError, AttributeError) as exc:
+            missing.append(f"malformed failover-window evidence: {exc}")
+            failover_per_flow = failover_tx = failover_rx = failover_bucket0 = failover_bucket1 = 0
+            failover_loss = 100.0
+            failover_max_loss = -1
+        if failover_per_flow < 20 or failover_tx != failover_per_flow * 4:
+            missing.append("failover-window packet count does not match four flows")
+        if failover_rx > failover_tx or failover_loss > failover_max_loss:
+            missing.append("failover-window loss exceeds its declared budget")
+        if failover_bucket0 <= 0 or failover_bucket1 <= 0:
+            missing.append("failover-window baseline did not exercise both ECMP buckets")
+    if re.search(r"VPP-(?:DPDK-PING-[01]|ECMP-(?:MULTI-FLOW|SOAK|PATH-FAILOVER|PATH-RESTORE|FAILOVER-WINDOW(?:-FLOW)?|NH-WITHDRAW|NH-RESTORE)) FAIL", boot_text):
         missing.append("one or more VPP traffic/failover failure markers")
     if missing:
         raise QualificationError("incomplete physical traffic evidence: " + "; ".join(missing))
@@ -181,6 +207,10 @@ def result_from_log(text: str, *, identity: dict[str, str], iso_name: str,
         "loss_pct": "0", "duration_ms": str(elapsed_ms),
         "functional_pps": pps_match.group(1),
         "ecmp_bucket_0": str(bucket0), "ecmp_bucket_1": str(bucket1),
+        "failover_window_packets_tx": str(failover_tx),
+        "failover_window_packets_rx": str(failover_rx),
+        "failover_window_loss_pct": f"{failover_loss:.2f}",
+        "failover_window_max_loss_pct": str(failover_max_loss),
         "path_down": "PASS", "nh_withdraw": "PASS", "path_restore": "PASS",
         "nh_restore": "PASS", "host_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }

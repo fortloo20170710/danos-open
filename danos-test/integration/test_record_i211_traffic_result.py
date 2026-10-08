@@ -41,6 +41,7 @@ def serial_log() -> str:
         "VPP-ECMP-PATH-FAILOVER PASS interface=GigabitEthernet0/3/0 probes=20",
         "VPP-ECMP-NH-RESTORE PASS nexthop=10.20.0.2 interface=GigabitEthernet0/3/0",
         "VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=2 probes=20",
+        "VPP-ECMP-FAILOVER-WINDOW PASS flows=4 probes_per_flow=200 total_tx=800 total_rx=760 loss_pct=5.00 duration_ms=20000 max_loss_pct=15 baseline_bucket0=200 baseline_bucket1=200",
     ])
     return "\n".join(lines) + "\n"
 
@@ -68,6 +69,17 @@ class RecordI211TrafficResultTest(unittest.TestCase):
     def test_zero_bucket_counter_is_rejected(self):
         with self.assertRaisesRegex(QualificationError, "both VPP ECMP bucket"):
             self.qualify(serial_log().replace("bucket1_packets=1000", "bucket1_packets=0"))
+
+    def test_missing_failover_window_is_rejected(self):
+        with self.assertRaisesRegex(QualificationError, "FAILOVER-WINDOW"):
+            self.qualify(serial_log().replace(
+                "VPP-ECMP-FAILOVER-WINDOW PASS flows=4 probes_per_flow=200 total_tx=800 total_rx=760 loss_pct=5.00 duration_ms=20000 max_loss_pct=15 baseline_bucket0=200 baseline_bucket1=200\n",
+                ""))
+
+    def test_failover_window_over_budget_is_rejected(self):
+        text = serial_log().replace("total_rx=760 loss_pct=5.00", "total_rx=600 loss_pct=25.00")
+        with self.assertRaisesRegex(QualificationError, "exceeds its declared budget"):
+            self.qualify(text)
 
     def test_non_traffic_image_cannot_qualify(self):
         identity = dict(IDENTITY, danos_build_dpdk_traffic_test="0")
