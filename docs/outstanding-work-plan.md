@@ -36,6 +36,23 @@ The default command passes with 2000/2000 packets, zero loss and 98.23 pps;
 full CTest is 53/53, while the stricter line-rate/ECMP-performance claim stays
 open.
 
+### 2026-10-09 follow-up: current-source contract/runtime recheck
+
+On clean `b86aa6d`, local CTest passed 53/53 and the three-stage backend contract
+gate passed (DPA 11/11, programming pipeline, composite Route/NH/NHGroup). The
+strict identity-bound QEMU verifier passed its four-flow soak, next-hop
+withdraw/restore, BGP/OSPF and FRR/zserv/VPP restart/replay checks. VMware's
+default clean-evidence verifier independently passed 2000/2000 with zero loss
+at 98.23 pps; this remains low-rate polling packet regression, not high-load
+ECMP or line rate. CI, Coverage and Interop Gate also pass (`37819360359`,
+`37819360271`, `37819360543`), including hosted VPP V1–V5 and K4/K5 netns/ping.
+
+No serial was accessed in this follow-up. These results close no physical gate:
+the generic installable r8 image has QEMU install/cold-boot evidence, but
+physical installation is unverified; the physical PCI I211 64-byte DPDK lane
+still requires an identified runner plus actual generator measurements.
+Continue keeping those as separate open acceptance items.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;

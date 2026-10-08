@@ -69,7 +69,7 @@ Linux mock 验证耗尽预算后的 NHGroup 恢复及实际 mock FIB presence。
 QEMU/FRR/VPP runtime 证据与当前剩余的 PCI 边界见下节；冻结的是目标语义，
 并不宣称所有硬件 backend 都已验收。
 
-## 7. 2026-10-08 运行时符合性边界
+## 7. 2026-10-08 运行时符合性历史快照（当前状态见 §8）
 
 当前共享分支 `8776da3` 的本机全量 CTest 为 52/52 PASS，且
 `danos-test/integration/run_backend_contract.sh` 的 DPA、programming pipeline、
@@ -93,3 +93,27 @@ add/withdraw/restore、ECMP next-hop down/up、FRR/zserv 重启、VPP restart/re
 `SKIP`（缺少 `DANOS-INIT-ENTER`）。因此不能据此判定 I211 bind、carrier 或报文
 转发。真实 PCI DPDK preflight/performance 仍为 `ENVIRONMENT-OPEN`；QEMU 与
 mock 证据不替代该物理 lane，也没有 waiver 将其改为 PASS。
+
+## 8. 2026-10-09 当前验收复核
+
+在 clean shared commit `b86aa6d216277ae428674e36c8c37e0a74b91359` 上重新执行
+`danos-test/integration/run_backend_contract.sh`，DPA 11/11、programming pipeline
+和 composite Route/NH/NHGroup lifecycle 三段均 PASS。完整本机 CTest 为 53/53。
+该结果确认 v0.16 contract/conformance 门仍稳定，不扩大 §5 冻结的语义范围。
+
+同一轮复核中，identity-bound QEMU 拓扑
+`build/qemu-frr-vpp-topology-705c70b-baseline` 的严格 verifier 通过 FRR BGP/OSPF、
+ZAPI route add/withdraw/restore、ECMP 路径撤销/恢复、FRR/zserv 重启、VPP restart/replay
+及重启后双 peer 报文探测。四流 4000/4000、0% loss，bucket delta 3000/1000；指标仅是
+QEMU 功能回归，非 PCI 性能。VMware VMXNET3 polling-only 默认 verifier 也通过
+2000/2000、0% loss、98.23 pps、p50/p99 206/449 us；它同样是低速报文回归，不是线速
+或高负载 ECMP 成绩。结果、ISO digest 和范围说明见
+`docs/v0.16-acceptance-matrix.md`。
+
+GitHub CI、Coverage、Interop Gate 对该提交均 PASS（runs `37819360359`、
+`37819360271`、`37819360543`）；Interop Gate 包含 hosted VPP V1–V5 API 互通及 K4/K5
+真实 netns/ping。Hosted VPP job 不等同于物理 NIC/DPDK 性能 qualification。
+
+本轮没有使用物理串口，也没有新增物理 runner 证据。因此真实 I211 PCI DPDK
+preflight/64-byte 测量、物理安装及线速资格仍为 `ENVIRONMENT-OPEN`；mock、QEMU、
+VMware polling 和 hosted VPP 的 PASS 均不得替代这些门。
