@@ -92,7 +92,9 @@ def check_open_lane_blocks() -> None:
 
 def check_default_i211_traffic_iso_is_current_clean_profile() -> None:
     expected_iso = "danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r6.iso"
+    expected_commit = "2bcb087b07479ae428ad8e8484ef446a1fe3bce5"
     assert expected_iso in GATE_TEXT, "release gate default must use the current r6 traffic ISO"
+    assert expected_commit in GATE_TEXT, "release gate must pin r6 to its embedded clean source commit"
     assert "traffic-runner-r1.iso" not in GATE_TEXT, "release gate default has regressed to stale r1"
 
 
