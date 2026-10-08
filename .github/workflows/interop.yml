@@ -206,7 +206,11 @@ jobs:
         run: |
           sudo mkdir -p /run/vpp /etc/vpp
           sudo tee /etc/vpp/startup.conf > /dev/null <<'VPPCFG'
-          unix { nodaemon log /tmp/vpp.log }
+          unix {
+            nodaemon
+            log /tmp/vpp.log
+            cli-listen /run/vpp/cli.sock
+          }
           api-segment { prefix danos }
           socksvr { socket-name /run/vpp/api.sock }
           statseg { socket-name /run/vpp/stats.sock }
@@ -220,17 +224,31 @@ jobs:
           sudo rm -f /run/vpp/api.sock /run/vpp/stats.sock
           sudo vpp -c /etc/vpp/startup.conf > /tmp/vpp-stdout.log 2>&1 &
           for _ in $(seq 1 30); do
-            if [ -S /run/vpp/api.sock ] && [ -S /run/vpp/stats.sock ]; then
-              ls -la /run/vpp/api.sock /run/vpp/stats.sock
-              exit 0
+            if [ -S /run/vpp/api.sock ] && [ -S /run/vpp/stats.sock ] && \
+               [ -S /run/vpp/cli.sock ]; then
+              ls -la /run/vpp/api.sock /run/vpp/stats.sock /run/vpp/cli.sock
+              break
             fi
             sleep 1
           done
-          echo "VPP failed to create both control sockets"
-          sudo cat /tmp/vpp.log || true
-          cat /tmp/vpp-stdout.log || true
-          pgrep -a vpp || true
-          exit 1
+          if [ ! -S /run/vpp/api.sock ] || [ ! -S /run/vpp/stats.sock ] || \
+             [ ! -S /run/vpp/cli.sock ]; then
+            echo "VPP failed to create API, stats, and CLI sockets"
+            sudo cat /tmp/vpp.log || true
+            cat /tmp/vpp-stdout.log || true
+            pgrep -a vpp || true
+            exit 1
+          fi
+          # vpp_live_test deliberately operates on sw_if_index 1 and 2. A
+          # fresh VPP has only local0, so create the isolated loopback fixture
+          # required by the runtime gate before changing flags or programming
+          # routes.
+          sudo vppctl -s /run/vpp/cli.sock create loopback interface
+          sudo vppctl -s /run/vpp/cli.sock create loopback interface
+          interfaces=$(sudo vppctl -s /run/vpp/cli.sock show interface)
+          printf '%s\n' "$interfaces"
+          printf '%s\n' "$interfaces" | awk '$1 == "loop0" && $2 == 1 { found=1 } END { exit !found }'
+          printf '%s\n' "$interfaces" | awk '$1 == "loop1" && $2 == 2 { found=1 } END { exit !found }'
       - name: Setup Go (gnmic)
         uses: actions/setup-go@v5
         with:
