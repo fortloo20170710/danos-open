@@ -160,3 +160,25 @@ dataplane candidates. Use an isolated console during initial hardware bring-up.
 The ISO manifest records the source as dirty during candidate creation; this
 artifact is not a clean release build. It must not be confused with the
 earlier I211-specific or LIVE-only artifacts.
+
+### Physical USB boot and installer fail-safe check (2026-10-08)
+
+The user booted the r6 generic installer ISO on the I211 host and supplied a
+console photo. A subsequent read-only USB-UART probe confirmed the running
+kernel command line includes `danos.install=1`; `/dev/sdb` is the removable
+USB ISO (`ProductCode`, removable=1), while `/dev/sda` is the internal
+`TS16GMSA370` disk (16,013,942,784 bytes, removable=0) with existing
+partitions. The system enumerated four Intel I211 PCI functions at
+`0000:01:00.0` through `0000:04:00.0` (`8086:1539`).
+
+The installer requested the exact confirmation `ERASE /dev/sda`; the operator
+entered only `/dev/sda`. The installer reported confirmation mismatch,
+`target untouched`, and entered recovery instead of continuing into LIVE.
+This is a **physical boot and destructive-write guard PASS**, not a disk
+installation PASS. No write was initiated. The recovery initramfs exposes only
+`lo` in `/sys/class/net`; it did not initialize VPP or provide a usable
+network dataplane, so connected Ethernet cabling is not yet packet-test
+evidence. Physical install, cold boot from the installed disk, I211 binding,
+and traffic/ECMP tests remain unqualified pending an explicitly authorized
+target-disk erase and subsequent live dataplane boot. Do not infer disk safety
+from `/dev/sda` naming alone.

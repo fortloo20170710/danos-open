@@ -1,5 +1,26 @@
 # DANOS Open Project Status
 
+## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
+
+The current shared branch is clean at `21dac14` (`fix(installer): detect USB
+boot media before install`), and `origin/main` matches. The generic DPDK
+installable ISO r6 passed QEMU USB-media installation to a disposable disk,
+including full readback digest verification. On the physical I211 host, the
+user-reported boot plus read-only USB-UART evidence confirms installer mode,
+USB media at `/dev/sdb`, internal `TS16GMSA370` at `/dev/sda` with existing
+partitions, and four PCI I211 functions (`8086:1539`). An incorrect destructive
+confirmation was rejected; the installer explicitly reported `target
+untouched` and stayed in recovery. This proves physical boot/media discovery
+and the fail-safe confirmation path only; **the internal disk has not been
+installed to**. Erasing it requires explicit operator authorization.
+
+The recovery shell has only loopback and no initialized VPP dataplane. Thus,
+although serial and Ethernet cables are connected, there is not yet evidence
+of active NIC links or packet forwarding. Physical disk install/cold boot and
+I211 bind/traffic/ECMP qualification remain open. Latest local full CTest is
+51/51 PASS. QEMU FRR/VPP learned-route lifecycle remains PASS as recorded
+below; true PCI throughput remains ENVIRONMENT-OPEN.
+
 ## 2026-10-08 I211 installable lab ISO and QEMU disk-install gate: PASS
 
 Generated `build/danos-open-v0.16.0-rc1-i211-installable-20261007T233815Z.iso`
