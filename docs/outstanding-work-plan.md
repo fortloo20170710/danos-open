@@ -24,15 +24,16 @@ is a comparable QEMU functional baseline, not PCI throughput. Frozen evidence
 is under `build/qemu-frr-vpp-topology-705c70b-baseline/accepted-final/` and
 indexed in `docs/v0.16-acceptance-matrix.md`. Physical PCI/DPDK remains open.
 
-After the user confirmed serial and Ethernet leads were connected, a fresh
-60-second passive `/dev/ttyUSB0` capture still received 0 bytes and recorded
-`SKIP` (no `DANOS-INIT-ENTER`). No reboot, host-network change, or disk write
-was performed. Start serial capture before the next target cold boot, then
-check both peer links/carriers and configure two independent peer paths before
-attempting traffic/ECMP. Earlier r5 physical testing passed I211 bind/runtime
-preflight but failed traffic because the second path/peer return path was
-unavailable. Do not infer hardware qualification from QEMU or no-byte serial
-output.
+After the user confirmed serial and Ethernet leads were connected, the earlier
+60-second and a fresh 180-second passive `/dev/ttyUSB0` capture both received
+0 bytes; the latest `build/physical-current-20261008T1016Z.serial.log` records
+`SKIP` for missing `DANOS-INIT-ENTER`. No reboot, host-network change, or disk
+write was performed. Start serial capture before the next target cold boot,
+then check both peer links/carriers and configure two independent peer paths
+before attempting traffic/ECMP. Earlier r5 physical testing passed I211
+bind/runtime preflight but failed traffic because the second path/peer return
+path was unavailable. Do not infer hardware qualification from QEMU or no-byte
+serial output.
 
 ### 2026-10-08 v0.16 runtime and release engineering closeout
 

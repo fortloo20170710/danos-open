@@ -30,12 +30,13 @@ still has `dpdk_status=ENVIRONMENT-OPEN`, so these CI/QEMU passes do not close
 real PCI performance qualification or authorize the v0.16.0 final release.
 
 Physical I211 qualification is still open. Although the serial and Ethernet
-leads are connected, a fresh 60-second passive read of `/dev/ttyUSB0` captured
-0 bytes (`build/physical-current-20261008Tserial-connected.serial.log`); the
-structured result is `SKIP` because it contains no `DANOS-INIT-ENTER`. This
-cannot identify the current boot or link/traffic state. Start the listener
-before the next target cold boot to capture identity-bound evidence. No reboot,
-disk write, or host-network change was made. Do not overwrite physical
+leads are connected, fresh passive reads of `/dev/ttyUSB0` captured 0 bytes:
+the earlier 60-second log `build/physical-current-20261008Tserial-connected.serial.log`
+and the latest 180-second log `build/physical-current-20261008T1016Z.serial.log`.
+Both structured results are `SKIP` because neither contains `DANOS-INIT-ENTER`.
+These captures cannot identify the current boot or link/traffic state. Start
+the listener before the next target cold boot to capture identity-bound
+evidence. No reboot, disk write, or host-network change was made. Do not overwrite physical
 `/dev/sda`: prior installer evidence shows existing partitions and confirms
 the explicit erase guard left the disk untouched. QEMU installer acceptance
 is recorded separately in `docs/iso-installation-acceptance.md`.
