@@ -59,6 +59,11 @@ version field. Both missing-BDF paths now share a regression test registered
 in CTest; local CTest is 54/54. This makes external runner output machine-
 consistent but does not supply the still-missing real traffic measurement.
 
+`1008898` closes the consumer side of that schema seam: the DPDK measurement
+recorder now rejects a missing or unsupported preflight schema, and its
+compatibility tests run under CTest. Full local CTest is 55/55; PCI hardware
+and real-generator performance remain open.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
