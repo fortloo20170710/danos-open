@@ -185,3 +185,34 @@ evidence. Physical install, cold boot from the installed disk, I211 binding,
 and traffic/ECMP tests remain unqualified pending an explicitly authorized
 target-disk erase and subsequent live dataplane boot. Do not infer disk safety
 from `/dev/sda` naming alone.
+
+### Clean r8 generic installer: QEMU install, cold boot and reboot PASS
+
+The clean r8 candidate supersedes the dirty r6/r7 images for further hardware
+qualification:
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-r8.iso`
+- ISO SHA256:
+  `b3a668789b78b548b35a59f984b06939aa70b0f5f7bb631adada935bf4748d46`
+- Embedded source: `0578cb75881c213338a4b0ef198633b9351b1194`,
+  `DANOS_BUILD_SOURCE_DIRTY=0`.
+- Installed payload SHA256 (compressed):
+  `352cb136245974da1d1f57d2fca019584f6f0349bf0bc1f24d35f53846ad5648`.
+
+QEMU booted the ISO as USB mass storage, installed to a disposable 4 GiB
+`/dev/vda`, and verified the complete target readback digest. With the ISO
+detached, cold boot confirmed `/etc/danos/build-info.env` matches the clean
+source commit, DANOS package `0.16.0~rc1-1`, and VPP package `26.10-1`;
+`vpp.service` was active and both API and stats sockets existed. A marker
+survived a subsequent reboot with the same VPP/socket checks passing. Logs:
+
+- `build/dpdk-installable/qemu-r8-install.serial.log`
+- `build/dpdk-installable/qemu-r8-coldboot.serial.log`
+- `build/dpdk-installable/qemu-r8-reboot.serial.log`
+
+These are QEMU installer and persistence results, not physical PCI/forwarding
+qualification. The USB-UART adapter opened successfully when checked, but
+captured no new physical-host output in the latest passive read. The last
+physical evidence therefore remains the r6 confirmation-mismatch recovery
+shell. Do not install r8 to the internal `/dev/sda` without explicit
+confirmation that its existing data may be erased.

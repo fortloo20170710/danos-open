@@ -1,5 +1,25 @@
 # DANOS Open Project Status
 
+## 2026-10-08 clean r8 installer QEMU acceptance PASS; physical install pending
+
+The clean generic DPDK installer candidate is
+`build/danos-open-v0.16.0-rc1-generic-dpdk-installable-r8.iso` (SHA256
+`b3a668789b78b548b35a59f984b06939aa70b0f5f7bb631adada935bf4748d46`), built
+from clean commit `0578cb75881c213338a4b0ef198633b9351b1194`. QEMU USB install
+to a disposable disk passed readback verification; cold boot confirmed
+embedded build/package identity, VPP 26.10 active, and API/stats sockets. A
+persistent marker survived reboot. Evidence is indexed in
+`docs/iso-installation-acceptance.md`.
+
+On the physical I211 host, prior r6 evidence confirms installer mode and that
+an incorrect erase confirmation left the internal disk untouched. Serial and
+Ethernet cables are now reported connected, but a passive USB-UART read
+captured no new bytes; physical live state and link status remain unverified.
+The internal `/dev/sda` has existing partitions and must not be overwritten
+without explicit operator confirmation. Physical install, I211 binding,
+packet forwarding, and ECMP qualification remain open. Latest local CTest is
+51/51 PASS; real PCI performance remains ENVIRONMENT-OPEN.
+
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
 The current shared branch is clean at `3b10f9c` and `origin/main` matches. The
