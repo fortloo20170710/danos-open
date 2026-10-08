@@ -7,6 +7,34 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-08 v0.16 runtime and release engineering closeout
+
+The tested source `b32204707ff8705bf47c134b5717bbb996316a3c` has 52/52 local
+CTest passes. The clean QEMU e1000 artifact
+`build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso` is bound by
+SHA256 `dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`.
+The strict FRR/VPP topology verifier passes, including BGP/OSPF readiness,
+ZAPI route add/withdraw/restore, FRR/zserv restart, VPP restart/replay,
+post-restart peer packets, ECMP next-hop down/up and a 4 x 1000 packet soak.
+The soak delivered 4000/4000, 0% loss, 81.58 pps, bucket deltas 3000/1000;
+RTT p50/p99 were 373.10/1689.50 us. This is QEMU functional regression data,
+not PCI throughput. The artifact, result, topology manifest and log hashes are
+recorded in `docs/v0.16-acceptance-matrix.md`.
+
+The unified release gate also passes backend contract, CTest, live-console/
+mgrd restart, QEMU FRR/VPP and VMware VMXNET3 polling (2000/2000, 0% loss,
+98.23 pps). It remains `FAIL` with `dpdk_status=ENVIRONMENT-OPEN`: the runner
+has no target `DPDK_PCI_BDF` and zero hugepages. No waiver was applied. The
+physical I211 UART was passively captured for 180 and 120 seconds with no
+bytes; a further 180-second capture on 2026-10-08 also received zero bytes
+(`build/physical-current-20261008T0758Z.serial.log`, UTC). The development host's
+`enp4s0` has carrier but is configured as `192.168.71.1/24`; an exploratory
+ping to `192.168.71.2` received no replies and does not establish the target's
+address or link-layer identity. Current physical boot identity, PCI forwarding
+and throughput therefore remain unverified. The next release-close action is
+to capture a physical cold boot and complete a supported PCI runner lane, not
+to promote QEMU values.
+
 ### 2026-10-08 DPA conformance lifecycle assertions
 
 The previously thin VRF, ACL and QoS conformance cases now read back and
@@ -504,35 +532,37 @@ correctly retired, so this work no longer sits on top of a leak.
 
 ## P1 — correctness of the claims the project makes
 
-### [~] 3. Re-run the VPP live lane against real VPP
+### [x] 3. VPP 26.10 runtime and QEMU FRR/VPP functional lane
 
-The first real runtime smoke is now complete against
-`danos-vpp-runtime-recover:local` (`vpp v26.10-rc0~545-gad99177fe`). It passed
-socket registration/message-table parsing (839 entries), `control_ping`,
-interface admin-up, a two-path IPv4 route add/delete and stats-segment query.
-This exposed and corrected two additional incompatibilities missed by the mock:
-fixed 64-byte socket client/message-table names and the runtime's 32-bit
-interface flags. Earlier mock-only results remain unverified.
+The real runtime gate runs against `danos-vpp-runtime-recover:local`
+(`vpp v26.10-rc0~545-gad99177fe`). The [real control runtime gate](vpp-control-runtime-gate.md)
+covers API registration, stats, default/VRF 777 FIB, add/repeat/NH
+withdraw/restore/delete and table deletion. The clean-source QEMU FRR/VPP
+topology then passed the full runtime verifier on one identity-bound boot:
+actual packets on both paths, BGP and OSPF, ZAPI add/withdraw, route restore,
+VPP and FRR/zserv restarts, and post-restart reachability. The 1000-packet-per-
+flow ECMP soak and next-hop failover/restore also passed. Evidence and exact
+digests are in the acceptance matrix.
 
-Still required before closing this item: assert the created route in VPP FIB
-before deletion, exercise VRF table programming and NH withdraw/re-add, then
-run the corrected backend through the full QEMU FRR/VPP topology and recovery
-gate. The loopback smoke is not packet-forwarding, DPDK, or throughput evidence.
-
-2026-10-07: the [real control runtime gate](vpp-control-runtime-gate.md) now
-asserts default/VRF 777 FIB after add/repeat/NH withdraw/restore/delete, including
-table deletion. Those control assertions are complete; full current-build
-QEMU FRR/VPP topology/recovery and physical packet/performance remain open.
+This closes the VPP runtime/QEMU functional portion of item 3. It does not close
+real PCI DPDK performance, line rate, the physical I211 runtime (the latest
+passive serial reads were empty), or prove that QEMU PPS represents hardware.
+Those remain distinct environment-dependent acceptance lanes and continue to
+block the unwaived unified release gate.
 
 Read-only [runtime capture tooling](vpp-runtime-capture.md) now collects
 version/interface/FIB/load-balance/error/runtime snapshots, bounded commands,
 raw output hashes, source identity and optional exact ISO/log attachments.
 CAPTURED is not acceptance PASS. The legacy run_vpp_verify.sh no longer labels
-kernel/mock tests or socket existence as real VPP/DPDK acceptance. Actual
-FIB/table/NH and topology gates remain open; API frame evidence is item 11.
+kernel/mock tests or socket existence as real VPP/DPDK acceptance. The QEMU
+FIB/table/NH and topology functional gates described above are closed for the
+tested identity; physical PCI behavior remains open. API frame evidence is
+item 11.
 
-`docs/project-status.md` marks the physical I211 forwarding/ECMP result as FAIL
-already, for independent reasons (single carrier, 1000/1000 loss).
+Historical physical I211 runs include a failed two-port traffic attempt; the
+latest physical state is UNKNOWN because serial capture received no bytes.
+Do not treat either as current hardware PASS or as a substitute for PCI
+performance qualification.
 
 ### [x] 4. Capability registry must be wired, or deleted
 

@@ -34,6 +34,10 @@ Physical I211 status is still open. Passive reads of `/dev/ttyUSB0` for 180 and
 120 seconds both captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`
 and `build/physical-current-20261008T075027Z.serial.log`); without fresh boot
 output there is no new identity-bound physical runtime or link/traffic evidence.
+After the user confirmed the serial and Ethernet cables were connected, a new
+180-second capture also received 0 bytes (`build/physical-current-20261008T0758Z.serial.log`, UTC).
+Host `enp4s0` carrier was up at `192.168.71.1/24`; an exploratory ping to the
+unconfirmed `192.168.71.2` had no reply, which is inconclusive about the target.
 Do not overwrite the physical `/dev/sda`: prior r6
 installer evidence showed existing partitions and rejected the mismatched
 erase confirmation without touching the target. QEMU installer acceptance is

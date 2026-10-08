@@ -65,7 +65,22 @@ programming_pipeline 增加 VPP mock 的静默幂等、forget/replay、NHGroup �
 恢复、预算耗尽后依赖恢复、未进入 ledger 对象的 epoch reset 断言。
 Linux mock 验证耗尽预算后的 NHGroup 恢复及实际 mock FIB presence。
 
-这些都是确定性 mock/存储门，不能证明最新 build 在真实 VPP、FRR、QEMU、
-VMware 或 PCI runner 上通过。依赖真实 runtime 的 ACK/FIB、packet、恢复与
-性能证据仍需按 acceptance matrix 补齐；冻结的是目标语义，不是宣称所有
-条目已经在所有 backend 验收。
+这些确定性 mock/存储门本身不能证明真实 backend runtime 通过。独立的
+QEMU/FRR/VPP runtime 证据与当前剩余的 PCI 边界见下节；冻结的是目标语义，
+并不宣称所有硬件 backend 都已验收。
+
+## 7. 2026-10-08 运行时符合性边界
+
+clean source `b32204707ff8705bf47c134b5717bbb996316a3c` 的 52 项 CTest 与
+`run_backend_contract.sh` 确定性 contract gate 均通过。随后 clean QEMU ISO
+`danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso`（SHA256
+`dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`）通过严格
+FRR/VPP topology verifier：BGP/OSPF/ZAPI 路由 add/withdraw/restore，VPP 与
+FRR/zserv restart/replay，ECMP next-hop withdraw/restore 和恢复报文均有运行时
+证据。四流 1000 包/流为 4000/4000、0% 丢包、81.58 pps，两个 bucket 的差值
+为 3000/1000。机器结果和日志 digest 见 `docs/v0.16-acceptance-matrix.md`。
+
+这些运行时结果关闭 v0.16 QEMU 功能/recovery lane，但不替代真实 PCI DPDK
+性能验收，也不声称 Linux 与 VPP 的所有能力在物理设备上逐项符合。统一
+release gate 因目标 PCI BDF 与 hugepages 缺失，仍为 `ENVIRONMENT-OPEN`；未
+用 waiver 将该项变成 PASS。
