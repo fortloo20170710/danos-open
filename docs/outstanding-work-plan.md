@@ -11,7 +11,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
 subsequent `main` commits through `dd7f2bc` are documentation-only. GitHub CI,
-Coverage, and Interop Gate pass on both the code commit and latest docs commit;
+Coverage, and Interop Gate pass on the code commit and a later docs-only commit;
 local CTest is 52/52. The Interop failure on `3881730` was isolated to VPP
 26.06 probing a host NIC before the loopback fixture; disabling
 `dpdk_plugin.so` in this software-only job fixed the index collision, and the

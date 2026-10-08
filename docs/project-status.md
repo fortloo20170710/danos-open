@@ -5,8 +5,8 @@
 The latest code/workflow change is clean commit
 `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`; subsequent `main` commits through
 `dd7f2bc` are documentation-only. GitHub CI, Coverage, and Interop Gate pass
-on both `71361f5` (runs `37761183156`, `37761183119`, `37761183168`) and the
-latest docs-only `dd7f2bc` (runs `37763554975`, `37763554987`, `37763554993`);
+on `71361f5` (runs `37761183156`, `37761183119`, `37761183168`) and a later
+docs-only commit `dd7f2bc` (runs `37763554975`, `37763554987`, `37763554993`);
 local CTest on the unchanged code is 52/52.
 The Interop fixture now disables DPDK probing: VPP 26.06 on GitHub runners had
 enumerated a host PCI NIC at `sw_if_index=1`, invalidating the prior assumption
