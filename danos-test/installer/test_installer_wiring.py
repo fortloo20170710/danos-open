@@ -44,6 +44,10 @@ assert "/etc/modules-load.d/danos-dpdk.conf" in runner_builder
 assert "After=local-fs.target systemd-modules-load.service" in runtime_package
 assert (root / "danos-test/installer/build_dpdk_installable_iso.sh").is_file()
 generic_iso_builder = (root / "danos-test/installer/build_dpdk_installable_iso.sh").read_text()
+assert 'ISO_DOCKER_NETWORK="${DANOS_ISO_DOCKER_NETWORK:-bridge}"' in builder
+assert '--network "$ISO_DOCKER_NETWORK"' in builder
+assert 'Acquire::http::Timeout=30 -o Acquire::Retries=2' in builder
+assert 'Components: main\n' in builder
 assert 'install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"' in generic_iso_builder
 assert 'cmp -s "$TMP/initramfs-check/init" "$ROOT/danos-test/live/init"' in generic_iso_builder
 assert 'DANOS_INSTALLER_SD_MOD' in generic_iso_builder

@@ -28,6 +28,7 @@ GNMIC_SRC="${GNMIC:-/tmp/gnmic-bin}"
 WORK="${DANOS_ISO_WORK_DIR:-/tmp/danos-iso-work-$$}"
 BUILD_CONTAINER="danos-iso-build-$$"
 ISO_BUILD_IMAGE="${DANOS_ISO_BUILD_IMAGE:-debian:trixie-slim}"
+ISO_DOCKER_NETWORK="${DANOS_ISO_DOCKER_NETWORK:-bridge}"
 APT_MIRROR="${APT_MIRROR:-http://repo.huaweicloud.com/debian}"
 VPP_IMAGE="${VPP_IMAGE:-}"
 VPP_DPDK_ENABLE="${VPP_DPDK_ENABLE:-1}"
@@ -111,7 +112,8 @@ mkdir -p "$WORK" "$PROJECT_ROOT/build"
 # --- 1. trixie build container: kernel + busybox + isolinux + mgrd ------
 docker rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true
 trap 'docker rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true' EXIT
-docker run -d --name "$BUILD_CONTAINER" -v "$PROJECT_ROOT:/src" \
+docker run -d --name "$BUILD_CONTAINER" --network "$ISO_DOCKER_NETWORK" \
+    -v "$PROJECT_ROOT:/src" \
     -w /src "$ISO_BUILD_IMAGE" sh -c "
 set -eu
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
@@ -119,9 +121,9 @@ cat > /etc/apt/sources.list.d/danos-mirror.sources <<EOF
 Types: deb
 URIs: $APT_MIRROR
 Suites: trixie trixie-updates
-Components: main contrib non-free non-free-firmware
+Components: main
 EOF
-apt-get update -qq
+apt-get update -qq -o Acquire::http::Timeout=30 -o Acquire::Retries=2
 apt-get install -y -qq --no-install-recommends build-essential cmake libssl-dev openssl python3 busybox-static zstd kmod \
     linux-image-amd64 isolinux syslinux-common
 test -n \"\$(find /boot -maxdepth 1 -name 'vmlinuz-*' -print -quit)\"
