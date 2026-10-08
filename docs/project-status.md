@@ -1,6 +1,6 @@
 # DANOS Open Project Status
 
-## 2026-10-08 current acceptance: CI and QEMU functional lanes PASS; PCI lane open
+## 2026-10-09 current acceptance: CI/QEMU PASS; physical DPDK qualification open
 
 The latest previously accepted code/workflow change is clean commit
 `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`; a follow-up release-gate update
@@ -33,30 +33,25 @@ to the 10 ms figures. The previous unified release-gate record at `b322047`
 still has `dpdk_status=ENVIRONMENT-OPEN`, so these CI/QEMU passes do not close
 real PCI performance qualification or authorize the v0.16.0 final release.
 
-Physical I211 qualification is still open. Although the serial and Ethernet
-leads are connected, fresh passive reads of `/dev/ttyUSB0` captured 0 bytes:
-the earlier 60-second log `build/physical-current-20261008Tserial-connected.serial.log`
-the 180-second log `build/physical-current-20261008T1016Z.serial.log`, and the
-latest 180-second r5 traffic capture
-`build/physical-current-20261008Tserial-connected-2.serial.log`. All structured
-results are `SKIP` because none contains `DANOS-INIT-ENTER`.
-An interactive read-only UART snapshot now identifies the current state: kernel
-cmdline contains `danos.install=1`; `/etc/danos/build-info.env` identifies the
-generic installable r6 image (`source_dirty=1`); `/sys/class/net` contains only
-`lo`, `/run/vpp` is absent, and `vppctl` is unavailable. PCI sysfs lists four
-functions at `01:00.0`–`04:00.0`, but this installer-recovery shell has not
-initialized them. `/proc/partitions` still shows the internal `sda` with four
-partitions and USB media `sdb`; no disk writes were issued. Thus the 0-byte
-passive captures were not evidence of a failed traffic-runner boot: the target
-is currently in installer recovery, not the I211 LIVE traffic lane. The clean
-r5 traffic ISO still passes profile validation, but must be booted in LIVE mode
-before PCI/VPP testing. Do not retry installation or overwrite `/dev/sda` as
-part of dataplane qualification. QEMU installer acceptance is recorded
-separately in `docs/iso-installation-acceptance.md`.
-The subsequent 600-second r5 UART traffic capture also ended with 0 bytes and
-`SKIP` (`build/physical-i211-r5-live-20261008Tactive.serial.log`); the
-development host currently has no USB block device attached, so no reflash was
-attempted.
+Physical I211 qualification remains open for the DANOS-Open VPP backend and
+PCI performance lane. On 2026-10-09 the serial first identified clean r5
+traffic-LIVE (`efef90f7`): VPP CLI socket existed and both
+`GigabitEthernet1/0/0` and `GigabitEthernet2/0/0` were UP. This was not an
+installer image; its kernel command line lacked `danos.install=1` and the
+installer executable was absent. Later the serial prompt changed to a distinct
+host, `R2`, running DANOS Lancaster 2608 (`20261008T0011-i-danos`), not the
+DANOS-Open ISO. That system showed four I211 PCI functions bound to
+`uio_pci_generic`; three dataplane interfaces were UP, BGP had installed
+`192.168.71.0/24 via 192.168.72.2`, and a read-only ping from R2 to the
+development host `192.168.71.1` succeeded 5/5 (0% loss, 2.737 ms average).
+This proves physical I211/routed reachability on the separate R2 system, not
+the project's VPP/FRR runtime or its install acceptance. `/run/vpp` and
+`vppctl` were absent on R2, and unprivileged FRR queries could not establish
+neighbor state. Serial was released to another assistant after this snapshot;
+do not access it while they are using it. Full evidence and image distinction
+are in `docs/v0.16-acceptance-matrix.md`. No installer disk write was made;
+QEMU install/cold-boot/reboot acceptance is recorded separately in
+`docs/iso-installation-acceptance.md`.
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 

@@ -7,6 +7,27 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-09 physical identity correction and next execution boundary
+
+The latest physical evidence separates two systems that were previously
+conflated. The DANOS-Open r5 traffic ISO booted successfully into LIVE with its
+VPP CLI socket and two I211 DPDK interfaces UP. A later UART prompt was a
+different machine, hostname `R2`, running DANOS Lancaster 2608; its four I211
+functions were bound to `uio_pci_generic`, and a routed ping to the development
+host succeeded 5/5. R2 has no VPP socket/CLI and is not a DANOS-Open artifact,
+so its reachability is useful physical-cabling evidence but cannot close this
+project's VPP/FRR or install gates. The UART is now in use by another assistant
+and must not be accessed until released.
+
+The route/NH/NHGroup contract, current-source QEMU FRR/VPP lifecycle, 4-flow
+ECMP regression baseline, and deterministic CTest are already passing. Keep
+the remaining lane truthful: physical DANOS-Open install/cold-boot and
+VPP/DPDK dataplane/performance remain open; use only the clean r8 installable
+ISO for disk installation and the r5 traffic ISO for LIVE traffic. Next safe
+work is local contract/recovery verification and plan/status synchronization;
+resume physical testing only after the UART owner releases it and the intended
+ISO/target identity is confirmed.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
