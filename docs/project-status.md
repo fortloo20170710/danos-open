@@ -1,6 +1,37 @@
 # DANOS Open Project Status
 
-## 2026-10-09 latest QEMU recovery-window and 4x1000 soak gate on `0ae8acc`
+## 2026-10-09 latest release qualification snapshot on `2bcb087`
+
+The physical I211 runner profile has been advanced to r6 so its ISO metadata
+and embedded configuration include the ECMP path-down/withdraw/restore window
+that the result parser now requires. The clean image is
+`build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r6.iso`, built from
+`2bcb087b07479ae428ad8e8484ef446a1fe3bce5`, SHA256
+`eb126e44335d04fd18a8d6526b4ad9f6768f16c0327d40eefa7dfd19e0ba7d99`.
+Profile/provenance/initramfs verification passes: two I211 ports, dynamic ARP,
+1000-probe soak, 200 failover probes per flow and 15% maximum failover loss.
+Local CTest passes 56/56. CI and Coverage pass for `2bcb087`; Interop Gate was
+still running at the time of this update.
+
+The physical UART is reserved by another assistant, so this round did not
+connect to it, reboot the machine, or write any disk. The r6 image is verified
+and its profile/payload are validated; physical boot, install and PCI traffic
+acceptance remain pending a later field run.
+The r6 image itself does not authorize or initiate installation.
+
+The complete unified release gate was rerun on `2bcb087`. Backend contract,
+all result validators, CTest 56/56, QEMU USB-keyboard/live-console/mgrd-WAL
+recovery, QEMU ttyS0 shell and VPP plugin smoke, the strict FRR/VPP topology,
+4x1000 ECMP soak, measured failover window, and VMware packet baseline passed.
+The recorded QEMU failover window was 798/800 (0.25%, under 15%); the soak was
+4000/4000 at 82.00 pps with bucket deltas 3000/1000. VMware was 2000/2000 at
+98.23 pps. The gate record `build/v016-release-gate.env` binds the r6 image
+digest and commit. Overall release status remains `FAIL` only because the
+physical PCI preflight has no selected BDF (`ENVIRONMENT-OPEN`, no waiver).
+GitHub CI, Coverage and Interop Gate all pass on `2bcb087` (runs
+`37833643551`, `37833643565`, `37833643282`).
+
+## 2026-10-09 QEMU recovery-window and 4x1000 soak gate on `0ae8acc`
 
 Commit `0ae8acc` adds concurrent four-flow ICMP measurements spanning ECMP
 path down, NH withdrawal and restore. The strict verifier now requires exact
