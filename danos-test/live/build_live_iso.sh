@@ -121,7 +121,7 @@ docker run -d --name "$BUILD_CONTAINER" --network "$ISO_DOCKER_NETWORK" \
     -v "$PROJECT_ROOT:/src" \
     -w /src "$ISO_BUILD_IMAGE" sh -c "
 set -eu
-if test "$ISO_SKIP_APT" != 1; then
+if test \"$ISO_SKIP_APT\" != 1; then
 rm -f /etc/apt/sources.list /etc/apt/sources.list.d/debian.sources
 cat > /etc/apt/sources.list.d/danos-mirror.sources <<EOF
 Types: deb
