@@ -95,6 +95,26 @@ non-installable.
 
 ## Generic DPDK hardware profile: QEMU install/boot/recovery PASS
 
+The initial r3 ISO booted straight into LIVE after a short, effectively
+unusable selection interval. It is superseded by the corrected r4 artifact
+below. The corrected bootloader presents a VGA boot prompt, displays the
+available labels, and waits indefinitely (`TIMEOUT 0`); it does not start LIVE
+unless the user types `live` or presses Enter. The kernel still enables the
+serial console after a selection. This makes the VGA keyboard the reliable
+boot-menu input path; bootloader selection over serial is not claimed.
+
+Corrected ISO:
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r4.iso`
+- ISO SHA256: `bcb09c5ecc864bc593a7b8913295e9ef81c16f2f8d6354619a23c21be41ef46a`
+- r3 is superseded and must not be used for an interactive install.
+- QEMU VGA/curses boot showed the label instructions and a `boot:` prompt; it
+  remained there until `install` was typed. The `install` label loaded the
+  installer, and a disposable 4 GiB qcow2 install completed with
+  `DANOS INSTALLER PASS` and readback digest verification. The recorded serial
+  log is `build/dpdk-installable/qemu-r4-installer-serial.log` (SHA256
+  `2a0cc6ae3e2bf5e9eaa7fea8577b2aec9ef714d24f0e882cfaffff954983fbc1`).
+
 Candidate artifact:
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r3.iso`

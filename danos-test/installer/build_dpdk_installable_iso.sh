@@ -73,6 +73,7 @@ xorriso -indev "$BASE_ISO" -outdev "$OUT_ISO" -boot_image any replay \
     -map "$PAYLOAD" /installer/danos-i211-installed.raw.gz \
     -map "$DISK_MANIFEST" /installer/disk-image.env \
     -map "$ROOT/danos-test/installer/dpdk-installer-boot.msg" /isolinux/boot.msg \
+    -map "$ROOT/danos-test/installer/dpdk-installer-isolinux.cfg" /isolinux/isolinux.cfg \
     -commit -end
 
 ISO_SHA=$(sha256sum "$OUT_ISO" | awk '{print $1}')
@@ -97,10 +98,16 @@ xorriso -osirrox on -indev "$OUT_ISO" \
     -extract /installer/danos-i211-installed.raw.gz "$TMP/embedded.raw.gz" \
     -extract /installer/disk-image.env "$TMP/embedded.disk.env" \
     -extract /isolinux/boot.msg "$TMP/embedded.boot.msg" \
+    -extract /isolinux/isolinux.cfg "$TMP/embedded.isolinux.cfg" \
     -extract /initramfs.cpio.gz "$TMP/embedded.initramfs.cpio.gz" -end >/dev/null 2>&1
 test "$(sha256sum "$TMP/embedded.raw.gz" | awk '{print $1}')" = "$PAYLOAD_SHA"
 cmp -s "$TMP/embedded.disk.env" "$DISK_MANIFEST"
 cmp -s "$TMP/embedded.boot.msg" "$ROOT/danos-test/installer/dpdk-installer-boot.msg"
+cmp -s "$TMP/embedded.isolinux.cfg" "$ROOT/danos-test/installer/dpdk-installer-isolinux.cfg"
+grep -qx 'PROMPT 1' "$TMP/embedded.isolinux.cfg"
+grep -qx 'TIMEOUT 0' "$TMP/embedded.isolinux.cfg"
+grep -qx 'CONSOLE 1' "$TMP/embedded.isolinux.cfg"
+! grep -q '^SERIAL ' "$TMP/embedded.isolinux.cfg"
 test "$(sha256sum "$TMP/embedded.initramfs.cpio.gz" | awk '{print $1}')" = "$INITRAMFS_SHA"
 mkdir -p "$TMP/initramfs-check"
 gzip -dc "$TMP/embedded.initramfs.cpio.gz" | \

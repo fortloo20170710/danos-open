@@ -11,8 +11,13 @@ installer_module_copy = builder.index('while read -r module_name module_path')
 assert installer_module_copy > initramfs_reset, "installer modules must be staged after initramfs creation"
 assert 'cp "$PROJECT_ROOT/danos-test/installer/install_disk.sh"' in builder
 assert 'DANOS_INSTALLER_ENABLE="${DANOS_INSTALLER_ENABLE:-0}"' in builder
-assert 'LABEL install' in builder and 'danos.install=1' in builder
-assert 'LABEL install-serial' in builder and 'danos.install.input=serial' in builder
+boot_cfg = (root / "danos-test/installer/dpdk-installer-isolinux.cfg").read_text()
+assert 'LABEL install' in boot_cfg and 'danos.install=1' in boot_cfg
+assert 'LABEL install-serial' in boot_cfg and 'danos.install.input=serial' in boot_cfg
+assert 'dpdk-installer-isolinux.cfg' in builder
+assert "PROMPT 1" in boot_cfg and "TIMEOUT 0" in boot_cfg
+assert "CONSOLE 1" in boot_cfg and "SERIAL " not in boot_cfg
+assert "DISPLAY /isolinux/boot.msg" in boot_cfg
 
 mode_check = init.index('test "$kernel_arg" = danos.install=1')
 module_load = init.index('done < /modules.load')
@@ -32,5 +37,6 @@ generic_iso_builder = (root / "danos-test/installer/build_dpdk_installable_iso.s
 assert "-boot_image any replay" in generic_iso_builder
 assert "/installer/danos-i211-installed.raw.gz" in generic_iso_builder
 assert "DANOS_INSTALLER_PAYLOAD_SHA256" in generic_iso_builder
+assert "/isolinux/isolinux.cfg" in generic_iso_builder
 
 print("Install ISO boot-path wiring PASS")

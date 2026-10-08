@@ -486,33 +486,10 @@ if test "$DANOS_INSTALLER_ENABLE" = 1; then
     "$WORK/isoroot/installer/danos-runner-installed.raw.gz"
   cp "$DANOS_INSTALLER_DISK_MANIFEST" \
     "$WORK/isoroot/installer/disk-image.env"
-  cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
-SERIAL 0 115200
-DEFAULT live
-PROMPT 1
-TIMEOUT 100
-DISPLAY /isolinux/boot.msg
-LABEL live
-  KERNEL /vmlinuz
-  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0
-LABEL install
-  KERNEL /vmlinuz
-  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0 danos.install=1
-LABEL install-serial
-  KERNEL /vmlinuz
-  APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0 danos.install=1 danos.install.input=serial
-EOF
-  cat > "$WORK/isoroot/isolinux/boot.msg" <<'EOF'
-DANOS-Open generic DPDK physical lab runner
-
-  <Enter>       Start LIVE diagnostics (does not write to disk)
-  install       Install via VGA keyboard (selected disk erased after confirmation)
-  install-serial Install via serial ttyS0 (selected disk erased after confirmation)
-
-This lab image enables root autologin on local consoles; do not expose it to
-untrusted networks. Select the installer only when you intend to overwrite a disk.
-
-EOF
+  cp "$PROJECT_ROOT/danos-test/installer/dpdk-installer-isolinux.cfg" \
+    "$WORK/isoroot/isolinux/isolinux.cfg"
+  cp "$PROJECT_ROOT/danos-test/installer/dpdk-installer-boot.msg" \
+    "$WORK/isoroot/isolinux/boot.msg"
 else
   cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
 SERIAL 0 115200
