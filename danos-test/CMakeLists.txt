@@ -96,6 +96,10 @@ add_test(NAME dpdk_preflight_result_schema
   COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_dpdk_preflight_result.py)
 set_tests_properties(dpdk_preflight_result_schema PROPERTIES TIMEOUT 30)
+add_test(NAME dpdk_perf_result_schema
+  COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_record_dpdk_perf_result.py)
+set_tests_properties(dpdk_perf_result_schema PROPERTIES TIMEOUT 30)
 add_test(NAME install_disk_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_install_disk.sh)
 add_test(NAME dpdk_pci_autodiscovery

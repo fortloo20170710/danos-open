@@ -47,6 +47,8 @@ def encode(values: dict[str, str]) -> str:
 
 
 def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[str, str]:
+    if preflight.get("schema_version") != "1":
+        raise ResultError("PCI preflight schema_version must be 1")
     if preflight.get("preflight_status") != "PASS":
         raise ResultError("PCI preflight_status is not PASS")
     for key in ("target_bdf", "pci_vendor_id", "pci_device_id", "pci_bound_driver",

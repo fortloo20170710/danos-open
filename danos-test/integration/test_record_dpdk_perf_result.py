@@ -11,6 +11,7 @@ from pathlib import Path
 TOOL = Path(__file__).with_name("record_dpdk_perf_result.py")
 
 PREFLIGHT = """status=ENVIRONMENT-OPEN
+schema_version=1
 preflight_status=PASS
 commit=deadbeef
 iso_build_commit=deadbeef
@@ -64,6 +65,26 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("status=ENVIRONMENT-OPEN", output)
         self.assertIn("performance_status=ENVIRONMENT-OPEN", output)
+
+    def test_preflight_schema_version_is_required_and_supported(self):
+        for replacement in ("", "schema_version=2\n"):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory(
+                prefix="dpdk-schema-test-"
+            ) as tmp:
+                root = Path(tmp)
+                preflight = root / "preflight.env"
+                measurement = root / "measurement.env"
+                result = root / "result.env"
+                preflight.write_text(PREFLIGHT.replace("schema_version=1\n", replacement))
+                measurement.write_text(MEASUREMENT)
+                proc = subprocess.run([
+                    sys.executable, str(TOOL), "--preflight", str(preflight),
+                    "--measurement", str(measurement), "--out", str(result),
+                ], text=True, capture_output=True, check=False)
+                output = result.read_text()
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn("preflight schema_version must be 1", output)
+                self.assertIn("status=FAIL", output)
 
     def test_valid_measurements_and_thresholds_pass(self):
         proc, output = self.run_case(extra=("--min-pps", "900", "--max-loss-pct", "0",
