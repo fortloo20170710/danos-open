@@ -1,6 +1,27 @@
 # DANOS Open Project Status
 
-## 2026-10-09 latest verification on `947a600`
+## 2026-10-09 current release-gate recheck on `5ca9303`
+
+The unified release gate now defaults to the accepted identity-bound QEMU
+topology `build/qemu-frr-vpp-topology-705c70b-baseline`. A full rerun on clean
+commit `5ca9303` passed backend contract, all ISO/result validators, CTest
+55/55, QEMU live-console/mgrd restart, serial-shell and VPP plugin smoke tests,
+the complete FRR/VPP route/restart lifecycle, and the 4x1000 ECMP soak
+(4000/4000, zero loss, 81.47 pps, bucket deltas 3000/1000). VMware also passed
+the accepted 2000/2000 baseline at 98.23 pps, zero loss. The gate's overall
+result is intentionally `FAIL`, solely because PCI DPDK preflight is
+`ENVIRONMENT-OPEN` (no target BDF/PCI NIC/hugepages) and no waiver was applied.
+The machine-readable run is `build/v016-release-gate-5ca9303.env`.
+
+The previous default pointed at topology-140, whose old log has a restart PASS
+marker but no post-restart peer probes; this caused a false gate failure. The
+configuration now selects topology-705 and its regression test rejects the
+stale default. CI (`37826105087`), Coverage (`37826104942`) and Interop Gate
+(`37826104905`) all pass on `5ca9303`. Physical installation and true PCI
+performance remain open; the internal disk was not written and no UART was
+accessed.
+
+## 2026-10-09 earlier verification on `947a600`
 
 The clean worktree at `947a600` passes local CTest 55/55 and the three-stage
 backend contract gate (DPA 11/11, programming pipeline, composite

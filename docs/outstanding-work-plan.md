@@ -7,6 +7,21 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-09 unified release gate topology correction
+
+The complete unified gate on clean commit `5ca9303` exposed a stale default:
+topology-140's log had a VPP restart PASS marker but lacked required
+post-restart peer packets. The release gate previously selected that old
+evidence even though the newer identity-bound topology-705 baseline passes the
+full strict verifier. The default is now topology-705 and a regression test
+pins it. A full gate rerun then passed all software/runtime gates, CTest 55/55,
+QEMU FRR/VPP recovery and 4x1000 ECMP, VMware 2000-packet baseline, and live
+console/mgrd restart. Overall status remains FAIL by design because real PCI
+DPDK preflight is `ENVIRONMENT-OPEN` (no BDF/NIC/hugepages) and no waiver was
+applied. Result: `build/v016-release-gate-5ca9303.env`. CI (`37826105087`),
+Coverage (`37826104942`) and Interop Gate (`37826104905`) all passed. No UART,
+physical reboot, or disk write was used.
+
 ### 2026-10-09 latest non-serial verification
 
 On clean pushed HEAD `947a600`, CTest passes 55/55 and the deterministic
