@@ -251,5 +251,7 @@ jobs:
         run: |
           export VPP_API_SOCK=/run/vpp/api.sock
           sudo -E env PATH="$PATH" GNMIC="$GNMIC" VPP_API_SOCK="$VPP_API_SOCK" \
-            bash danos-test/integration/run_v0.4_interop.sh --with-vpp || true
-          # V-group is informational until version-drift handling stabilizes
+            timeout --signal=TERM --kill-after=10s 180s \
+            bash danos-test/integration/run_v0.4_interop.sh --with-vpp
+          # Keep the optional job non-blocking for VPP packaging drift, but
+          # preserve the step's actual result and bound any hung API call.
