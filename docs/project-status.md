@@ -53,6 +53,10 @@ r5 traffic ISO still passes profile validation, but must be booted in LIVE mode
 before PCI/VPP testing. Do not retry installation or overwrite `/dev/sda` as
 part of dataplane qualification. QEMU installer acceptance is recorded
 separately in `docs/iso-installation-acceptance.md`.
+The subsequent 600-second r5 UART traffic capture also ended with 0 bytes and
+`SKIP` (`build/physical-i211-r5-live-20261008Tactive.serial.log`); the
+development host currently has no USB block device attached, so no reflash was
+attempted.
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
