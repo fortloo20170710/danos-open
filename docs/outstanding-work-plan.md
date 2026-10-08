@@ -65,6 +65,14 @@ compatibility tests run under CTest. Full local CTest is 55/55; PCI hardware
 and real-generator performance remain open. Commit `c77bb32` also ensures
 validation failures themselves retain the current schema-v1 envelope.
 
+The pushed documentation head `73855dc` is clean and all three GitHub workflows
+pass: CI `37822407128`, Coverage `37822407089`, and Interop Gate `37822407155`.
+The latter completed hosted VPP V1–V5 plus K4/K5 netns/ping successfully. This
+closes the remote validation follow-up for the preflight schema work; it does
+not change the physical PCI/traffic-generator qualification boundary. Serial
+is currently occupied by another assistant, so no UART access, reboot, or
+physical installation was performed in this follow-up.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
