@@ -1,28 +1,37 @@
 # DANOS Open Project Status
 
-## 2026-10-08 clean r8 installer QEMU acceptance PASS; physical install pending
+## 2026-10-08 current acceptance: QEMU FRR/VPP lifecycle and 1000-packet ECMP soak PASS
 
-The clean generic DPDK installer candidate is
-`build/danos-open-v0.16.0-rc1-generic-dpdk-installable-r8.iso` (SHA256
-`b3a668789b78b548b35a59f984b06939aa70b0f5f7bb631adada935bf4748d46`), built
-from clean commit `0578cb75881c213338a4b0ef198633b9351b1194`. QEMU USB install
-to a disposable disk passed readback verification; cold boot confirmed
-embedded build/package identity, VPP 26.10 active, and API/stats sockets. A
-persistent marker survived reboot. Evidence is indexed in
-`docs/iso-installation-acceptance.md`.
+The tested source was clean commit `b32204707ff8705bf47c134b5717bbb996316a3c`;
+its local CTest was 52/52 PASS. This status update is documentation-only. The identity-bound QEMU e1000 run at
+`build/qemu-frr-vpp-topology-b322047-soak1000` passed the strict topology
+verifier with `QEMU_ECMP_SOAK_REQUIRED=1`: BGP/OSPF readiness, ZAPI IPv4 add,
+withdraw and restore, FRR/zserv restart recovery, VPP restart/replay, two
+post-restart peer probes, ECMP multipath traffic, and next-hop withdrawal and
+restoration.
 
-On the physical I211 host, prior r6 evidence confirms installer mode and that
-an incorrect erase confirmation left the internal disk untouched. Serial and
-Ethernet cables are now reported connected, but a passive USB-UART read
-captured no new bytes; physical live state and link status remain unverified.
-The internal `/dev/sda` has existing partitions and must not be overwritten
-without explicit operator confirmation. Physical install, I211 binding,
-packet forwarding, and ECMP qualification remain open. Latest local CTest is
-51/51 PASS; real PCI performance remains ENVIRONMENT-OPEN.
+The 4-flow soak sent and received 4000/4000 packets with 0% loss in 49,030 ms
+(81.58 pps); ECMP bucket deltas were 3000/1000 and RTT p50/p99 were 373.10 /
+1689.50 us. Machine-readable result:
+`build/qemu-frr-vpp-topology-b322047-soak1000/performance-result.env`.
+The clean QEMU ISO is
+`build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso` (SHA256
+`dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`). These
+are QEMU functional/regression measurements, not PCI throughput or line-rate
+claims. Real PCI performance remains ENVIRONMENT-OPEN.
+
+Physical I211 status is still open. A passive 180-second read of
+`/dev/ttyUSB0` captured 0 bytes (`build/physical-current-20261008T071418Z.serial.log`);
+without fresh boot output there is no new identity-bound physical runtime or
+link/traffic evidence. Do not overwrite the physical `/dev/sda`: prior r6
+installer evidence showed existing partitions and rejected the mismatched
+erase confirmation without touching the target. QEMU installer acceptance is
+recorded separately in `docs/iso-installation-acceptance.md`.
 
 ## 2026-10-08 generic installer physical boot: fail-safe PASS; install pending
 
-The current shared branch is clean at `3b10f9c` and `origin/main` matches. The
+At the time of this physical r6 installer observation, the shared branch was
+clean at `3b10f9c` and `origin/main` matched. The
 generic DPDK installable ISO r6 passed QEMU USB-media installation to a
 disposable disk, including full readback digest verification. On the physical
 I211 host, the user-reported boot plus read-only USB-UART evidence confirms
