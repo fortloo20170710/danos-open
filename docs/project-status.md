@@ -1,5 +1,30 @@
 # DANOS Open Project Status
 
+## 2026-10-09 latest verification on `947a600`
+
+The clean worktree at `947a600` passes local CTest 55/55 and the three-stage
+backend contract gate (DPA 11/11, programming pipeline, composite
+Route/NH/NHGroup). The strict identity-bound QEMU verifier was rerun against
+the frozen `705c70b-baseline` evidence and passed BGP/OSPF, ZAPI add/withdraw/
+restore, FRR/zserv and VPP restart/replay, ECMP next-hop down/up, and four
+1,000-packet flows (4,000/4,000, zero loss, bucket deltas 3,000/1,000). This is
+functional QEMU evidence, not PCI performance.
+
+The VMware verifier also passed against the accepted clean polling evidence:
+2,000/2,000, zero loss, 98.23 pps, p50/p99 206/449 us. This remains a low-rate
+ICMP regression baseline, not line-rate or ECMP throughput. The current host
+DPDK preflight emitted a schema-v1 `SKIP`/`ENVIRONMENT-OPEN`: no target BDF, no
+PCI Ethernet function, and zero hugepages. No real PCI performance result was
+manufactured. GitHub CI, Coverage and Interop Gate all passed on `947a600`
+(runs `37824042975`, `37824042760`, `37824042980`); Interop includes hosted
+VPP V1–V5 and K4/K5 netns/ping.
+
+Serial remains reserved for another assistant. No UART access, reboot, host
+network mutation or physical disk write was performed in this verification.
+The user-provided installer photo is recorded separately in
+`docs/iso-installation-acceptance.md`: the install attempt safely aborted on a
+confirmation-string mismatch, leaving physical installation unverified.
+
 ## 2026-10-09 current acceptance: CI/QEMU/VMware regression PASS; physical qualification open
 
 Latest code-bearing commit `c77bb32` makes even DPDK validation-failure records

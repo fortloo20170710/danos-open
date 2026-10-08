@@ -7,6 +7,26 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-09 latest non-serial verification
+
+On clean pushed HEAD `947a600`, CTest passes 55/55 and the deterministic
+backend contract passes all three stages. The strict current-evidence QEMU
+verifier passes the full FRR/VPP restart and route lifecycle plus 4x1000 ECMP
+soak (4000/4000, zero loss, bucket deltas 3000/1000). The accepted VMware
+polling baseline revalidates at 2000/2000, zero loss, 98.23 pps, p50/p99
+206/449 us; it remains low-rate regression data only. Host PCI preflight
+returns structured schema-v1 `SKIP`/`ENVIRONMENT-OPEN` because there is no
+target BDF, PCI Ethernet function, or hugepages. CI, Coverage and Interop Gate
+all pass on this head (`37824042975`, `37824042760`, `37824042980`), including
+hosted VPP and netns/ping jobs.
+
+The physical installer attempt shown in the user's console photo stopped at
+the fail-safe confirmation guard; the disk was reported untouched. The image
+identity is unknown and no physical installation is accepted. Do not use the
+UART while it is assigned to another assistant. Resume physical install/DPDK
+qualification only with the correct clean installable ISO, explicit disk
+erasure authorization, released UART, and a real traffic generator/peer setup.
+
 ### 2026-10-09 physical identity correction and next execution boundary
 
 The latest physical evidence separates two systems that were previously
