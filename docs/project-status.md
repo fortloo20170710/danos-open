@@ -2,13 +2,16 @@
 
 ## 2026-10-09 current acceptance: CI/QEMU/VMware regression PASS; physical qualification open
 
-Latest code-bearing commit `0d0cb81d5af4e97af4af5aec330f99e0c5a095c6`
+Latest code-bearing commit `b3efd92` unifies the local/container DPDK preflight
+result schema and registers a regression test for both paths. Local CTest is
+now 54/54. The preceding clean code commit `0d0cb81d5af4e97af4af5aec330f99e0c5a095c6`
 fixes the standalone VMware VMXNET3 packet verifier's defaults to use the
 accepted clean peer/DANOS serial logs and clean polling ISO, matching the
 unified release gate. Its static default-path anti-regression test is part of
-CTest. GitHub CI, Coverage and Interop Gate all pass for this commit (runs
-`37818837774`, `37818837850`, `37818837878`); local CTest is 53/53, and the
-deterministic backend contract passes all three stages.
+CTest. GitHub CI, Coverage and Interop Gate passed for `b86aa6d` (runs
+`37819360359`, `37819360271`, `37819360543`). The DPDK schema change passes
+the local 54-test suite; remote workflows are tracked against the pushed head.
+The deterministic backend contract passes all three stages.
 
 With no per-run overrides, the VMware verifier now passes against the frozen
 clean evidence: 2000/2000 packets, 0% loss, 98.23 pps, p50/p99 206/449 us,

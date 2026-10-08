@@ -53,6 +53,12 @@ physical installation is unverified; the physical PCI I211 64-byte DPDK lane
 still requires an identified runner plus actual generator measurements.
 Continue keeping those as separate open acceptance items.
 
+The follow-up code change `b3efd92` fixes a preflight integration inconsistency:
+the host DPDK lane emitted schema v1 while the container lane omitted the
+version field. Both missing-BDF paths now share a regression test registered
+in CTest; local CTest is 54/54. This makes external runner output machine-
+consistent but does not supply the still-missing real traffic measurement.
+
 ### 2026-10-08 71361f5 current execution update
 
 The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
