@@ -9,11 +9,13 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-08 71361f5 current execution update
 
-`71361f5d5ef833c7693a44ce70aa79fe09aae0bd` is clean and synchronized with
-`origin/main`; GitHub CI, Coverage, and Interop Gate all pass, local CTest is
-52/52. The Interop failure on `3881730` was isolated to VPP 26.06 probing a
-host NIC before the loopback fixture; disabling `dpdk_plugin.so` in this
-software-only job fixed the index collision, and the next workflow run passed.
+The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
+subsequent `main` commits through `dd7f2bc` are documentation-only. GitHub CI,
+Coverage, and Interop Gate pass on both the code commit and latest docs commit;
+local CTest is 52/52. The Interop failure on `3881730` was isolated to VPP
+26.06 probing a host NIC before the loopback fixture; disabling
+`dpdk_plugin.so` in this software-only job fixed the index collision, and the
+next workflow run passed.
 
 A clean, identity-bound ISO at `3881730e6b79c1dac41f58b767b86df5069f2d07` and
 isolated three-VM QEMU topology passed the strict lifecycle gate: BGP/OSPF,

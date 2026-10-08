@@ -2,9 +2,12 @@
 
 ## 2026-10-08 current acceptance: CI and QEMU functional lanes PASS; PCI lane open
 
-Current clean source is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`, matching
-`origin/main`. GitHub CI, Coverage, and Interop Gate all pass for this commit
-(runs `37761183156`, `37761183119`, and `37761183168`); local CTest is 52/52.
+The latest code/workflow change is clean commit
+`71361f5d5ef833c7693a44ce70aa79fe09aae0bd`; subsequent `main` commits through
+`dd7f2bc` are documentation-only. GitHub CI, Coverage, and Interop Gate pass
+on both `71361f5` (runs `37761183156`, `37761183119`, `37761183168`) and the
+latest docs-only `dd7f2bc` (runs `37763554975`, `37763554987`, `37763554993`);
+local CTest on the unchanged code is 52/52.
 The Interop fixture now disables DPDK probing: VPP 26.06 on GitHub runners had
 enumerated a host PCI NIC at `sw_if_index=1`, invalidating the prior assumption
 that two loopbacks would occupy indices 1 and 2. The corrected VPP job passed
