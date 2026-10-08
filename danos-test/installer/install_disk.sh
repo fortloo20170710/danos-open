@@ -9,6 +9,7 @@ mounts_file=${DANOS_INSTALLER_MOUNTS_FILE:-/proc/mounts}
 console=${DANOS_INSTALLER_CONSOLE:-/dev/console}
 test_mode=${DANOS_INSTALL_TEST_MODE:-0}
 test_target_root=${DANOS_INSTALL_TEST_TARGET_ROOT:-}
+media_wait_seconds=${DANOS_INSTALLER_MEDIA_WAIT_SECONDS:-45}
 payload="$media_mount/installer/danos-runner-installed.raw.gz"
 metadata="$media_mount/installer/disk-image.env"
 if test ! -r "$payload"; then
@@ -33,15 +34,27 @@ if test "$test_mode" != 1; then
     say 'DANOS INSTALLER: loading persistent disk image from the boot ISO'
     mkdir -p "$media_mount"
     media_device=
-    for candidate in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*n* /dev/mmcblk*; do
-        test -b "$candidate" || continue
-        if mount -t iso9660 -o ro "$candidate" "$media_mount" 2>/dev/null; then
-            if test -r "$payload" && test -r "$metadata"; then
-                media_device=$candidate
-                break
+    media_attempt=0
+    while test "$media_attempt" -lt "$media_wait_seconds"; do
+        media_attempt=$((media_attempt + 1))
+        # USB mass-storage SCSI discovery is asynchronous: the initramfs can
+        # enter this installer before the boot stick has become /dev/sdX.
+        mdev -s 2>/dev/null || true
+        for candidate in /dev/sr* /dev/sd* /dev/vd* /dev/nvme*n* /dev/mmcblk*; do
+            test -b "$candidate" || continue
+            if mount -t iso9660 -o ro "$candidate" "$media_mount" 2>/dev/null; then
+                if test -r "$payload" && test -r "$metadata"; then
+                    media_device=$candidate
+                    break
+                fi
+                umount "$media_mount" 2>/dev/null || true
             fi
-            umount "$media_mount" 2>/dev/null || true
+        done
+        test -n "$media_device" && break
+        if test $((media_attempt % 5)) -eq 0; then
+            say "DANOS INSTALLER: waiting for USB/ISO block media (${media_attempt}/${media_wait_seconds}s)"
         fi
+        sleep 1
     done
     test -n "$media_device" || {
         say 'DANOS INSTALLER FAIL: cannot locate installer payload on ISO media'

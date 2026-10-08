@@ -8,6 +8,7 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 BASE_ISO=${DANOS_INSTALLER_BASE_ISO:-}
 PAYLOAD=${DANOS_INSTALLER_DISK_IMAGE:-}
 DISK_MANIFEST=${DANOS_INSTALLER_DISK_MANIFEST:-}
+SD_MOD=${DANOS_INSTALLER_SD_MOD:-$ROOT/build/dpdk-installable/sd_mod.ko.xz}
 
 if test -z "$BASE_ISO"; then
     BASE_ISO=$(find "$ROOT/build" -maxdepth 1 -type f \
@@ -54,6 +55,23 @@ gzip -dc "$TMP/base-initramfs.cpio.gz" | \
     (cd "$TMP/initramfs" && cpio -idmu --quiet)
 install -m 0755 "$ROOT/danos-test/installer/install_disk.sh" \
     "$TMP/initramfs/bin/danos-install"
+install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"
+if test ! -r "$TMP/initramfs/modules/sd_mod.ko"; then
+    test -r "$SD_MOD" || {
+        echo "ERROR: initramfs lacks sd_mod; provide the matching kernel module via DANOS_INSTALLER_SD_MOD" >&2
+        exit 2
+    }
+    case "$SD_MOD" in
+        *.xz) xz -dc "$SD_MOD" > "$TMP/initramfs/modules/sd_mod.ko" ;;
+        *) install -m 0644 "$SD_MOD" "$TMP/initramfs/modules/sd_mod.ko" ;;
+    esac
+    if ! grep -qx sd_mod "$TMP/initramfs/modules.load"; then
+        awk 'BEGIN { added=0 } $0 == "usb_storage" && !added { print "sd_mod"; added=1 } { print } END { if (!added) print "sd_mod" }' \
+            "$TMP/initramfs/modules.load" > "$TMP/modules.load.new"
+        install -m 0644 "$TMP/modules.load.new" "$TMP/initramfs/modules.load"
+    fi
+fi
+SD_MOD_SHA=$(sha256sum "$TMP/initramfs/modules/sd_mod.ko" | awk '{print $1}')
 BUILD_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
 cat > "$TMP/initramfs/etc/danos/build-info.env" <<EOF
 DANOS_BUILD_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
@@ -89,6 +107,7 @@ DANOS_INSTALLER_PAYLOAD_SHA256=$PAYLOAD_SHA
 DANOS_INSTALLER_DISK_MANIFEST=$DISK_MANIFEST
 DANOS_INSTALLER_BOOT_MODE=legacy-bios
 DANOS_INSTALLER_INITRAMFS_SHA256=$INITRAMFS_SHA
+DANOS_INSTALLER_SD_MOD_SHA256=$SD_MOD_SHA
 DANOS_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 DANOS_SOURCE_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
 EOF
@@ -113,6 +132,9 @@ mkdir -p "$TMP/initramfs-check"
 gzip -dc "$TMP/embedded.initramfs.cpio.gz" | \
     (cd "$TMP/initramfs-check" && cpio -idmu --quiet)
 cmp -s "$TMP/initramfs-check/bin/danos-install" "$ROOT/danos-test/installer/install_disk.sh"
+cmp -s "$TMP/initramfs-check/init" "$ROOT/danos-test/live/init"
+test -s "$TMP/initramfs-check/modules/sd_mod.ko"
+grep -qx sd_mod "$TMP/initramfs-check/modules.load"
 grep -Fq "DANOS_BUILD_ISO=$(basename "$OUT_ISO")" "$TMP/initramfs-check/etc/danos/build-info.env"
 xorriso -indev "$OUT_ISO" -report_el_torito plain -end >"$TMP/boot-report.log" 2>&1
 grep -q 'El Torito' "$TMP/boot-report.log"

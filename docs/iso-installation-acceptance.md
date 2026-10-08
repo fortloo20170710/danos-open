@@ -96,26 +96,32 @@ non-installable.
 ## Generic DPDK hardware profile: QEMU install/boot/recovery PASS
 
 The initial r3 ISO booted straight into LIVE after a short, effectively
-unusable selection interval. It is superseded by the corrected r4 artifact
-below. The corrected bootloader presents a VGA boot prompt, displays the
-available labels, and waits indefinitely (`TIMEOUT 0`); it does not start LIVE
-unless the user types `live` or presses Enter. The kernel still enables the
-serial console after a selection. This makes the VGA keyboard the reliable
-boot-menu input path; bootloader selection over serial is not claimed.
+unusable selection interval. r4 fixed the interactive VGA boot prompt, but
+USB installation exposed a second issue: SCSI discovery completed after the
+installer's first media scan, and the initramfs lacked `sd_mod`. r5 added
+retries and fail-closed recovery but still lacked that module. r3-r5 are
+superseded and must not be used for installation.
 
-Corrected ISO:
+Validated USB-capable ISO:
 
-- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r4.iso`
-- ISO SHA256: `bcb09c5ecc864bc593a7b8913295e9ef81c16f2f8d6354619a23c21be41ef46a`
-- r3 is superseded and must not be used for an interactive install.
-- QEMU VGA/curses boot showed the label instructions and a `boot:` prompt; it
-  remained there until `install` was typed. The `install` label loaded the
-  installer, and a disposable 4 GiB qcow2 install completed with
-  `DANOS INSTALLER PASS` and readback digest verification. The recorded serial
-  log is `build/dpdk-installable/qemu-r4-installer-serial.log` (SHA256
-  `2a0cc6ae3e2bf5e9eaa7fea8577b2aec9ef714d24f0e882cfaffff954983fbc1`).
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r6.iso`
+- ISO SHA256: `ba79489cc5e652307cb5077a0dc4b495d021f70203fbccf45ea3e2ddf39a5d2a`
+- The installer waits up to 45 seconds for removable ISO block media and
+  rescans devices. The initramfs includes the matching `sd_mod` kernel module.
+  Installer failure now stays in a recovery shell rather than silently
+  continuing into LIVE.
+- QEMU booted this ISO as USB mass storage (not a virtual CD-ROM). The serial
+  log shows the ISO enumerated as `/dev/sda`, the installer finding its
+  payload, then installing to a disposable 4 GiB `/dev/vda` and printing
+  `DANOS INSTALLER PASS` after readback digest verification.
+- QEMU VGA/curses showed the boot prompt waiting indefinitely; typing
+  `install` entered the installer. Serial log:
+  `build/dpdk-installable/qemu-r6-usb-serial.log` (SHA256
+  `71b2722221f1a8f04b3e65e62f82edb0dcc3a500c40fa6fdb5901e420100f528`).
+- Bootloader selection is VGA/keyboard; ttyS0 becomes the Linux console after
+  an entry is selected. Serial-only bootloader selection is not qualified.
 
-Candidate artifact:
+Earlier r3 candidate (superseded; do not install):
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r3.iso`
 - ISO SHA256: `965d26b3b8ab24dc74847e1d255f747b31a85d4ad1be75d15063f7e6fdf295b6`

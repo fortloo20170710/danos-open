@@ -25,6 +25,10 @@ installer_exec = init.index('/bin/busybox sh /bin/danos-install')
 assert mode_check < module_load < installer_exec
 assert 'DANOS INSTALLER PASS' in (root / "danos-test/installer/install_disk.sh").read_text()
 assert 'DANOS_INSTALLER_INPUT' in (root / "danos-test/installer/install_disk.sh").read_text()
+installer = (root / "danos-test/installer/install_disk.sh").read_text()
+assert "media_wait_seconds=${DANOS_INSTALLER_MEDIA_WAIT_SECONDS:-45}" in installer
+assert "mdev -s" in installer and "waiting for USB/ISO block media" in installer
+assert "DANOS-INSTALLER-RECOVERY" in init
 runner_builder = (root / "danos-test/installer/build_i211_disk_image.sh").read_text()
 runtime_package = (root / "danos-test/installer/package_vpp_runtime.sh").read_text()
 assert "DANOS-RUNNER-ROOTFS-CONFIGURED PASS" in runner_builder
@@ -34,6 +38,10 @@ assert "/etc/modules-load.d/danos-dpdk.conf" in runner_builder
 assert "After=local-fs.target systemd-modules-load.service" in runtime_package
 assert (root / "danos-test/installer/build_dpdk_installable_iso.sh").is_file()
 generic_iso_builder = (root / "danos-test/installer/build_dpdk_installable_iso.sh").read_text()
+assert 'install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"' in generic_iso_builder
+assert 'cmp -s "$TMP/initramfs-check/init" "$ROOT/danos-test/live/init"' in generic_iso_builder
+assert 'DANOS_INSTALLER_SD_MOD' in generic_iso_builder
+assert 'test -s "$TMP/initramfs-check/modules/sd_mod.ko"' in generic_iso_builder
 assert "-boot_image any replay" in generic_iso_builder
 assert "/installer/danos-i211-installed.raw.gz" in generic_iso_builder
 assert "DANOS_INSTALLER_PAYLOAD_SHA256" in generic_iso_builder

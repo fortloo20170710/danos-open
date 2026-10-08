@@ -191,7 +191,7 @@ done
 if test "$DANOS_INSTALLER_ENABLE" = 1; then
   declare -A installer_module_seen=()
   : > "$WORK/installer-modules.map"
-  for root_module in usb_storage uas ahci ata_piix isofs sr_mod virtio_blk nvme mmc_block; do
+  for root_module in sd_mod usb_storage uas ahci ata_piix isofs sr_mod virtio_blk nvme mmc_block; do
     dependency_lines=$(docker exec "$BUILD_CONTAINER" \
       modprobe --show-depends --set-version "$KERNEL_VERSION" "$root_module") || {
         echo "ERROR: cannot resolve installer storage module $root_module" >&2
