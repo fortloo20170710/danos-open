@@ -8,7 +8,10 @@ packet totals, elapsed time, both pre-failover bucket counters, internally
 consistent loss percentage and compliance with the configured loss budget;
 the physical I211 result parser enforces the same evidence. Local CTest is
 56/56, backend contract passes, and GitHub CI, Coverage and Interop Gate all
-pass (runs `37828919837`, `37828919907`, `37828919796`).
+pass on code commit `0ae8acc` (runs `37828919837`, `37828919907`,
+`37828919796`). The follow-up release-default/docs commit `b70c41e` also has
+all three workflows PASS (CI `37832820118`, Coverage `37832820058`, Interop
+`37832820096`).
 
 The release-gate default is now the clean, identity-bound topology
 `build/qemu-frr-vpp-topology-0ae8acc-failover-soak`. Its full strict verifier
@@ -23,7 +26,12 @@ both buckets active before convergence. The machine-readable soak result is
 
 This remains QEMU functional/regression evidence, not PCI throughput. Real
 PCI DPDK qualification and physical installation remain open; no physical
-serial cable was used in this round.
+serial cable was used in this round. The final unified release-gate rerun on
+`b70c41e` passed every software, QEMU and VMware subgate; its machine record is
+`build/v016-release-gate.env`. Overall status remains `FAIL` solely because
+the PCI preflight has no selected `DPDK_PCI_BDF`, reported
+`ENVIRONMENT-OPEN`, and no waiver was applied. No performance qualification is
+claimed for that lane.
 
 ## 2026-10-09 previous release-gate recheck on `5ca9303`
 
