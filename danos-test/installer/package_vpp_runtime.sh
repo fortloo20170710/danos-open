@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Package the already-built Debian trixie VPP runtime image for an offline
-# I211 runner root filesystem. This deliberately does not build VPP itself.
+# generic DPDK runner root filesystem. This deliberately does not build VPP itself.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -40,22 +40,22 @@ for lib in "$WORK"/runtime-libs/libv*.so.26.10 \
 done
 
 install -m 0755 "$ROOT/danos-test/installer/prepare_i211_dpdk.sh" \
-    "$WORK/root/usr/libexec/danos/prepare-i211-dpdk"
+    "$WORK/root/usr/libexec/danos/prepare-dpdk-pci"
 
 install -m 0755 "$ROOT/danos-test/live/bind_dpdk_pci.sh" \
     "$WORK/root/usr/libexec/danos/bind_dpdk_pci.sh"
 
 cat > "$WORK/root/usr/lib/systemd/system/vpp.service" <<'UNIT'
 [Unit]
-Description=FD.io VPP packet processor (DANOS I211 runner)
-After=local-fs.target
+Description=FD.io VPP packet processor (DANOS generic DPDK runner)
+After=local-fs.target systemd-modules-load.service
 Before=danos-mgrd.service
 
 [Service]
 Type=simple
 RuntimeDirectory=vpp
 RuntimeDirectoryMode=0755
-ExecStartPre=/usr/libexec/danos/prepare-i211-dpdk
+ExecStartPre=/usr/libexec/danos/prepare-dpdk-pci
 ExecStart=/usr/bin/vpp -c /run/vpp/startup.conf
 ExecStartPost=/bin/sh -c 'for i in $(seq 1 30); do test -S /run/vpp/api.sock && exit 0; sleep 1; done; exit 1'
 ExecStopPost=-/usr/bin/vppctl -s /run/vpp/cli.sock quit
@@ -79,9 +79,9 @@ Architecture: amd64
 Depends: libc6 (>= 2.38), libnuma1, libssl3t64, zlib1g, libzstd1
 Provides: vpp (= 26.10)
 Maintainer: DANOS-Open Project <i-danos@users.noreply.github.com>
-Description: VPP 26.10 runtime for the DANOS-Open I211 hardware test runner
+Description: VPP 26.10 runtime for the DANOS-Open generic DPDK hardware runner
  Includes the VPP binary, API client, DPDK/ping plugins, systemd service,
- and identity-checked I211-to-uio_pci_generic preparation.
+ and boot-time PCI Ethernet discovery, management-route exclusion, and automatic VFIO/UIO binding.
 CONTROL
 
 chmod 0755 "$WORK/root/usr/bin/vpp" "$WORK/root/usr/bin/vppctl"

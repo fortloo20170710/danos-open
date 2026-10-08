@@ -92,3 +92,45 @@ Build provenance in the ISO manifest is commit
 `DANOS_SOURCE_DIRTY=1`; this is a validated candidate from a dirty tree, not a
 clean release build. Historical r5 and other LIVE-only ISOs remain
 non-installable.
+
+## Generic DPDK hardware profile: QEMU install/boot/recovery PASS
+
+Candidate artifact:
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261008T010054Z-r3.iso`
+- ISO SHA256: `965d26b3b8ab24dc74847e1d255f747b31a85d4ad1be75d15063f7e6fdf295b6`
+- Embedded raw installed disk SHA256:
+  `f6226f08f2a8348530ba83bed4e1f912658dd05d3dadd053441dcc758bf4246d`
+- ISO payload compressed SHA256:
+  `6adbf27d34b6d767ba19cd03ee17e3aa1e0dc2a48e8edb3abaf07e391758dc18`
+- Firmware mode: Legacy BIOS/hybrid boot preserved from the QEMU-qualified
+  Debian trixie installer base; UEFI is not qualified.
+- The VM installer was exercised against a disposable 4 GiB qcow2 disk; it
+  reported `DANOS INSTALLER PASS` after readback digest verification. The ISO
+  was detached before two installed-disk boots. On both boots VPP 26.10 and
+  FRR were active; API, stats and CLI sockets existed. A marker written on
+  first boot survived the next reboot. QEMU had only a virtio management NIC,
+  which was detected and skipped as `default-route-management`.
+- Physical installation is **not performed**. This artifact has only VM-level
+  installer/boot/recovery qualification so far; no real PCI driver binding or
+  packet forwarding is claimed by this result.
+
+At boot, the installer profile enumerates PCI functions by Ethernet class
+(`class 0x0200xx`), without a baked-in vendor/device ID or BDF list. It protects
+every interface carrying a default IPv4/IPv6 route (including physical members
+below a bridge or bond) from takeover, then emits VPP `dpdk { dev <BDF> }`
+entries and binds other Ethernet candidates. Binding prefers `vfio-pci` only
+when IOMMU groups are present and contain only selected Ethernet functions;
+otherwise it falls back to `uio_pci_generic`. Binding uses per-device
+`driver_override`, never a global PCI `new_id` match.
+
+This is hardware-generic discovery, not a claim that every PCI Ethernet device
+has a PMD in this VPP build. Devices without a matching DPDK PMD may be ignored
+or reported by VPP; physical acceptance must confirm the expected interfaces
+appear and pass packet tests. USB NICs and non-PCI devices are not discovered.
+If no default route is configured, all PCI Ethernet functions are considered
+dataplane candidates. Use an isolated console during initial hardware bring-up.
+
+The ISO manifest records the source as dirty during candidate creation; this
+artifact is not a clean release build. It must not be confused with the
+earlier I211-specific or LIVE-only artifacts.

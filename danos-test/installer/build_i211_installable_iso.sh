@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-OUT_DIR=${1:-$ROOT/build/i211-installable}
+OUT_DIR=${1:-$ROOT/build/dpdk-installable}
 OUT_ISO=${2:-}
 mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
@@ -24,7 +24,7 @@ test -r "$PAYLOAD" && test -r "$MANIFEST" || {
 RUN_ID=${PAYLOAD##*-installed-}
 RUN_ID=${RUN_ID%.raw.gz}
 if test -z "$OUT_ISO"; then
-    OUT_ISO="$ROOT/build/danos-open-v0.16.0-rc1-i211-installable-$RUN_ID.iso"
+    OUT_ISO="$ROOT/build/danos-open-v0.16.0-rc1-dpdk-installable-$RUN_ID.iso"
 fi
 
 VPP_DPDK_ENABLE=0 VPP_AUTOSTART=0 \

@@ -1,19 +1,20 @@
 #!/bin/sh
-# Bind only explicitly selected, identity-checked I211 functions for the DPDK ISO.
+# Bind only explicitly selected, per-device identity-checked PCI functions.
 set -eu
 
 sysfs_root="${DANOS_DPDK_SYSFS_ROOT:-/sys}"
 driver="${DANOS_BUILD_DPDK_BIND_DRIVER:-none}"
-expected_id="${DANOS_BUILD_DPDK_EXPECTED_PCI_ID:-8086:1539}"
+expected_id="${DANOS_BUILD_DPDK_EXPECTED_PCI_ID:-any}"
 ports="${DANOS_BUILD_DPDK_PORTS:-}"
 
 case "$driver" in
     none) echo 'DPDK-PCI-BIND SKIP driver=none'; exit 0 ;;
-    uio_pci_generic) ;;
+    uio_pci_generic|vfio-pci) ;;
     *) echo "DPDK-PCI-BIND FAIL unsupported-driver=$driver"; exit 1 ;;
 esac
 test -n "$ports" || { echo 'DPDK-PCI-BIND FAIL no-BDFs-configured'; exit 1; }
 case "$expected_id" in
+    any) ;;
     [[:xdigit:]][[:xdigit:]][[:xdigit:]][[:xdigit:]]:[[:xdigit:]][[:xdigit:]][[:xdigit:]][[:xdigit:]]) ;;
     *) echo "DPDK-PCI-BIND FAIL invalid-expected-pci-id=$expected_id"; exit 1 ;;
 esac
@@ -46,7 +47,7 @@ for bdf in $ports; do
     test -d "$device_dir" || { echo "DPDK-PCI-BIND FAIL device-absent=$bdf"; exit 1; }
     vendor=$(cat "$device_dir/vendor")
     device=$(cat "$device_dir/device")
-    if test "$vendor:$device" != "$expected_vendor:$expected_device"; then
+    if test "$expected_id" != any && test "$vendor:$device" != "$expected_vendor:$expected_device"; then
         echo "DPDK-PCI-BIND FAIL unexpected-device=$bdf:$vendor:$device expected=$expected_vendor:$expected_device"
         exit 1
     fi

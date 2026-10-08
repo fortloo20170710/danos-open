@@ -1,5 +1,5 @@
 #!/bin/busybox sh
-# Install the packaged persistent I211 lab-runner disk image. The default path
+# Install the packaged persistent generic DPDK lab-runner disk image. The default path
 # is interactive and refuses mounted disks and the media currently booted.
 set -eu
 
@@ -9,8 +9,12 @@ mounts_file=${DANOS_INSTALLER_MOUNTS_FILE:-/proc/mounts}
 console=${DANOS_INSTALLER_CONSOLE:-/dev/console}
 test_mode=${DANOS_INSTALL_TEST_MODE:-0}
 test_target_root=${DANOS_INSTALL_TEST_TARGET_ROOT:-}
-payload="$media_mount/installer/danos-i211-installed.raw.gz"
+payload="$media_mount/installer/danos-runner-installed.raw.gz"
 metadata="$media_mount/installer/disk-image.env"
+if test ! -r "$payload"; then
+    # Compatibility with the QEMU-qualified base ISO's original payload path.
+    payload="$media_mount/installer/danos-i211-installed.raw.gz"
+fi
 
 say() {
     echo "$*" >> "$console" 2>/dev/null || true
@@ -114,7 +118,7 @@ disk_size_bytes() {
 }
 
 test "$test_mode" = 1 || {
-    say 'DANOS-OPEN INSTALLER — I211 PHYSICAL LAB RUNNER'
+    say 'DANOS-OPEN INSTALLER — GENERIC DPDK PHYSICAL LAB RUNNER'
     say 'WARNING: the selected whole disk will be completely overwritten.'
     say 'This installs a lab image with root autologin on physical consoles.'
     say 'Do not install on a disk containing data you need to keep.'

@@ -483,7 +483,7 @@ cp "$WORK/isolinux.bin" "$WORK/ldlinux.c32" "$WORK/isoroot/isolinux/"
 if test "$DANOS_INSTALLER_ENABLE" = 1; then
   mkdir -p "$WORK/isoroot/installer"
   cp "$DANOS_INSTALLER_DISK_IMAGE" \
-    "$WORK/isoroot/installer/danos-i211-installed.raw.gz"
+    "$WORK/isoroot/installer/danos-runner-installed.raw.gz"
   cp "$DANOS_INSTALLER_DISK_MANIFEST" \
     "$WORK/isoroot/installer/disk-image.env"
   cat > "$WORK/isoroot/isolinux/isolinux.cfg" <<'EOF'
@@ -503,7 +503,7 @@ LABEL install-serial
   APPEND initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0 danos.install=1 danos.install.input=serial
 EOF
   cat > "$WORK/isoroot/isolinux/boot.msg" <<'EOF'
-DANOS-Open I211 physical lab runner
+DANOS-Open generic DPDK physical lab runner
 
   <Enter>       Start LIVE diagnostics (does not write to disk)
   install       Install via VGA keyboard (selected disk erased after confirmation)

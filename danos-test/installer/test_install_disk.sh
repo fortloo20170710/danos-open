@@ -9,10 +9,10 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/media/installer" "$WORK/sys/block/testdisk/device" "$WORK/dev"
 dd if=/dev/zero of="$WORK/image.raw" bs=1M count=2 status=none
 printf 'DANOS-TEST-IMAGE\n' | dd of="$WORK/image.raw" conv=notrunc status=none
-gzip -1 -n -c "$WORK/image.raw" > "$WORK/media/installer/danos-i211-installed.raw.gz"
+gzip -1 -n -c "$WORK/image.raw" > "$WORK/media/installer/danos-runner-installed.raw.gz"
 raw_bytes=$(stat -c '%s' "$WORK/image.raw")
 raw_sha=$(sha256sum "$WORK/image.raw" | awk '{print $1}')
-gzip_sha=$(sha256sum "$WORK/media/installer/danos-i211-installed.raw.gz" | awk '{print $1}')
+gzip_sha=$(sha256sum "$WORK/media/installer/danos-runner-installed.raw.gz" | awk '{print $1}')
 cat > "$WORK/media/installer/disk-image.env" <<EOF
 DANOS_INSTALLED_DISK_BYTES=$raw_bytes
 DANOS_INSTALLED_DISK_SHA256=$raw_sha

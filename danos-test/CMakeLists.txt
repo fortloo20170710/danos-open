@@ -93,6 +93,8 @@ add_test(NAME dpdk_pci_bind_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/live/test_bind_dpdk_pci.sh)
 add_test(NAME install_disk_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_install_disk.sh)
+add_test(NAME dpdk_pci_autodiscovery
+  COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_prepare_i211_dpdk.sh)
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME install_iso_wiring
