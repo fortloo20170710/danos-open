@@ -113,6 +113,9 @@ add_test(NAME install_iso_wiring
 add_test(NAME vpp_runtime_capture
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_capture_vpp_runtime.py)
 set_tests_properties(vpp_runtime_capture PROPERTIES TIMEOUT 30)
+add_test(NAME vpp_transit_window_parser
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_capture_vpp_transit_window.py)
+set_tests_properties(vpp_transit_window_parser PROPERTIES TIMEOUT 30)
 add_test(NAME frr_dynamic_log_evidence
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_frr_dynamic_log.py)
 set_tests_properties(frr_dynamic_log_evidence PROPERTIES TIMEOUT 30)
