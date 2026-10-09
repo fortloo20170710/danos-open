@@ -103,6 +103,18 @@ Thus both initiation directions have an isolated three-node short baseline.
 R3 counter-window evidence, longer soak, restart recovery and ECMP remain open;
 the previous development-host anomaly is still retained separately.
 
+R3 UART follow-up confirms both links remain up and learned neighbors now
+match R2 `00:1f:7a:69:f5:ec` and R4 `00:1f:7a:40:01:80` (not the old host
+MAC). Separate R3-originated 1000-probe runs to 10.10.0.2 from port4 and
+10.20.0.2 from port1 both pass 1000/1000, zero loss. Port drops remain
+880 (port4) and 215 (port1) across that window. Local transcript
+`build/dpdk-installable/r3-two-peer-1000.serial.log` SHA256:
+`aa2b0d10e58de3104b27d304e169c4b019cbe34cd8f1d06cd817308c6d67dd49`.
+These are local-output/local-input checks, **not** a transit forwarding window.
+For a longer transit run while UART remains on R3, initiate traffic at R2's
+physical keyboard (or first arrange a controlled endpoint session); a single
+UART cannot directly command all three nodes concurrently.
+
 R3-side follow-up after the serial cable was moved back: both physical links
 remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another
 3000/3000 run passes (33261 ms, RTT avg 0.185 ms), followed by 1000/1000
