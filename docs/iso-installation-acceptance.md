@@ -280,3 +280,23 @@ installation, automatic PCI driver binding on I211, DPDK forwarding, or
 performance. Physical installation will erase the explicitly selected target
 disk and remains a separate operator action; do not use the USB boot device as
 the installation target.
+# 2026-10-09 r10 optimized raw installer checkpoint
+
+Artifact: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261009-r10.iso`.
+SHA256: `fb1e30c236e74f7bfa0bc3c0bb837a0696aafe27e94bb30b4205a934b98ed0dc`.
+Installer source: `a8811f9`; installed runtime payload is unchanged from r9.
+This is an optimized raw installer, **not** the pending ADR-0008 rootfs installer.
+
+Embedded manifest/script and BIOS boot structure checks pass. A disposable
+5 GiB QEMU virtio disk was installed using the kernel/initramfs extracted from
+this exact ISO, with the ISO attached as read-only CD media. Write output was
+`1024+0 records in/out`; full 4 GiB readback digest passed and installer exited
+with rc=0. Guest uptime at the subsequent LIVE transition was approximately
+106 seconds; this is not a measured physical-install duration.
+
+With ISO detached and no direct kernel arguments, the installed disk boots
+through GRUB to Debian root shell; FRR is active. VPP was still activating at
+the sampled check and API/stat sockets were not confirmed. Consequently full
+runtime qualification remains pending, as do USB firmware boot, UEFI and R3
+physical installation. Post-install LIVE mgrd reports missing `libz.so.1`;
+this dependency issue is open and must not be hidden by the installer PASS.
