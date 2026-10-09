@@ -69,6 +69,34 @@ address using `set interface ip address del <interface> <address/prefix>`.
 Restore previously down test interfaces after removing addresses/routes;
 do not flush unrelated host routes or NetworkManager settings.
 
+### Subsequent short-soak results: anomaly retained
+
+At approximately 100 requested probes/s (`ping -i 0.01`), first host-to-R4
+1000-probe run received 972/1000, 2.8% loss, 15 local unreachable errors,
+21832 ms elapsed. R4 RX/TX each rose from 126 to 1100 (+974), while drops
+stayed at 1. This run is FAIL against a zero-loss baseline; not a throughput
+or line-rate measurement. Host-origin `Destination Host Unreachable` around
+sequences 456–476 suggests a first-hop neighbor-resolution problem, but
+without simultaneous R3 trace/ARP capture the cause is unproven.
+
+No configuration change was made before subsequent probes: direct R3
+300/300 passed; host-to-R4 repeat 1000/1000 passed (11104 ms,
+RTT avg 0.189 ms); another 3000/3000 passed (33195 ms, RTT min/avg/max
+0.101/0.188/1.469 ms). During the final run, timestamped host neighbor
+monitor observed PROBE → REACHABLE transitions for 10.10.0.1, no FAILED
+entry. Monitor timeout rc=124 is the expected bounded observation end.
+Later PASS runs do not erase the earlier anomaly; hardware stability closeout
+remains open pending first-hop diagnostics and a longer identity-bound run.
+
+Logs under `build/dpdk-installable/` (local artifacts, not repository blobs):
+
+| Log | SHA256 |
+|---|---|
+| r3-r4-1000-ping.log | a2bcc69be042c7f68132d5902211251cb1026c4c3a10a4d8673090986cc0bf05 |
+| r3-r4-1000-retest-ping.log | 901eedbebf0dfdca4e742156cf7f32fb42c6f7c1d65a4a21aa04b99f7c163c5f |
+| r3-r4-3000-ping.log | 7298ba36a6e70275f92059d513c0efa15edba78674819744806f00c3236e7b9f |
+| r3-r4-neighbor-monitor.log | 38377cc6d3808faac2a97fe8663bc7aa663ab4f322856b1f8a90e3e084b4f3b6 |
+
 使用两条独立链路，每条链路各有一个 Linux peer（或两个相互隔离的 Linux network
 namespace）。不要把两个 peer 网段桥接到同一个 L2。DANOS traffic ISO 默认配置为：
 
