@@ -13,6 +13,7 @@ This directory records architecture decisions for DANOS-Open.
 | 0005 | Transaction-Based Configuration Model | Accepted | 2024-12-01 |
 | 0006 | BFD 会话由 FRR bfdd 承载,DANOS-Open 只做状态聚合 | Accepted | 2026-09-13 |
 | 0007 | Backend Adapter 管线与 PROGRAMMED 生命周期 | Accepted | 2026-09-13 |
+| 0008 | 离线 rootfs 文件级安装 | Accepted (implementation pending) | 2026-10-09 |
 
 ## Format
 

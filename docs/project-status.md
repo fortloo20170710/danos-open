@@ -1,5 +1,18 @@
 # DANOS Open Project Status
 
+## 2026-10-09 installer redesign checkpoint
+
+The generic r9 installer has QEMU install/cold-boot/reboot evidence (see
+`docs/iso-installation-acceptance.md`). R3 is now reported to be installing,
+but the operator reports excessive duration; physical completion and stage
+timings have not been confirmed. Do not interrupt an active disk write.
+
+ADR-0008 selects offline rootfs file-level installation as the next default,
+with raw-image installation retained for rescue. Implementation and BIOS/UEFI
+qualification are pending, not PASS. Existing software/network acceptance is
+unchanged; physical installed boot and PCI traffic remain open. Earlier UART
+reservation and r8-only statements below are historical snapshots.
+
 ## 2026-10-09 latest release qualification snapshot on `fd1d7eb`
 
 The physical I211 runner profile has been advanced to r6 so its ISO metadata

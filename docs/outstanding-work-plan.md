@@ -7,6 +7,20 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-09 installer performance follow-up
+
+- [x] Inspect r9 installer overhead and select offline rootfs installation
+  (ADR-0008). QEMU r9 qualification is retained; R3 completion is unconfirmed.
+- [ ] Define rootfs manifest and build an offline, metadata-preserving payload.
+- [ ] Implement safe partition/copy/bootloader installation with stage timings.
+- [ ] Test failure paths and qualify BIOS/UEFI separately in disposable QEMU.
+- [ ] Generate the qualified installable ISO and record its digest/evidence.
+- [ ] Measure R3 installation and verify installed boot/PCI traffic after
+  explicit target authorization. Do not interrupt the current installation.
+
+This checkpoint supersedes older installer recommendations, not previously
+recorded software or packet-test evidence.
+
 ### 2026-10-09 current v0.16 closeout checkpoint (`42d220e`)
 
 Authoritative current state is the latest project snapshot in
