@@ -39,6 +39,17 @@ full hardware traffic PASS.
 
 ### Next physical ECMP topology (not yet wired/qualified)
 
+Operator subsequently installed/booted R1 and connected R1.P1 ↔ R3.P2.
+UART confirms R1 root `/dev/sda1` ext4 and active VPP; port MACs are
+`00:1f:7a:40:28:20` through `:23`. All four ports were temporarily set
+admin-up but no carrier was observed while R3's new port remained unverified.
+No physical-port IP or return route is assigned before mapping is confirmed.
+R1's newly created `loop0` is up with 30.30.30.2–.5 as /32 addresses;
+this is preparation only, not peer reachability or ECMP PASS.
+Local preparation transcript: `build/dpdk-installable/r1-ecmp-peer-preparation.serial.log`.
+Next required action is enabling the candidate R3 port and confirming the
+R1 carrier/MAC mapping, then assigning 10.30.0.2/24 and its return route.
+
 Keep R2.P1 ↔ R3.P4 (ingress) and R4.P1 ↔ R3.P1 (egress path A).
 Install/boot r12 on independent R1 and add R1.P1 ↔ R3.P2 as egress path B;
 identify actual VPP port mappings by MAC/link probing before assigning IPs.
