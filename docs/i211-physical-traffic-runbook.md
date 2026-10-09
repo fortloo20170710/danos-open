@@ -115,6 +115,38 @@ For a longer transit run while UART remains on R3, initiate traffic at R2's
 physical keyboard (or first arrange a controlled endpoint session); a single
 UART cannot directly command all three nodes concurrently.
 
+### R2-initiated 60000-probe transit observation (endpoint result pending)
+
+Operator reports launching on R2:
+`vppctl -s /run/vpp/cli.sock ping 10.20.0.2 source GigabitEthernet1/0/0 interval 0.01 repeat 60000 > /tmp/r2-r4-soak.log 2>&1 &`.
+With UART on R3, snapshots show ongoing traffic then three unchanged samples.
+The continuous capture spans R3 timestamps 11:08:09–11:16:37 UTC; collection
+started after endpoint traffic began and therefore is not a complete run timer.
+
+| R3 port | Pre-launch recorded RX/TX | Quiescent RX/TX | RX/TX delta | Drops before/after |
+|---|---|---|---|---|
+| GigabitEthernet1/0/0 (R4 side) | 12336 / 12121 | 72336 / 72121 | +60000 / +60000 | 215 / 215 |
+| GigabitEthernet4/0/0 (R2 side) | 13304 / 12424 | 73304 / 72424 | +60000 / +60000 | 880 / 880 |
+
+Snapshot windows show matched RX/TX progress around 100 probes/s; learned
+neighbors remain R2/R4 MACs. During capture, DPDK counter remains 22, ARP
+source/destination rejection counters remain 682/168 and interface-down
+counter remains 4. No counters were reset or static neighbors introduced.
+The UART observer exits `WINDOW_QUIESCENT`, not PASS: endpoint sent/received,
+loss, actual elapsed time and log completion still require R2's
+`/tmp/r2-r4-soak.log`. Do not infer end-to-end zero loss solely from R3 counters.
+This modest-rate extended test is not line-rate, ECMP or restart qualification.
+
+Local evidence:
+
+- `r3-transit-soak-window.serial.log` SHA256
+  `032e9fb70668ede79eca8eef62518a3e52aa477adaf2116585d4289617934142`.
+- `r3-transit-soak-continuous.serial.log` SHA256
+  `15cb2d6de141dde1c2012d39831bc18971c8050f4b1e04118ad048433ee08ff3`.
+- Reusable observer: `danos-test/integration/capture_vpp_transit_window.py`,
+  exclusive output creation, bounded capture, incomplete-marker rejection and
+  explicit quiescence-vs-endpoint acceptance separation. Parser tests pass.
+
 R3-side follow-up after the serial cable was moved back: both physical links
 remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another
 3000/3000 run passes (33261 ms, RTT avg 0.185 ms), followed by 1000/1000
