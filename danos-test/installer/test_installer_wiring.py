@@ -29,6 +29,8 @@ installer = (root / "danos-test/installer/install_disk.sh").read_text()
 assert "media_wait_seconds=${DANOS_INSTALLER_MEDIA_WAIT_SECONDS:-45}" in installer
 assert "mdev -s" in installer and "waiting for USB/ISO block media" in installer
 assert "DANOS-INSTALLER-RECOVERY" in init
+assert 'DANOS-INSTALLER-COMPLETE' in init
+assert init.index('DANOS-INSTALLER-COMPLETE') < init.index('# network drivers')
 runner_builder = (root / "danos-test/installer/build_i211_disk_image.sh").read_text()
 runtime_package = (root / "danos-test/installer/package_vpp_runtime.sh").read_text()
 assert "DANOS-RUNNER-ROOTFS-CONFIGURED PASS" in runner_builder
@@ -57,6 +59,7 @@ assert 'test -s "$TMP/initramfs-check/modules/sd_mod.ko"' in generic_iso_builder
 assert "-boot_image any replay" in generic_iso_builder
 assert "/installer/danos-i211-installed.raw.gz" in generic_iso_builder
 assert "DANOS_INSTALLER_PAYLOAD_SHA256" in generic_iso_builder
+assert 'DANOS_INSTALLER_LIBZ' in generic_iso_builder
 assert "/isolinux/isolinux.cfg" in generic_iso_builder
 
 print("Install ISO boot-path wiring PASS")

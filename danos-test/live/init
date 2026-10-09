@@ -88,9 +88,13 @@ if test "$installer_mode" = 1; then
     /bin/busybox sh /bin/danos-install
     installer_rc=$?
     say_live "DANOS-INSTALLER-EXIT rc=${installer_rc}"
-    if test "$installer_rc" -ne 0; then
+    if test "$installer_rc" -eq 0; then
+        say_live 'DANOS-INSTALLER-COMPLETE: remove installation media and reboot from the installed disk'
+        say_live 'Installation is complete; LIVE services will not be started. Recovery shell: reboot -f'
+    else
         say_live 'DANOS-INSTALLER-RECOVERY: install failed; refusing to continue into LIVE mode'
         say_live 'Inspect /proc/partitions and /dev, then retry with: sh /bin/danos-install'
+    fi
         if test -c /dev/ttyS0; then
             /bin/busybox setsid /bin/busybox sh -c \
                 'exec /bin/busybox sh -i </dev/ttyS0 >/dev/ttyS0 2>&1' &
@@ -100,7 +104,6 @@ if test "$installer_mode" = 1; then
                 'exec /bin/busybox sh -i </dev/tty1 >/dev/tty1 2>&1'
         fi
         exec /bin/busybox sh -i </dev/console >/dev/console 2>&1
-    fi
 fi
 
 # network drivers (QEMU management NICs; DPDK owns dataplane NICs)

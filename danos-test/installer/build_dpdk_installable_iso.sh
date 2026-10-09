@@ -9,6 +9,7 @@ BASE_ISO=${DANOS_INSTALLER_BASE_ISO:-}
 PAYLOAD=${DANOS_INSTALLER_DISK_IMAGE:-}
 DISK_MANIFEST=${DANOS_INSTALLER_DISK_MANIFEST:-}
 SD_MOD=${DANOS_INSTALLER_SD_MOD:-$ROOT/build/dpdk-installable/sd_mod.ko.xz}
+LIBZ=${DANOS_INSTALLER_LIBZ:-}
 
 if test -z "$BASE_ISO"; then
     BASE_ISO=$(find "$ROOT/build" -maxdepth 1 -type f \
@@ -56,6 +57,17 @@ gzip -dc "$TMP/base-initramfs.cpio.gz" | \
 install -m 0755 "$ROOT/danos-test/installer/install_disk.sh" \
     "$TMP/initramfs/bin/danos-install"
 install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"
+# Old base images may omit the zlib SONAME required by mgrd. Never silently
+# publish such a LIVE runtime or mix in a library from the build host.
+if test -n "$LIBZ"; then
+    test -f "$LIBZ" || { echo 'ERROR: DANOS_INSTALLER_LIBZ must be a Debian runtime library' >&2; exit 2; }
+    install -m 0644 "$LIBZ" "$TMP/initramfs/lib/x86_64-linux-gnu/libz.so.1"
+fi
+test -f "$TMP/initramfs/lib/x86_64-linux-gnu/libz.so.1" || {
+    echo 'ERROR: base runtime lacks libz.so.1; supply DANOS_INSTALLER_LIBZ from the matching Debian runtime' >&2
+    exit 2
+}
+LIBZ_SHA=$(sha256sum "$TMP/initramfs/lib/x86_64-linux-gnu/libz.so.1" | awk '{print $1}')
 if test ! -r "$TMP/initramfs/modules/sd_mod.ko"; then
     test -r "$SD_MOD" || {
         echo "ERROR: initramfs lacks sd_mod; provide the matching kernel module via DANOS_INSTALLER_SD_MOD" >&2
@@ -108,6 +120,7 @@ DANOS_INSTALLER_DISK_MANIFEST=$DISK_MANIFEST
 DANOS_INSTALLER_BOOT_MODE=legacy-bios
 DANOS_INSTALLER_INITRAMFS_SHA256=$INITRAMFS_SHA
 DANOS_INSTALLER_SD_MOD_SHA256=$SD_MOD_SHA
+DANOS_INSTALLER_LIBZ_SHA256=$LIBZ_SHA
 DANOS_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 DANOS_SOURCE_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
 EOF
