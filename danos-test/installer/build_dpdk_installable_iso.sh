@@ -10,6 +10,7 @@ PAYLOAD=${DANOS_INSTALLER_DISK_IMAGE:-}
 DISK_MANIFEST=${DANOS_INSTALLER_DISK_MANIFEST:-}
 SD_MOD=${DANOS_INSTALLER_SD_MOD:-$ROOT/build/dpdk-installable/sd_mod.ko.xz}
 LIBZ=${DANOS_INSTALLER_LIBZ:-}
+LIBZSTD=${DANOS_INSTALLER_LIBZSTD:-}
 
 if test -z "$BASE_ISO"; then
     BASE_ISO=$(find "$ROOT/build" -maxdepth 1 -type f \
@@ -68,6 +69,15 @@ test -f "$TMP/initramfs/lib/x86_64-linux-gnu/libz.so.1" || {
     exit 2
 }
 LIBZ_SHA=$(sha256sum "$TMP/initramfs/lib/x86_64-linux-gnu/libz.so.1" | awk '{print $1}')
+if test -n "$LIBZSTD"; then
+    test -f "$LIBZSTD" || { echo 'ERROR: DANOS_INSTALLER_LIBZSTD must be a Debian runtime library' >&2; exit 2; }
+    install -m 0644 "$LIBZSTD" "$TMP/initramfs/lib/x86_64-linux-gnu/libzstd.so.1"
+fi
+test -f "$TMP/initramfs/lib/x86_64-linux-gnu/libzstd.so.1" || {
+    echo 'ERROR: base runtime lacks libzstd.so.1; supply DANOS_INSTALLER_LIBZSTD from the matching Debian runtime' >&2
+    exit 2
+}
+LIBZSTD_SHA=$(sha256sum "$TMP/initramfs/lib/x86_64-linux-gnu/libzstd.so.1" | awk '{print $1}')
 if test ! -r "$TMP/initramfs/modules/sd_mod.ko"; then
     test -r "$SD_MOD" || {
         echo "ERROR: initramfs lacks sd_mod; provide the matching kernel module via DANOS_INSTALLER_SD_MOD" >&2
@@ -121,6 +131,7 @@ DANOS_INSTALLER_BOOT_MODE=legacy-bios
 DANOS_INSTALLER_INITRAMFS_SHA256=$INITRAMFS_SHA
 DANOS_INSTALLER_SD_MOD_SHA256=$SD_MOD_SHA
 DANOS_INSTALLER_LIBZ_SHA256=$LIBZ_SHA
+DANOS_INSTALLER_LIBZSTD_SHA256=$LIBZSTD_SHA
 DANOS_SOURCE_COMMIT=$(git -C "$ROOT" rev-parse HEAD)
 DANOS_SOURCE_DIRTY=$(if git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet; then echo 0; else echo 1; fi)
 EOF
