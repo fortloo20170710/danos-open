@@ -206,7 +206,7 @@ test "$confirmation" = "ERASE $target" || {
 }
 
 say 'DANOS INSTALLER: writing persistent system image; do not power off'
-gzip -dc "$payload" | dd of="$target" bs=4M conv=fsync status=noxfer
+gzip -dc "$payload" | dd of="$target" bs=4M iflag=fullblock conv=fsync status=noxfer
 sync
 say 'DANOS INSTALLER: write finished; verifying target readback digest'
 # Large reads avoid millions of 512-byte operations. Hash exactly the image
