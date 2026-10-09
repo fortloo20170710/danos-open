@@ -2,6 +2,39 @@
 
 更新时间：2026-10-04
 
+## 2026-10-09 R3 installed-disk single-port smoke
+
+Following the operator's installation PASS photo and reboot, serial inspection
+confirmed root `/dev/sda1` ext4, FRR/VPP active and VPP API/stat sockets.
+All four `8086:1539` I211 devices (01:00.0 through 04:00.0) were bound to
+`uio_pci_generic`; VPP Intel e1000 PMD exposed four polling ports. This is
+runtime observation, not an independent on-device verification of ISO digest.
+
+Temporary admin-up probing identified `GigabitEthernet1/0/0` / 01:00.0 /
+MAC `00:1f:7a:69:f7:4c` as the connected 1 Gbps full-duplex link to development
+host `enp4s0`. The other three ports had no carrier. A temporary isolated
+subnet used VPP `198.18.0.1/30` and host `198.18.0.2/30`:
+
+- Host to VPP: 5 transmitted, 5 received, 0% loss; RTT min/avg/max
+  0.108/0.199/0.489 ms.
+- VPP to host: 5 sent, 5 received, 0% loss.
+- VPP port snapshot included 226 RX, 11 TX and 215 drops; other host traffic
+  was present, so these are not isolated per-probe deltas or a zero-drop claim.
+
+After testing, the exact temporary addresses were removed and all VPP ports
+restored to their original admin-down state. Host NetworkManager applied its
+own shared address while the link was up and cleared addresses on link-down;
+no persistent host network profile or wireless management setting was edited.
+VPP deletion syntax used for cleanup is
+`set interface ip address del GigabitEthernet1/0/0 198.18.0.1/30`.
+
+Scope: physical single-port local ICMP RX/TX smoke PASS. This does **not**
+qualify ingress-to-egress forwarding, ECMP, FRR dynamic routes or line-rate
+performance. Two independent links/peers are still required for the topology
+below. Observations were interactive serial checks, not an identity-bound
+full cold-boot traffic capture; do not feed this note into the strict gate as
+full hardware traffic PASS.
+
 ## 拓扑
 
 使用两条独立链路，每条链路各有一个 Linux peer（或两个相互隔离的 Linux network
