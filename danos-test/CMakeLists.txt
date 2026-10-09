@@ -102,6 +102,9 @@ add_test(NAME dpdk_perf_result_schema
 set_tests_properties(dpdk_perf_result_schema PROPERTIES TIMEOUT 30)
 add_test(NAME install_disk_safety
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_install_disk.sh)
+
+add_test(NAME installer_rootfs_payload
+  COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_rootfs_payload.sh)
 add_test(NAME dpdk_pci_autodiscovery
   COMMAND bash ${CMAKE_SOURCE_DIR}/danos-test/installer/test_prepare_i211_dpdk.sh)
 

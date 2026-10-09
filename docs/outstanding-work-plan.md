@@ -12,6 +12,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] Inspect r9 installer overhead and select offline rootfs installation
   (ADR-0008). QEMU r9 qualification is retained; R3 completion is unconfirmed.
 - [ ] Define rootfs manifest and build an offline, metadata-preserving payload.
+  Initial builder and CTest fixture added: archive/OS/package digests, transient
+  exclusions, permissions and hard/symbolic links. Privileged ownership/xattr
+  qualification and real-runtime payload remain pending; manifest explicitly
+  sets `DANOS_ROOTFS_QUALIFIED=0`.
 - [ ] Implement safe partition/copy/bootloader installation with stage timings.
 - [ ] Test failure paths and qualify BIOS/UEFI separately in disposable QEMU.
 - [ ] Generate the qualified installable ISO and record its digest/evidence.
