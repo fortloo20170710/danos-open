@@ -115,7 +115,7 @@ For a longer transit run while UART remains on R3, initiate traffic at R2's
 physical keyboard (or first arrange a controlled endpoint session); a single
 UART cannot directly command all three nodes concurrently.
 
-### R2-initiated 60000-probe transit observation (endpoint result pending)
+### R2-initiated 60000-probe transit observation (endpoint verified)
 
 Operator reports launching on R2:
 `vppctl -s /run/vpp/cli.sock ping 10.20.0.2 source GigabitEthernet1/0/0 interval 0.01 repeat 60000 > /tmp/r2-r4-soak.log 2>&1 &`.
@@ -132,9 +132,10 @@ Snapshot windows show matched RX/TX progress around 100 probes/s; learned
 neighbors remain R2/R4 MACs. During capture, DPDK counter remains 22, ARP
 source/destination rejection counters remain 682/168 and interface-down
 counter remains 4. No counters were reset or static neighbors introduced.
-The UART observer exits `WINDOW_QUIESCENT`, not PASS: endpoint sent/received,
-loss, actual elapsed time and log completion still require R2's
-`/tmp/r2-r4-soak.log`. Do not infer end-to-end zero loss solely from R3 counters.
+The UART observer exits `WINDOW_QUIESCENT`, not PASS; the separately collected
+endpoint verdict below closes sent/received/loss and log completion. Actual
+full-run elapsed time was not recorded. Do not infer end-to-end zero loss
+solely from R3 counters.
 This modest-rate extended test is not line-rate, ECMP or restart qualification.
 
 Local evidence:
@@ -146,6 +147,30 @@ Local evidence:
 - Reusable observer: `danos-test/integration/capture_vpp_transit_window.py`,
   exclusive output creation, bounded capture, incomplete-marker rejection and
   explicit quiescence-vs-endpoint acceptance separation. Parser tests pass.
+
+After UART was moved to R2, MAC `00:1f:7a:69:f5:ec` and 1 Gbps link confirm
+the endpoint. `/tmp/r2-r4-soak.log` reports 60000 sent, 60000 received,
+0% packet loss; no matching ping process remains. An independent awk check
+finds exactly 60000 responses, missing=0, duplicate=0, unexpected_ttl=0
+(all TTL 63). The 3,769,042-byte original log was gzip/base64 transferred
+over UART and decoded locally; the original and local SHA256 agree:
+`92af013aabd640541a1c7da965fb989f73684dd76477bdae945b373fd6ed9ff3`.
+Local full log: `build/dpdk-installable/r2-r4-60000-full.log`.
+The first decoding attempt missed the ANSI-prefixed BEGIN marker; extraction
+was corrected and the entire decoded file verified, not accepted by mere tail.
+
+Endpoint evidence:
+
+- `r2-60000-endpoint-verdict.serial.log` SHA256
+  `0259e0b938bc1fd0869b46ab027815eec1467d9122cfcb766a7ab8c0b75c93f7`.
+- `r2-60000-sequence-check.serial.log` SHA256
+  `58b715c2fc4ab57869a1e7cecffce7e4ef03c97a1b0b098dda6f30cec2e52c2f`.
+
+Verdict: this scoped isolated three-node 60000-probe IPv4 transit test PASS.
+Nominal interval is 0.01 seconds, not measured wire throughput. It does not
+prove 24-hour stability, ECMP, restart recovery, FRR/DPA-driven programming,
+or repair of the previous development-host anomaly. ISO r12 identity remains
+operator-reported, not an independently observed physical cold-boot digest.
 
 R3-side follow-up after the serial cable was moved back: both physical links
 remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another

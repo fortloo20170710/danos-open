@@ -1,5 +1,18 @@
 # DANOS Open Project Status
 
+## 2026-10-09 physical three-node forwarding checkpoint
+
+Installed R2 ↔ R3 ↔ R4 I211 topology passes both 1000-probe initiation
+directions and a subsequent R2-initiated 60000-probe IPv4 transit run:
+60000 sent/received, zero loss, all sequences unique and TTL 63. R3 port
+RX/TX deltas are +60000 each and drops do not increase. The complete endpoint
+log is archived locally with matching endpoint/local SHA256; detailed evidence
+is in `docs/i211-physical-traffic-runbook.md`.
+This is a modest-rate functional/extended-soak result with manual VPP CLI
+configuration, not line-rate PCI performance or a complete release-gate PASS.
+Physical ECMP, reboot/replay, FRR/DPA-driven traffic and identity-bound cold
+boot qualification remain open. The earlier host-peer anomaly is not erased.
+
 ## 2026-10-09 r12 installation delivery checkpoint
 
 The latest BIOS-installable lab artifact is generic DPDK r12, source `4861464`.
