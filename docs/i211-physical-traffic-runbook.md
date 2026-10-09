@@ -91,6 +91,18 @@ host anomaly is fixed, not long-duration stability or line-rate/ECMP acceptance.
 Reverse initiation from R4 in this new topology and R3 counter deltas remain
 to be collected. R2/R3/R4 temporary test configuration is retained; no reboot.
 
+Reverse initiation is subsequently verified after switching UART to R4:
+MAC `00:1f:7a:40:01:80`, port1 at 1 Gbps full duplex, 10.20.0.2/24,
+10.10.0.2/32 resolved via 10.20.0.1. Command
+`ping 10.10.0.2 source GigabitEthernet1/0/0 interval 0.01 repeat 1000`
+passes 1000/1000 with TTL 63 and 0% loss. R4 port RX/TX each increases
+10110→11110 (+1000); drops remain 1. Dynamic R3 neighbor MAC is correct.
+Local transcript `build/dpdk-installable/r4-r3-r2-1000.serial.log` SHA256:
+`ac3f8e06ed0881b400991eb0632822fabd17fd4459281921766b3069377f9206`.
+Thus both initiation directions have an isolated three-node short baseline.
+R3 counter-window evidence, longer soak, restart recovery and ECMP remain open;
+the previous development-host anomaly is still retained separately.
+
 R3-side follow-up after the serial cable was moved back: both physical links
 remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another
 3000/3000 run passes (33261 ms, RTT avg 0.185 ms), followed by 1000/1000
