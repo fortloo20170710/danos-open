@@ -71,6 +71,26 @@ do not flush unrelated host routes or NetworkManager settings.
 
 ### Subsequent short-soak results: anomaly retained
 
+### Independent R2 peer follow-up
+
+Operator installed r12 on R2, booted from disk and replaced the development
+host link with R2.P1 ↔ R3.P4; R4.P1 ↔ R3.P1 remains unchanged.
+Serial identity check shows R2 root `/dev/sda1` ext4 and active VPP.
+R2.P1 maps to `GigabitEthernet1/0/0`, MAC `00:1f:7a:69:f5:ec`, link
+1 Gbps full duplex. Temporary CLI configuration: 10.10.0.2/24, route
+10.20.0.2/32 via 10.10.0.1 on that interface; other R2 ports admin-down.
+No disk, driver binding or persistent configuration was changed.
+
+Direct R2→R3 passes 5/5; R2→R3→R4 passes 10/10, TTL 63.
+VPP CLI `ping 10.20.0.2 source GigabitEthernet1/0/0 interval 0.01 repeat 1000`
+passes 1000 sent/1000 received, 0% loss. R2 learns the correct R3.P4 MAC
+dynamically. Local transcript `build/dpdk-installable/r2-r3-r4-1000.serial.log`
+SHA256: `6c6256e603786c4eca0a807bb785d0ef9bb0a2613a3ad5b5bb495019cbd2d0d6`.
+This is an isolated-peer short functional baseline, not proof that the earlier
+host anomaly is fixed, not long-duration stability or line-rate/ECMP acceptance.
+Reverse initiation from R4 in this new topology and R3 counter deltas remain
+to be collected. R2/R3/R4 temporary test configuration is retained; no reboot.
+
 R3-side follow-up after the serial cable was moved back: both physical links
 remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another
 3000/3000 run passes (33261 ms, RTT avg 0.185 ms), followed by 1000/1000
