@@ -71,6 +71,31 @@ do not flush unrelated host routes or NetworkManager settings.
 
 ### Subsequent short-soak results: anomaly retained
 
+R3-side follow-up after the serial cable was moved back: both physical links
+remain 1 Gbps full duplex; learned neighbors match host/R4 MACs. Another
+3000/3000 run passes (33261 ms, RTT avg 0.185 ms), followed by 1000/1000
+(11094 ms, RTT avg 0.194 ms). Targeted host capture shows unicast ARP
+`who-has 10.10.0.1 tell 10.10.0.2` and R3's matching reply; no capture drops.
+This confirms working NUD in that window, not the cause of the earlier loss.
+R3 `dpdk-input` counter remains 22, `interface is down` remains 4;
+ARP source/destination rejection counters increase 602→642 and 152→160
+while unrelated host ARP traffic is present. Do not interpret the DPDK
+counter label `no error` as 22 newly failed packets.
+
+Host enp4s0 also has NetworkManager address 192.168.71.1 and pre-existing
+routes via 192.168.71.2. These were not removed: the test interface is not
+an isolated peer. Background ARP for Internet destinations was captured,
+but it does not establish why the initial first-hop neighbor resolution failed.
+Next stability qualification should use a dedicated isolated peer or an
+explicitly coordinated temporary network profile, preserving existing routes.
+No static neighbors were added to conceal the dynamic-ARP anomaly.
+
+Additional local evidence SHA256:
+
+- `r3-diag-3000-ping.log`: `1d957a8cde9daaf02751f3e3b5ef9e216e5d2b80ff6693c84815f7e6f2ca43e7`
+- `r3-arp-probe-ping.log`: `5c7741c22c08bf37553a78924d4fa6bbb66d5f9c7826031690896816d0481378`
+- `r3-target-arp.log`: `5b3ce423f0add71e9dd811ad5b3e02052483375c0f0d5f431a5695e82b819332`
+
 At approximately 100 requested probes/s (`ping -i 0.01`), first host-to-R4
 1000-probe run received 972/1000, 2.8% loss, 15 local unreachable errors,
 21832 ms elapsed. R4 RX/TX each rose from 126 to 1100 (+974), while drops
