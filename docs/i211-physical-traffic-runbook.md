@@ -37,6 +37,38 @@ full hardware traffic PASS.
 
 ## 拓扑
 
+### 2026-10-09 installed R3/R4 two-link functional test
+
+Operator wiring: development host `enp4s0` to R3.P4; R3.P1 to R4.P1.
+MAC/link checks identify R3.P4 as `GigabitEthernet4/0/0`
+(`00:1f:7a:69:f7:4f`) and R4.P1 as `GigabitEthernet1/0/0`
+(`00:1f:7a:40:01:80`). R3.P1 is `GigabitEthernet1/0/0`.
+Both links negotiate 1 Gbps full duplex. Temporary configuration:
+
+| Node | Interface | Address / route |
+|---|---|---|
+| Host | enp4s0 | 10.10.0.2/24; 10.20.0.2/32 via 10.10.0.1 |
+| R3 | GigabitEthernet4/0/0 | 10.10.0.1/24 |
+| R3 | GigabitEthernet1/0/0 | 10.20.0.1/24 |
+| R4 | GigabitEthernet1/0/0 | 10.20.0.2/24; 10.10.0.2/32 via 10.20.0.1 |
+
+Other VPP ports are admin-down. Host Wi-Fi default route remains unchanged.
+R4 directly pings R3 5/5; host-to-R4 and R4-to-host each pass 10/10 with
+TTL 63 and zero loss. A host-to-R4 short run passes 100/100, zero loss,
+10293 ms elapsed, RTT min/avg/max/mdev 0.135/0.214/0.297/0.024 ms.
+This is physical two-port IPv4 forwarding functionality, not line-rate,
+ECMP or FRR/ZAPI/DPA route programming qualification: configuration was
+applied directly via VPP CLI. Interactive checks lack a complete identity-bound
+cold-boot capture and must not be substituted into the strict release gate.
+
+Configuration is retained temporarily for subsequent tests, not persisted;
+reboot loses the VPP CLI configuration. To remove only these test entries:
+delete the host's exact 10.20.0.2/32 route and 10.10.0.2/24 address, delete
+R4's exact 10.10.0.2/32 VPP route via 10.20.0.1, and remove each listed VPP
+address using `set interface ip address del <interface> <address/prefix>`.
+Restore previously down test interfaces after removing addresses/routes;
+do not flush unrelated host routes or NetworkManager settings.
+
 使用两条独立链路，每条链路各有一个 Linux peer（或两个相互隔离的 Linux network
 namespace）。不要把两个 peer 网段桥接到同一个 L2。DANOS traffic ISO 默认配置为：
 
