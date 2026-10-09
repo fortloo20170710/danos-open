@@ -2,6 +2,46 @@
 
 更新时间：2026-10-09
 
+## Latest delivery: r12 BIOS installable lab ISO
+
+- Artifact: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261009-r12.iso`
+- Size: 520421376 bytes; source `486146445835c2047c37f39cfdd4f9ad057960f9`, clean.
+- SHA256: `e249a0661c3d912ea0599d95715e0d59d99e3cc4e32eb9e06c55c0027472f928`.
+- Runtime payload unchanged from r9; installation still uses a 4 GiB raw
+  image, not ADR-0008 file-level installation. No hardware speed claim.
+- Full-block stream writes and 4 MiB exact-length readback replace short
+  writes and sector-sized readback. Completion returns to an explicit
+  installer shell, not LIVE services. Debian runtime zlib/zstd are included
+  and their digests recorded in the ISO manifest; guest loader resolves all
+  mgrd dependencies inside the initramfs.
+
+Qualification: QEMU KVM, `-cpu host -m 2048 -smp 2`, disposable 5 GiB virtio
+disk, `qemu-xhci` USB storage containing this exact read-only ISO (bootindex 1).
+ISOLINUX `install-serial` was selected using monitor `sendkey`; no direct
+kernel/initramfs was supplied in this recorded USB test. Installer selected
+`/dev/vda`, required `ERASE /dev/vda`, excluded USB `/dev/sda`, passed complete
+readback digest, returned rc=0 and printed `DANOS-INSTALLER-COMPLETE`.
+
+With USB/ISO detached, GRUB disk boot and a subsequent reboot both passed:
+FRR/VPP active, API/stat sockets present, VPP CLI responds, root `/dev/vda1`
+is ext4, `/etc/danos/r12-acceptance-marker` survives reboot. Installed mgrd
+SHA256 is `0bf4626d4b85f3a0e3b4e95402d3f4dfeb36523560c16c8a66ace61d6b416cba`.
+Management service activation/mTLS is a separate gate; not claimed here.
+Default QEMU CPU lacks SSSE3 and cannot run this DPDK runtime; qualification
+requires exposing supported CPU features. Related CTest checks pass 3/3.
+
+| Recorded console evidence | SHA256 |
+|---|---|
+| `build/dpdk-installable/qemu-r12-usb-install.serial.log` | `412ede7fdebfd25054cf6a8d0bfa8809130e1dac579da8b226764477cc5e6425` |
+| `build/dpdk-installable/qemu-r12-coldboot-reboot.serial.log` | `4af16e04c346de72cd0e8c7cb200ad9213233fe4bdc79e0816a99e756491382d` |
+
+Legacy BIOS only; UEFI/Secure Boot and R3 physical install/DPDK traffic remain
+unqualified. GPT initially describes the 4 GiB template on larger disks; this
+raw fallback does not promise full target-capacity provisioning. Root console
+autologin is lab-only. r10/r11 are historical candidates, not latest delivery.
+Boot `install` for VGA input or `install-serial` for serial input. Whole-disk
+selection and exact uppercase `ERASE /dev/...` remain mandatory and destructive.
+
 ## Policy
 
 Effective 2026-10-08, every DANOS-Open ISO handed off for installation,

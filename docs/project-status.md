@@ -1,5 +1,17 @@
 # DANOS Open Project Status
 
+## 2026-10-09 r12 installation delivery checkpoint
+
+The latest BIOS-installable lab artifact is generic DPDK r12, source `4861464`.
+Exact USB-ISO QEMU install/readback, ISO-detached disk cold boot, reboot and
+persistence pass, with FRR/VPP active and API/stat sockets present. Artifact
+identity and console digests are in `docs/iso-installation-acceptance.md`.
+No physical R3 installation or PCI traffic PASS is claimed. Installer success
+now stops before LIVE services; zlib/zstd runtime omissions are fixed.
+This remains optimized raw installation; ADR-0008 rootfs installation and
+UEFI qualification remain pending. Do not read earlier r10 runtime failures
+as the current r12 result.
+
 ## 2026-10-09 installer redesign checkpoint
 
 The generic r9 installer has QEMU install/cold-boot/reboot evidence (see
