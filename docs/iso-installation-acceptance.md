@@ -1,6 +1,6 @@
 # ISO delivery and installation acceptance
 
-更新时间：2026-10-08
+更新时间：2026-10-09
 
 ## Policy
 
@@ -232,3 +232,51 @@ serial device was accessed for this interpretation; it is based only on the
 image supplied in the conversation. Do not retry a destructive confirmation
 until the operator explicitly confirms that the selected internal disk may be
 erased.
+
+### Clean r9 generic installer: QEMU install, cold boot and reboot PASS
+
+The current installable image was rebuilt from clean source commit
+`3f1691c62ae6200fa81028b4d8a81dfcdef6f6fc`. The installed Debian trixie disk
+is based on the previously QEMU-qualified r8 runner; its `danos-open` package
+was rebuilt from the current source with CMake Release settings and installed
+offline into a disposable disk copy. The ISO's embedded manifest and installed
+`/etc/danos/build-info.env` both identify the current commit and package hash.
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261009-r9.iso`
+- ISO SHA256: `9c464d0ebe2a6e6bcc21d85565a1036a7bb9ecd9b41f62341f65407539b7fb3d`
+- ISO size: 520,421,376 bytes; Legacy BIOS verified, UEFI not qualified.
+- Compressed installed-disk payload SHA256:
+  `56db0831ec72b0050f81cd10f28a4f4db1fa3fa06ade5e1a80d3f21d57230855`
+- Raw installed disk: 4,294,967,296 bytes; SHA256:
+  `1862c90ac7f7d71135c5d2c88f58fc45d4d8211c76e31a20e2cceaee59067cdf`
+- `danos-open` package SHA256:
+  `3e09683cf24069aabaa0d3a49c0861f5061c27aadb3ac512dbb4bb722078f891`
+- Installed `/usr/bin/danos-mgrd` SHA256:
+  `0bf4626d4b85f3a0e3b4e95402d3f4dfeb36523560c16c8a66ace61d6b416cba`
+
+QEMU booted the exact ISO as USB mass storage and installed it to a disposable
+4 GiB `/dev/vda`. The installer completed full target readback verification
+(`DANOS INSTALLER PASS`). With the ISO detached, cold boot and a subsequent
+reboot both showed `vpp.service` and `frr.service` active, `/run/vpp/api.sock`
+and `/run/vpp/stats.sock` present, `danos-open` `0.16.0~rc1-1` installed, and
+VPP 26.10 responding to `vppctl`. The running manager binary matched the
+Release build hash above.
+
+Logs and reusable payload:
+
+- `build/dpdk-installable/qemu-r9-install.serial.log`
+- `build/dpdk-installable/qemu-r9-coldboot.serial.log`
+- `build/dpdk-installable/qemu-r9-reboot.serial.log`
+- Log SHA256s, in the same order:
+  `a674eeb2aa81b05ca0f7e7cab02382e981154b55cc455570d26820a944293dbd`,
+  `5a9e0debff8de463fbd3bcf7ceb0cab1101232eb242f61b784a24692e4fc97c5`,
+  `01ba82cd181d6b34df3e7a031261e6b2b68c359adf69dd57e6510842ba2acfc4`.
+- `build/dpdk-installable/danos-open-v0.16.0-rc1-dpdk-installed-20261009T0116Z.raw.gz`
+- Matching `.manifest` beside the payload; ISO manifest:
+  `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261009-r9.iso.manifest`.
+
+This is VM installer/boot qualification only. It does not certify physical
+installation, automatic PCI driver binding on I211, DPDK forwarding, or
+performance. Physical installation will erase the explicitly selected target
+disk and remains a separate operator action; do not use the USB boot device as
+the installation target.
