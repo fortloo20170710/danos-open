@@ -208,8 +208,17 @@ test "$confirmation" = "ERASE $target" || {
 say 'DANOS INSTALLER: writing persistent system image; do not power off'
 gzip -dc "$payload" | dd of="$target" bs=4M conv=fsync status=noxfer
 sync
-blocks=$((DANOS_INSTALLED_DISK_BYTES / 512))
-actual_disk_sha=$(dd if="$target" bs=512 count="$blocks" 2>/dev/null | sha256sum | awk '{print $1}')
+say 'DANOS INSTALLER: write finished; verifying target readback digest'
+# Large reads avoid millions of 512-byte operations. Hash exactly the image
+# length, including a sector-aligned tail, not extra bytes on a larger disk.
+readback_chunks=$((DANOS_INSTALLED_DISK_BYTES / 4194304))
+readback_tail_sectors=$(((DANOS_INSTALLED_DISK_BYTES % 4194304) / 512))
+actual_disk_sha=$({
+    dd if="$target" bs=4M count="$readback_chunks" 2>/dev/null
+    if test "$readback_tail_sectors" -gt 0; then
+        dd if="$target" bs=512 skip=$((readback_chunks * 8192)) count="$readback_tail_sectors" 2>/dev/null
+    fi
+} | sha256sum | awk '{print $1}')
 test "$actual_disk_sha" = "$DANOS_INSTALLED_DISK_SHA256" || {
     say 'DANOS INSTALLER FAIL: target readback digest mismatch'
     exit 1

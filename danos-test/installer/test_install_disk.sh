@@ -7,7 +7,8 @@ WORK=$(mktemp -d "${TMPDIR:-/tmp}/danos-install-disk-test.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$WORK/media/installer" "$WORK/sys/block/testdisk/device" "$WORK/dev"
-dd if=/dev/zero of="$WORK/image.raw" bs=1M count=2 status=none
+dd if=/dev/zero of="$WORK/image.raw" bs=1M count=4 status=none
+dd if=/dev/zero bs=512 count=1 status=none >> "$WORK/image.raw"
 printf 'DANOS-TEST-IMAGE\n' | dd of="$WORK/image.raw" conv=notrunc status=none
 gzip -1 -n -c "$WORK/image.raw" > "$WORK/media/installer/danos-runner-installed.raw.gz"
 raw_bytes=$(stat -c '%s' "$WORK/image.raw")
@@ -20,8 +21,8 @@ DANOS_INSTALLED_DISK_GZIP_SHA256=$gzip_sha
 EOF
 
 target="$WORK/dev/testdisk"
-dd if=/dev/zero of="$target" bs=1M count=4 status=none
-printf '%s\n' 8192 > "$WORK/sys/block/testdisk/size"
+dd if=/dev/zero of="$target" bs=1M count=8 status=none
+printf '%s\n' 16384 > "$WORK/sys/block/testdisk/size"
 printf '%s\n' 'DANOS mock target' > "$WORK/sys/block/testdisk/device/model"
 : > "$WORK/mounts"
 printf '%s\n' "$target" "ERASE $target" | \
@@ -35,6 +36,7 @@ printf '%s\n' "$target" "ERASE $target" | \
 actual_sha=$(dd if="$target" bs=512 count=$((raw_bytes / 512)) status=none | sha256sum | awk '{print $1}')
 test "$actual_sha" = "$raw_sha"
 grep -Fq 'DANOS INSTALLER PASS' "$WORK/console"
+grep -Fq 'write finished; verifying target readback digest' "$WORK/console"
 
 before_sha=$(sha256sum "$target" | awk '{print $1}')
 if printf '%s\n%s\n' "$target" 'ERASE wrong-target' | \
