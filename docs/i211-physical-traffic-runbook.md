@@ -37,6 +37,40 @@ full hardware traffic PASS.
 
 ## 拓扑
 
+### Next physical ECMP topology (not yet wired/qualified)
+
+Keep R2.P1 ↔ R3.P4 (ingress) and R4.P1 ↔ R3.P1 (egress path A).
+Install/boot r12 on independent R1 and add R1.P1 ↔ R3.P2 as egress path B;
+identify actual VPP port mappings by MAC/link probing before assigning IPs.
+Use 10.30.0.1/24 on R3's new link and 10.30.0.2/24 on R1's peer.
+R1 and R4 must both locally answer the shared /32 destinations
+30.30.30.2–30.30.30.5, and have a return route to R2 10.10.0.2/32 via
+their respective R3 next hop. R2 reaches those destinations via 10.10.0.1;
+R3 uses equal-weight next hops 10.20.0.2 and 10.30.0.2. These are proposed
+test entries, not currently applied configuration.
+
+Acceptance order: independent neighbor reachability → two resolved FIB
+buckets → multiple flows with positive counters on both paths → next-hop
+withdraw and restore with bounded loss → endpoint-complete logs and counter
+windows. Add destinations/flows if initial hashes use only one path; never
+declare ECMP from merely configured next hops or one successful ping.
+No restart is authorized by this topology note. Persist/replay validation
+requires a separately controlled configuration/restore procedure; CLI-only
+test entries cannot be claimed to survive VPP restart automatically.
+
+The archived 60000-probe single-path endpoint log is independently checkable:
+
+```sh
+python3 danos-test/integration/verify_physical_ping_log.py \
+  build/dpdk-installable/r2-r4-60000-full.log --target 10.20.0.2 --packets 60000
+```
+
+The verifier rejects incomplete summaries, reply count disagreement,
+duplicate/out-of-range sequences, unexpected endpoints/TTL and failure text.
+Its scoped PASS explicitly leaves ISO identity, measured run duration, ECMP,
+restart and line-rate qualification unverified. It does not replace the
+existing strict I211 traffic/performance gate.
+
 ### 2026-10-09 installed R3/R4 two-link functional test
 
 Operator wiring: development host `enp4s0` to R3.P4; R3.P1 to R4.P1.
