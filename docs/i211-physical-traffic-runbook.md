@@ -4,6 +4,21 @@
 
 ## 2026-10-10 physical transit ECMP functional checkpoint
 
+Follow-on withdrawal/restoration run is **IN PROGRESS**, not PASS:
+R2 started four background endpoint pings to .2–.5, each interval 0.01,
+repeat 60000 and `timeout 900`. Device UTC start approximately
+2026-10-10 00:50:16, uptime 57833.81 (device clock, not assumed synchronized).
+Each log `/tmp/ecmp-failover-20261010-b/p{2,3,4,5}.log` retains start/end
+UTC, uptime, command exit status and replies. All four processes and early
+TTL-63 replies were observed; no completed summaries yet. Startup transcript
+is `build/dpdk-installable/r2-failover-start-20261010.serial.log`.
+Next move UART promptly to R3, check traffic is still increasing, record
+baseline and perform bounded next-hop removal/restoration with finally-style
+route restoration. If endpoint traffic has ended, do not claim a failover
+window; restart a separately identified run. Final endpoint logs must be
+recovered and validated before acceptance. No interface shutdown or reboot
+has been performed in this run.
+
 R2 ingress → R3 → R4/R1 passes scoped manual-CLI ECMP functional
 qualification. Four endpoint logs validate 4000/4000 replies, zero loss,
 TTL 63. R3's post-run snapshot compared to the **last** setup snapshot
