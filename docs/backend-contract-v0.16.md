@@ -2,6 +2,16 @@
 
 本文冻结 desired-state/reconciler 与 Linux、VPP backend 之间的行为契约。
 
+当前复核（2026-10-10）：checkout `9cd1f2a` 的三段确定性 backend contract
+gate PASS，日志 `build/backend-contract-9cd1f2a-review.log`；本机 CTest 64/64
+PASS。冻结范围仍是 §1–§6，不因工具或测试数量增加而扩大。最新 clean QEMU
+软件生命周期证据为 `build/qemu-v016-7b10494-accepted/`，包括 FRR/VPP 重启、
+ECMP 撤销/恢复及全部四目的地址恢复探测。shared-L2 learned-route 独立复验
+仍在运行，尚未签发 PASS。四机 I211 功能/CLI service replay 与真正的
+64-byte 单核性能资格分层记录，后者仍未完成。最新结论见
+`docs/v0.16-acceptance-matrix.md` 与 `docs/outstanding-work-plan.md`；§7–§8 为
+历史验收快照，不能以其旧测试数量或环境描述覆盖当前状态。
+
 ## 1. 调用与对象生命周期
 
 - backend 由 `danos_backend_ops_set()` 在 reconciler 启动前安装；`name` 用于
