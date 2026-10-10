@@ -4,6 +4,15 @@
 
 ## Recovery checkpoint and preparation history
 
+**Bounded physical UDP PG transit PASS (functional only).** R2 emitted four
+finite streams of 20 MAC frames each (64 bytes excluding FCS). R3's unchanged
+PID 2312 shows P4 RX/TX +80, P1 +60 and P2 +20; FIB 8000→8080, both next hops
+resolved, drops and node errors unchanged. This demonstrates both ECMP
+egresses, not equal distribution, UDP application delivery or line rate.
+Evidence and hashes are in `v0.16-performance-result-schema.md`; checked
+deltas are `build/r3-r2-pg-probe-deltas-20261010.json`. Performance remains
+ENVIRONMENT-OPEN pending synchronized measurements and receiver evidence.
+
 **All-restored unified warm-transit regression PASS (lab CLI only).**
 Final capture verifies R3 identity, unchanged PID 2312 and correct peer MACs.
 Against the separately archived all-restored baseline:

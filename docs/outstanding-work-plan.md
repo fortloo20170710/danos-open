@@ -13,7 +13,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   four flows ×20 frames, bounded 10 requested pps, all stopped at count 20.
   Hardware TX/RX +80; TX bytes +5120. All streams cleaned up. Raw evidence
   and digest in performance schema. This is wire-emission evidence, not
-  full PCI performance; R3 UART requested for ingress/ECMP egress verification.
+  full PCI performance. R3 return capture now verifies the same PID 2312:
+  P4 RX/TX +80, P1 +60, P2 +20, FIB 8000→8080; drops/node errors unchanged.
+  Bounded wire transit is PASS; synchronized CPU, timing, decoded receiver
+  counts and latency remain open. See performance schema for evidence hashes.
 - [x] Remote `45d62b4` workflows verified completed success: CI run
   `38041111065`, Coverage `38041111036`, Interop Gate `38041111051`.
   Hosted CI does not replace physical performance qualification.
