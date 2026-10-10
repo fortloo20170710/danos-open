@@ -4,6 +4,24 @@
 
 ## Recovery checkpoint and preparation history
 
+**All-restored unified warm-transit regression PASS (lab CLI only).**
+Final capture verifies R3 identity, unchanged PID 2312 and correct peer MACs.
+Against the separately archived all-restored baseline:
+
+| R3 port | Baseline RX / TX | Final RX / TX | Delta RX / TX | Drops before / after |
+|---|---|---|---|---|
+| 4 / ingress | 6398 / 6398 | 10398 / 10398 | 4000 / 4000 | 2 / 2 |
+| 1 / R4 | 2300 / 2300 | 3300 / 3300 | 1000 / 1000 | 2 / 2 |
+| 2 / R1 | 4300 / 4300 | 7300 / 7300 | 3000 / 3000 | 2 / 2 |
+
+FIB aggregate 4000→8000 and both Ethernet adjacencies remain resolved.
+Recorded node-error counters are unchanged. Four strict endpoint logs below
+complete the evidence chain; older PENDING statements for this regression
+are superseded. No whole-machine reboot, cold-zero-loss recovery, ledger
+replay or line-rate qualification follows from this result.
+Final capture `build/dpdk-installable/r3-all-restored-post-20261010.serial.log`
+SHA256 `3b1662031154eae87cd56d14c90a486ff2981883a6f0d953027f707dcb866fe5`.
+
 All-restored endpoint regression completed: R2 identity and shared-prefix
 route verified, no pre-existing ping process. A separately identified run
 in `/tmp/ecmp-all-restored-20261010/` sent four concurrent 1000-probe streams.

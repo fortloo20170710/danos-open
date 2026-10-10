@@ -1,5 +1,22 @@
 # DANOS Open Project Status
 
+## Current physical recovery verdict — 2026-10-10
+
+All four explicit lab CLI profiles are deployed and each VPP service has
+been restarted independently. The subsequent all-restored transit regression
+passes 4000/4000 with strict original endpoint-log verification. Same-process
+R3 deltas: ingress RX/TX +4000/+4000, R4 +1000/+1000, R1 +3000/+3000.
+FIB aggregate rises 4000→8000, both next hops remain Ethernet-resolved,
+interface drops and the recorded node errors remain unchanged. Scoped
+warm-neighbor, lab-CLI service-recovery/dual-path functionality is PASS.
+
+Cold-neighbor first-probe losses are retained. Whole-machine reboot,
+DANOS ledger/FRR-driven physical replay, physical failure detection,
+CPU/wire-rate performance and artifact-bound release qualification remain
+OPEN. This is not a unified release PASS. Evidence is in the physical runbook.
+The dated checkpoints below are history; pending hook/dual-egress statements
+are superseded by this current verdict, not by broader recovery claims.
+
 ## 2026-10-10 physical VPP service replay checkpoint
 
 R1 follow-up completes lab hook deployment on all four nodes. R1 VPP

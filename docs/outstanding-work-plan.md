@@ -25,6 +25,18 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 This checkpoint supersedes older installer recommendations, not previously
 recorded software or packet-test evidence.
 
+### 2026-10-10 physical recovery update
+
+Four-node I211 manual-CLI ECMP and bidirectional next-hop withdrawal/restore
+now have original endpoint logs and device-delta evidence. All four nodes
+have explicit lab startup profiles; independent VPP service restarts followed
+by all-restored 4000-probe dual-egress regression pass. This closes only
+lab-CLI warm-transit service recovery. Preserve cold-neighbor first-packet
+losses and do not upgrade the unified release gate. Next required work:
+whole-machine boot evidence, FRR/DPA-owned physical replay, reproducible
+machine-readable performance results with CPU/throughput and artifact identity.
+See `docs/i211-physical-traffic-runbook.md` for current scoped verdicts.
+
 ### 2026-10-09 current v0.16 closeout checkpoint (`42d220e`)
 
 Authoritative current state is the latest project snapshot in
