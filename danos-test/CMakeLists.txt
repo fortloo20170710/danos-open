@@ -125,6 +125,9 @@ set_tests_properties(physical_lab_profile PROPERTIES TIMEOUT 30)
 add_test(NAME physical_lab_replay
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/installer/test_replay_physical_lab.py)
 set_tests_properties(physical_lab_replay PROPERTIES TIMEOUT 30)
+add_test(NAME qemu_restored_flows
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_restored_flows.py)
+set_tests_properties(qemu_restored_flows PROPERTIES TIMEOUT 30)
 add_test(NAME frr_dynamic_log_evidence
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_frr_dynamic_log.py)
 set_tests_properties(frr_dynamic_log_evidence PROPERTIES TIMEOUT 30)

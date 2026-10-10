@@ -54,8 +54,7 @@ for destination in 30.30.30.2 30.30.30.3 30.30.30.4 30.30.30.5; do
     require "VPP-ECMP-PATH-DOWN-FLOW target=${destination} tx=5 rx=5 loss=0" "$DANOS_LOG" \
         "surviving ECMP path forwards ${destination} during next-hop withdrawal"
 done
-require 'VPP-ECMP-PATH-UP-FLOW target=30\.30\.30\.[2345] tx=5 rx=5 loss=0' \
-    "$DANOS_LOG" 'restored ECMP paths forward sampled destinations'
+python3 "$ROOT/danos-test/qemu/verify_restored_flows.py" "$DANOS_LOG"
 require 'VPP-ECMP-NH-RESTORE PASS nexthop=10\.20\.0\.2 interface=GigabitEthernet0/3/0' \
     "$DANOS_LOG" 'second ECMP next hop restored into VPP FIB'
 require 'VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=([2-9]|[1-9][0-9]+) probes=20' \

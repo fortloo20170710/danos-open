@@ -27,6 +27,15 @@ recorded software or packet-test evidence.
 
 ### 2026-10-10 physical recovery update
 
+QEMU recovery-gate hardening: post-restoration now requires exactly one
+5/5 lossless record for each of four destinations, rather than accepting any
+one sampled destination. Missing/duplicate/wrong-target/lossy or contradictory
+failure evidence is rejected. New deterministic tests and existing historical
+`qemu-frr-vpp-topology-705c70b-soak1000` log revalidation pass; CTest 62/62.
+Historical log revalidation is not a current-source runtime rerun. No guest
+was running during this check; fresh QEMU lifecycle evidence remains required
+before claiming current-source unified release qualification.
+
 Performance-gate hardening: PCI measurement validator now rejects non-finite
 acceptance thresholds (`NaN`, signaling NaN, positive/negative infinity)
 with structured FAIL rather than raising an uncaught Decimal exception or
