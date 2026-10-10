@@ -4,6 +4,23 @@
 
 ## Recovery checkpoint and preparation history
 
+All-restored endpoint regression completed: R2 identity and shared-prefix
+route verified, no pre-existing ping process. A separately identified run
+in `/tmp/ecmp-all-restored-20261010/` sent four concurrent 1000-probe streams.
+All four strict endpoint logs pass (4000/4000 total, zero loss, TTL 63,
+complete unique sequences); original UART-transferred hashes match R2.
+Two-egress evidence remains PENDING until R3's post-run counters are compared
+with `r3-all-restored-baseline-20261010.serial.log`, PID 2312. No reboot,
+route change or further probe traffic was introduced on R3 by this run.
+Endpoint logs are archived under `build/dpdk-installable/`:
+
+| Log | SHA256 |
+|---|---|
+| r2-all-restored-p2-20261010.log | 3b41081769ed15c9325b5ec8841f8f37dccfc649cf47e3a60e401118dcc0014c |
+| r2-all-restored-p3-20261010.log | 2fd1c78592091d57180c2e1c1d852ffefccc4a5701fdfe24c6d3d25a3ff4b59f |
+| r2-all-restored-p4-20261010.log | c172f78b8db021cc0bb67958186ef10d34ebd0198fc27501417812fdef3ff04a |
+| r2-all-restored-p5-20261010.log | 41cd1bb87da041ca7055bc44808b2383b185b76498e7d1ae992e743bab3dde39 |
+
 All-restored topology regression baseline (before new traffic): R3 MAC
 verified, PID remains 2312. Three peer MACs and interface addresses correct,
 both ECMP adjacencies Ethernet-resolved, FIB aggregate=4000 packets.
