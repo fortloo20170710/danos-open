@@ -26,7 +26,7 @@ def read_identity(iso: Path) -> dict[str, str]:
     with tempfile.TemporaryDirectory(prefix="danos-iso-identity-") as work:
         archive = Path(work) / "initramfs.cpio.gz"
         extract = subprocess.run(
-            ["xorriso", "-osirrox", "on", "-indev", str(iso),
+            ["xorriso", "-osirrox", "on", "-indev", "stdio:" + str(iso.resolve()),
              "-extract", "/initramfs.cpio.gz", str(archive)],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             text=True, timeout=90, check=False,
@@ -98,7 +98,7 @@ def read_initramfs_members(iso: Path, members: list[str]) -> tuple[set[str], dic
     with tempfile.TemporaryDirectory(prefix="danos-iso-members-") as work:
         archive = Path(work) / "initramfs.cpio.gz"
         extract = subprocess.run(
-            ["xorriso", "-osirrox", "on", "-indev", str(iso),
+            ["xorriso", "-osirrox", "on", "-indev", "stdio:" + str(iso.resolve()),
              "-extract", "/initramfs.cpio.gz", str(archive)],
             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
             timeout=90, check=False,
