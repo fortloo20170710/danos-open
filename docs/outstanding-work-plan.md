@@ -9,6 +9,17 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [~] Shared-L2 learned-route runtime follow-up launched separately at
+  `/dev/shm/danos-v016-shared-20261010` using the archived clean `7b10494` ISO
+  and runner `f7331e3`. Live cycle log:
+  `build/qemu-v016-shared-20261010-cycle.log`. Await ADD/WITHDRAW/RESTORE/POSTFRR
+  packet/FIB phases before claiming PASS. Previous completed topology stopped
+  after durable evidence archival; no physical node was restarted.
+- [x] Launcher now provides xHCI + USB HID for keyboard-driven learned-route
+  commands. Real existing QEMU hotplug plus canceled stale input produced the
+  shell marker; wiring regression and CTest 64/64 PASS. This console check
+  alone does not qualify learned-route forwarding.
+
 - [~] Bounded physical peer PG renderer: explicit NIC-output, finite count,
   disabled by default, distinct UDP flows and intended 64-byte MAC frames.
   Fixed multiline `vppctl exec` failure by emitting one command per line.
