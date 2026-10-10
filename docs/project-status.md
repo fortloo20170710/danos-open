@@ -1,5 +1,21 @@
 # DANOS Open Project Status
 
+## 2026-10-10 physical four-node ECMP checkpoint
+
+Installed I211 R2 → R3 → R4/R1 topology passes scoped IPv4 transit ECMP
+functional qualification with temporary VPP CLI routes. Four original endpoint
+logs pass strict validation: 4000/4000 total, zero loss, TTL 63; UART transfers
+match endpoint SHA256. R3 ingress RX/TX each rises 4000, R4 egress each 1000,
+R1 egress each 3000; displayed interface drops do not increase. FIB retains
+two resolved equal-weight next hops. Details and baseline/post-run digests
+are in `docs/i211-physical-traffic-runbook.md`.
+
+This is dual-path functional evidence, not line-rate or unified release PASS.
+Physical withdrawal/restore, reboot/replay, FRR/DPA-driven traffic, measured
+performance and identity-bound cold boot remain open. Earlier checkpoints
+below are historical; their statements that physical ECMP remains open are
+superseded only for this scoped manual-CLI functional test.
+
 ## 2026-10-09 physical three-node forwarding checkpoint
 
 Installed R2 ↔ R3 ↔ R4 I211 topology passes both 1000-probe initiation

@@ -1,6 +1,37 @@
 # I211 physical LIVE traffic qualification runbook
 
-更新时间：2026-10-04
+更新时间：2026-10-10
+
+## 2026-10-10 physical transit ECMP functional checkpoint
+
+R2 ingress → R3 → R4/R1 passes scoped manual-CLI ECMP functional
+qualification. Four endpoint logs validate 4000/4000 replies, zero loss,
+TTL 63. R3's post-run snapshot compared to the **last** setup snapshot
+(after the separate 400 failed local-output probes) yields:
+
+| R3 interface / role | Before RX / TX | After RX / TX | Delta RX / TX | Drops before / after |
+|---|---|---|---|---|
+| port4 / R2 ingress | 75304 / 74524 | 79304 / 78524 | 4000 / 4000 | 880 / 880 |
+| port1 / R4 egress | 73336 / 73321 | 74336 / 74321 | 1000 / 1000 | 215 / 215 |
+| port2 / R1 egress | 1201 / 1301 | 4201 / 4301 | 3000 / 3000 | absent / absent |
+
+FIB aggregate packets increase 400→4400; both equal-weight next hops
+remain resolved with correct peer MACs. Both physical egresses carry
+request/reply traffic, distribution 25%/75% for these four destinations.
+This is interface-delta evidence, not directly sampled per-bucket counters
+or statistical balance across many flows. No interface drops increase;
+port2 has no displayed drop counter. Historical error counters are retained,
+not reset; absence of a matching pre-run errors snapshot prevents a claim
+that all node error counters were unchanged.
+
+Post-run evidence `build/dpdk-installable/r3-ecmp-post-20261010.serial.log`
+SHA256 `417c784d1104928ae517a5e48f85c494c5f811baa5c844a4efefb5c55cbb2fbb`.
+Baseline SHA256 and four endpoint hashes are recorded below. CLI state is
+temporary. Physical path withdrawal/restoration, restart/replay, measured
+PPS/throughput/CPU/latency baseline, FRR/DPA-driven programming and strict
+cold-boot artifact identity remain OPEN; this does not upgrade the unified
+release gate or certify line rate. Next start bounded endpoint traffic on
+R2, then move UART to R3 for controlled next-hop withdrawal/restoration.
 
 ## 2026-10-09 R3 installed-disk single-port smoke
 
@@ -37,7 +68,7 @@ full hardware traffic PASS.
 
 ## 拓扑
 
-### Next physical ECMP topology (not yet qualified)
+### Physical ECMP preparation history (superseded by checkpoint above)
 
 2026-10-10 R2 four-target transit run: verified MAC `00:1f:7a:69:f5:ec`,
 source `10.10.0.2`, resolved route `30.30.30.0/24 via 10.10.0.1`.
