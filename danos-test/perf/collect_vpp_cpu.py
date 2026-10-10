@@ -4,6 +4,8 @@ import argparse
 import json
 import math
 import os
+import re
+import subprocess
 from pathlib import Path
 import time
 
@@ -26,11 +28,30 @@ def cpu_percent(first, last, elapsed, hz):
     return (last[2] - first[2]) * 100 / hz / elapsed
 
 
+def parse_threads(raw):
+    clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+    threads = []
+    for line in clean.splitlines():
+        match = re.match(r"^\s*(\d+)\s+(vpp_\S+)\s+(\d+)\s+(\d+)\s+", line)
+        if match:
+            index, name, lwp, cpu = match.groups()
+            threads.append(dict(index=int(index), name=name, lwp=int(lwp), cpu=int(cpu)))
+        elif re.match(r"^\s*\d+\s", line):
+            raise ValueError("VPP thread listing contains an unparseable thread row")
+    if not threads or threads[0]["index"] != 0 or threads[0]["name"] != "vpp_main":
+        raise ValueError("VPP thread listing has no main thread")
+    if len({t["index"] for t in threads}) != len(threads) or len({t["lwp"] for t in threads}) != len(threads):
+        raise ValueError("VPP thread listing contains duplicate identities")
+    return threads
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pid", type=int, required=True)
     parser.add_argument("--duration", type=float, default=10)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--vppctl", default="/usr/bin/vppctl")
+    parser.add_argument("--cli-socket", default="/run/vpp/cli.sock")
     args = parser.parse_args()
     if args.pid <= 0 or not math.isfinite(args.duration) or not 0 < args.duration <= 3600:
         parser.error("positive PID and finite duration in (0,3600] required")
@@ -39,12 +60,22 @@ def main():
         executable = (proc / "exe").resolve(strict=True)
         if executable.name != "vpp":
             raise ValueError("selected process is not the VPP executable")
+        def snapshot_threads():
+            response = subprocess.run([args.vppctl, "-s", args.cli_socket, "show", "threads"],
+                                      capture_output=True, text=True, timeout=10, check=True)
+            threads = parse_threads(response.stdout)
+            if threads[0]["lwp"] != args.pid:
+                raise ValueError("CLI main thread differs from sampled process")
+            return threads
+        threads = snapshot_threads()
         first = parse_stat((proc / "stat").read_text())
         hz = os.sysconf("SC_CLK_TCK")
         before = time.monotonic()
         time.sleep(args.duration)
         last = parse_stat((proc / "stat").read_text())
         after = time.monotonic()
+        if snapshot_threads() != threads:
+            raise ValueError("VPP thread/core mapping changed during sampling")
         result = dict(status="PASS", scope="cpu-sample-only", pid=args.pid,
                       process_start_ticks=first[1], executable=str(executable),
                       ticks_start=first[2], ticks_end=last[2], clock_ticks_per_second=hz,
@@ -52,7 +83,9 @@ def main():
                       duration_ms=(after-before)*1000,
                       cpu_pct=cpu_percent(first, last, after-before, hz),
                       cpu_basis="one-logical-cpu", performance_status="ENVIRONMENT-OPEN")
-    except (OSError, ValueError, IndexError) as exc:
+        result.update(vpp_threads=threads, vpp_thread_count=len(threads),
+                      single_dataplane_thread=len(threads) == 1)
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError) as exc:
         result = dict(status="FAIL", scope="cpu-sample-only", failure_reason=str(exc),
                       performance_status="ENVIRONMENT-OPEN")
     args.out.parent.mkdir(parents=True, exist_ok=True)

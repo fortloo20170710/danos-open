@@ -1,9 +1,25 @@
 #!/usr/bin/env python3
 import unittest
-from collect_vpp_cpu import cpu_percent, parse_stat
+from collect_vpp_cpu import cpu_percent, parse_stat, parse_threads
 
 
 class CpuSampleTests(unittest.TestCase):
+    def test_real_thread_listing_with_ansi(self):
+        raw = "ID Name LWP CPU Sched\n 0\x1b[0m vpp_main 2312 0 other (0)\n"
+        self.assertEqual(parse_threads(raw), [dict(index=0, name="vpp_main", lwp=2312, cpu=0)])
+
+    def test_worker_listing(self):
+        self.assertEqual(len(parse_threads(
+            "0 vpp_main 42 0 other\n1 vpp_wk_0 43 1 other\n")), 2)
+
+    def test_cli_errors_and_duplicate_threads_rejected(self):
+        for raw in ("show threads: unknown input", "1 vpp_wk_0 43 1 other",
+                    "0 vpp_main 42 0 other\n0 vpp_wk_0 43 1 other",
+                    "0 vpp_main 42 0 other\n1 vpp_wk_0 42 1 other",
+                    "0 vpp_main 42 0 other\n1 unknown_thread 43 1 other"):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                parse_threads(raw)
+
     def test_stat_with_parentheses_and_spaces(self):
         fields = ["S"] + ["0"] * 19
         fields[11], fields[12], fields[19] = "20", "30", "1234"

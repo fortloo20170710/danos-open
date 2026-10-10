@@ -14,6 +14,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;
   10-second idle polling sample measured 99.89394% (not traffic qualification).
   Full details and command: `docs/v0.16-performance-result-schema.md`.
+- [x] CPU sampler now binds CLI thread LWP to process PID and records a stable
+  before/after thread/core mapping. ANSI listings, workers, malformed/duplicate
+  rows and CLI error cases covered: 8/8 deterministic tests PASS. Physical
+  remeasurement with the extended sampler remains pending; prior idle sample
+  is not upgraded retroactively. UART switch to R2 requested for generator
+  deployment while preserving all lab cables and routes.
 
 - [x] PCI result recorder now rejects mutually matching but malformed ISO
   identities (SHA256 must contain 64 lowercase hex digits; source commit
