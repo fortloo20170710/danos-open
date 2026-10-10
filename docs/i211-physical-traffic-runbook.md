@@ -4,6 +4,22 @@
 
 ## Recovery preparation (not deployed or qualified)
 
+Post-R3-service-restart endpoint regression: R2 MAC verified, source
+10.10.0.2 and shared-prefix route preserved. Four concurrent 1000-probe
+streams complete 4000/4000, zero loss, all TTL 63. Each original device log
+was recovered compressed over UART, SHA256 matched, and strict sequence/
+destination/TTL validation passed. This establishes warm-neighbor transit
+delivery after service replay; two-egress recovery still needs R3 post-run
+deltas against the new-process 200/200 baseline. No overall restart gate
+PASS, cold-zero-loss or ledger replay is claimed. Local evidence:
+
+| Log under build/dpdk-installable | SHA256 |
+|---|---|
+| r2-post-r3-restart-p2-20261010.log | 34ac75cf0232b76434583e6f5480f4bcef197df44be5cf4d799f8d3452f5a1ee |
+| r2-post-r3-restart-p3-20261010.log | 8b219ab9cd00ffeff7db6fe672cd29ee44a4785125fc018cbca869dcd9d0172e |
+| r2-post-r3-restart-p4-20261010.log | 3d24827fa52e96ff42aa7395a601a7cfb3749fae26aeb25f602606f6a3db1e78 |
+| r2-post-r3-restart-p5-20261010.log | 27f3eb791a0465ead95e5eba0955b12e0c529fd7b590c323d5c31ba3ae09c1e3 |
+
 R3 follow-up: identity MAC `00:1f:7a:69:f7:4c` verified before deployment.
 Same hook and additive drop-in installed; R3 profile SHA256
 `247498d09777db22b4e03153b1ff7774b1ddb7fd7ab599da4657f6101cda2dc3`
