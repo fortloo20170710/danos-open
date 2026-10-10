@@ -125,6 +125,9 @@ set_tests_properties(physical_lab_profile PROPERTIES TIMEOUT 30)
 add_test(NAME vpp_cpu_sampler
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_collect_vpp_cpu.py)
 set_tests_properties(vpp_cpu_sampler PROPERTIES TIMEOUT 30)
+add_test(NAME physical_pg_renderer
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_render_physical_pg.py)
+set_tests_properties(physical_pg_renderer PROPERTIES TIMEOUT 30)
 add_test(NAME physical_lab_replay
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/installer/test_replay_physical_lab.py)
 set_tests_properties(physical_lab_replay PROPERTIES TIMEOUT 30)
