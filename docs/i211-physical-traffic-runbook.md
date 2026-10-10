@@ -4,6 +4,31 @@
 
 ## 2026-10-10 physical transit ECMP functional checkpoint
 
+Withdrawal/restoration device-side observation completed; final endpoint
+verdict remains **PENDING**. Live traffic growth was checked before mutation.
+R3's clock is not synchronized to R2; do not correlate their UTC directly.
+Deleting only the R1 next-hop changed FIB 2→1 bucket. Over device uptime
+71427.40→71437.43 (10.03 s), R4 RX/TX and ingress RX/TX each rose 4007,
+R1 remained unchanged. Restoration changed FIB 1→2 and both egresses resumed.
+Deleting only R4 next-hop then changed FIB to the R1-only bucket. Over
+71456.96→71466.99 (10.03 s), R1 and ingress RX/TX each rose 4005,
+R4 remained unchanged. Displayed drops stayed at port1=215, port4=880.
+These stable single-path windows do not bound loss at the transitions.
+
+The second explicit restore command suffered UART character loss
+(`/ruvpp/cli.sock`, `iroute`), and its subsequent FIB still showed one bucket;
+the printed RESTORED marker was not accepted as proof. An EXIT restoration
+trap was present. A separate slow per-character resend and independent FIB
+check verified both resolved next hops; subsequent R4 RX/TX +497 and R1
+RX/TX +1491 confirmed both active again. No shutdown/reboot occurred.
+Final original R2 logs and completed summaries are required before declaring
+the entire failover run PASS; link failure detection and FRR/DPA convergence
+are not tested by CLI next-hop deletion. Local SHA256 evidence:
+
+- `r3-withdraw-restore-20261010.serial.log`: `bdeb8693b2a50a3021e884274ce00d3c0820cc47215ac06da1e83f0960d6766a`
+- `r3-withdraw-a-restore-20261010.serial.log`: `b2d76f45a9948f0854d8dbd81513edd61c49141a873be7c0eb6f6d0c6d24eb7f`
+- `r3-final-restore-20261010.serial.log`: `327442dcac5e74dc7583d7e231e4a7ef9e17fc1e5560c7655c542debf7cba09a`
+
 Follow-on withdrawal/restoration run is **IN PROGRESS**, not PASS:
 R2 started four background endpoint pings to .2–.5, each interval 0.01,
 repeat 60000 and `timeout 900`. Device UTC start approximately
