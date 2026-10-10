@@ -9,6 +9,13 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [~] First shared-L2 learned ADD runtime failed (3 TX / 0 RX). Installed
+  198.19.0.0/24 remained `arp-ipv4` via 172.31.0.3. Failure evidence preserved
+  in `build/qemu-shared-20261010-add-failed/`. Adding 172.31.0.1/24 to VPP's
+  second interface enabled next-hop diagnostic replies. Shared ISO profile now
+  supplies this address by default; cold-boot full-cycle requalification still
+  required. This diagnostic repair does not upgrade the failed run to PASS.
+
 - [~] Shared-L2 learned-route runtime follow-up launched separately at
   `/dev/shm/danos-v016-shared-20261010` using the archived clean `7b10494` ISO
   and runner `f7331e3`. Live cycle log:

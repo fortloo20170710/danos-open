@@ -23,6 +23,16 @@ OUT="${1:-$ROOT/build/danos-vpp-dpdk-e1000-2port-frr-ecmp.iso}"
 : "${DANOS_ZEBRA_ENDPOINT:=tcp://10.0.3.2:2600}"
 : "${DANOS_ZAPI_ROUTE_TYPES:=4,10}"
 : "${DANOS_VPP_RESTART_TEST:=1}"
+: "${FRR_SHARED_PEER_L2:=0}"
+[[ "$FRR_SHARED_PEER_L2" = 0 || "$FRR_SHARED_PEER_L2" = 1 ]] || {
+    echo '[FAIL] FRR_SHARED_PEER_L2 must be 0 or 1' >&2; exit 1;
+}
+if test "$FRR_SHARED_PEER_L2" = 1; then
+    # The learned BGP next hop resides on the shared FRR peer subnet.
+    # L2 wiring alone does not give VPP an ARP source on that subnet.
+    : "${VPP_IF2_EXTRA_ADDRS:=172.31.0.1/24}"
+    export VPP_IF2_EXTRA_ADDRS
+fi
 
 export VPP_IMAGE VPP_DPDK_ENABLE VPP_DPDK_DEVICE VPP_DPDK_PORTS
 export VPP_DPDK_NO_RX_INTERRUPTS VPP_DPDK_TRAFFIC_TEST VPP_PING_ENABLE
