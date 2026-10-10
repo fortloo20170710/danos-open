@@ -11,8 +11,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 - [x] ISO source `7b10494f93ff1dbcfa2ab3c7d84732ecca392bee`, clean;
   host verifier `4238a76`: full FRR → DPA → VPP topology gate PASS.
-  Live evidence: `/dev/shm/danos-v016-7b10494-runtime/topology/` (volatile).
-  Machine-readable result: `build/qemu-v016-7b10494-result.env`.
+  Durable evidence: `build/qemu-v016-7b10494-accepted/` (ISO, seeds, serial
+  logs, original and relocated manifests); archived verifier also PASS.
+  Machine-readable result: `build/qemu-v016-7b10494-accepted/ecmp-result.env`.
 - [x] Four destinations received 4000/4000 soak probes, ECMP output deltas
   3000/1000, elapsed 48460 ms (82.54 aggregate pps). Withdrawal and restoration
   each passed all four destinations, 20/20 probes. Concurrent failover window
@@ -23,6 +24,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [ ] This functional QEMU lane does not qualify PCI line-rate performance,
   physical whole-machine reboot, or the separate shared-L2 learned-route gate.
   Preserve these scope boundaries in the release decision.
+- [x] Unified gate rerun: `build/v016-release-gate-7b10494-audit.env` and log.
+  Software/virtualization gates PASS, including r13 mgrd WAL recovery. VMware
+  is historical-log revalidation, not fresh traffic. Overall FAIL without
+  waiver: development-host PCI preflight SKIP (no explicit hardware BDF).
+  Next qualification must run against the physical runner and retain actual
+  64-byte traffic/CPU/identity evidence; lab ICMP is not a substitute.
 
 ### 2026-10-09 installer performance follow-up
 
