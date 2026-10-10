@@ -50,6 +50,19 @@ Local preparation transcript: `build/dpdk-installable/r1-ecmp-peer-preparation.s
 Next required action is enabling the candidate R3 port and confirming the
 R1 carrier/MAC mapping, then assigning 10.30.0.2/24 and its return route.
 
+2026-10-10 update: R3 port2 is enabled, 1 Gbps full duplex and configured
+10.30.0.1/24. R1.P1 is confirmed as GigabitEthernet1/0/0, MAC
+00:1f:7a:40:28:20, 1 Gbps full duplex; configured 10.30.0.2/24 and
+10.10.0.2/32 via 10.30.0.1. Other R1 physical ports restored admin-down.
+R1→R3 direct check passes 100/100. R1→R2 check returns 0/100 and is not
+accepted as a functioning end-to-end path. R2's previously recorded route
+only covers 10.20.0.2/32; a return route to 10.30.0.2 (and the planned shared
+ECMP destinations) is still to be verified/configured on R2. Missing return
+routing is a working explanation, not an independently proven root cause.
+Local transcript: `build/dpdk-installable/r1-path-b-test-20261010.serial.log`.
+No ECMP route is installed on R3 at this checkpoint. All new entries remain
+temporary; no reboot, persistence or DPA programming PASS is claimed.
+
 Keep R2.P1 ↔ R3.P4 (ingress) and R4.P1 ↔ R3.P1 (egress path A).
 Install/boot r12 on independent R1 and add R1.P1 ↔ R3.P2 as egress path B;
 identify actual VPP port mappings by MAC/link probing before assigning IPs.
