@@ -39,6 +39,16 @@ full hardware traffic PASS.
 
 ### Next physical ECMP topology (not yet qualified)
 
+2026-10-10 R4 preparation: UART verified MAC `00:1f:7a:40:01:80`,
+P1 `10.20.0.2/24` and existing return route to `10.10.0.2/32`
+via `10.20.0.1`. Created `loop0`, admin-up, with shared local addresses
+`30.30.30.2/32` through `30.30.30.5/32`, matching R1. R4→R3→R2
+regression passed 1000/1000, 0% loss, TTL 63. No reboot or persistent
+configuration change; R3's two-next-hop route and bucket distribution
+remain unqualified. Next move UART to R3 to install/inspect ECMP.
+Evidence `build/dpdk-installable/r4-shared-ecmp-prep-20261010.serial.log`
+SHA256 `d225d96cecdad7bdbf91578c82870f1b87d18b5ffe009ac36af3afb570c545c7`.
+
 2026-10-10 R2 follow-up: UART identity MAC `00:1f:7a:69:f5:ec`
 confirmed that its FIB lacked the R1 return route. Added
 `10.30.0.2/32 via 10.10.0.1 GigabitEthernet1/0/0` and the planned
