@@ -2,7 +2,30 @@
 
 更新时间：2026-10-10
 
-## Recovery preparation (not deployed or qualified)
+## Recovery checkpoint and preparation history
+
+**PASS, scoped R3 VPP service restart / lab CLI replay with warm-neighbor
+transit regression**. Final UART observation confirms identity MAC
+`00:1f:7a:69:f7:4c`, unchanged post-restart PID 2312, two Ethernet-resolved
+equal-weight next hops and FIB aggregate 4000 packets. Compare against the
+new-process warm-link snapshot (not old-process counters):
+
+| R3 port / role | Baseline RX / TX | Final RX / TX | Delta RX / TX | Drops baseline / final |
+|---|---|---|---|---|
+| 4 / R2 ingress | 200 / 200 | 4200 / 4200 | 4000 / 4000 | 2 / 2 |
+| 1 / R4 egress | 200 / 200 | 1200 / 1200 | 1000 / 1000 | 2 / 2 |
+| 2 / R1 egress | 200 / 200 | 3200 / 3200 | 3000 / 3000 | 2 / 2 |
+
+Combined with four independently archived and strictly verified R2 logs,
+both egresses carry real request/reply traffic after automatic startup replay.
+Evidence `build/dpdk-installable/r3-restart-delta-20261010.serial.log`
+SHA256 `c317843f0d975e52afb6dccec8ab1ffcd2ddbcc05366db5df25300bf20fdf7a5`.
+Earlier pending two-egress statements below are superseded for this run.
+Cold-neighbor losses remain recorded; no lossless-restart or outage-duration
+claim. Full-machine reboot, remaining peer hook deployment, FRR/DPA and
+DANOS ledger replay remain OPEN. This is a lab-only hook, not a production
+configuration owner. Next deploy profiles to R4/R1 and verify their service
+recovery before considering topology-wide machine reboot qualification.
 
 Post-R3-service-restart endpoint regression: R2 MAC verified, source
 10.10.0.2 and shared-prefix route preserved. Four concurrent 1000-probe

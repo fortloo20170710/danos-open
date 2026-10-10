@@ -1,5 +1,21 @@
 # DANOS Open Project Status
 
+## 2026-10-10 physical VPP service replay checkpoint
+
+R3 lab-only startup replay automatically restores all three test-interface
+addresses and equal-weight ECMP route after VPP service restart (PID
+789→2312). Warm-neighbor R2 transit regression passes 4000/4000, zero loss,
+TTL 63 with original endpoint-log hashes verified. Same-process R3 interface
+deltas confirm ingress 4000/4000, R4 egress 1000/1000, R1 egress 3000/3000;
+drops unchanged. Scoped lab-CLI service-recovery functional qualification PASS.
+R2 also has a deployed lab replay hook and observed service recovery.
+
+Cold-neighbor first probes lost one packet per link on R3, and one of 1000
+on R2; retained as limitations, not rounded away. Full-machine reboot,
+FRR/DPA ownership/replay, lossless recovery and strict release qualification
+remain OPEN. R1/R4 hooks are not yet deployed. Detailed evidence and rollback
+instructions are in `docs/i211-physical-traffic-runbook.md`.
+
 ## 2026-10-10 physical CLI next-hop recovery checkpoint
 
 Four concurrent endpoint streams completed 60000/60000 each (240000 total),
