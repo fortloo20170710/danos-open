@@ -14,6 +14,10 @@ class PhysicalPgTests(unittest.TestCase):
     def test_explicit_output_bounded_and_disabled(self):
         text = self.call()
         self.assertEqual(text.count("packet-generator new"), 2)
+        self.assertEqual(len(text.splitlines()), 2)
+        for line in text.splitlines():
+            self.assertTrue(line.startswith("packet-generator new {"))
+            self.assertEqual(line.count("{"), line.count("}"))
         self.assertEqual(text.count("size 64-64"), 2)
         self.assertEqual(text.count("node GigabitEthernet1/0/0-output"), 2)
         self.assertIn("UDP: 20000 -> 30000", text)

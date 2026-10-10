@@ -9,12 +9,14 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
-- [~] Bounded physical peer PG renderer added: explicit NIC-output, finite
-  count, disabled by default, distinct UDP flows and intended 64-byte MAC
-  frames. CTest 64/64 PASS. VPP 26.10 runtime parsing is NOT yet verified:
-  QEMU input attempt emitted no execution marker. R2 UART switch is still
-  needed for generator deployment. No synthetic or generated configuration
-  is counted as measured physical traffic, latency or performance PASS.
+- [~] Bounded physical peer PG renderer: explicit NIC-output, finite count,
+  disabled by default, distinct UDP flows and intended 64-byte MAC frames.
+  Fixed multiline `vppctl exec` failure by emitting one command per line.
+  Physical VPP 26.10 parser verified two disabled/count-zero streams; cleanup
+  returned to no streams. Evidence/digest in performance schema. CTest 64/64
+  PASS. R2 UART switch is still needed for actual generator traffic. The
+  QEMU input attempt remains unverified. Configuration acceptance is not
+  measured physical traffic, latency or performance PASS.
 
 - [x] Real VPP process CPU sampler implemented with start-tick identity,
   monotonic timing and one-logical-CPU normalization. Five deterministic

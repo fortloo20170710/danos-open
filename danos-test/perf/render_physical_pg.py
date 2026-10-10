@@ -43,7 +43,8 @@ def render(interface, source_mac, target_mac, source_ip, targets, rate, count):
   }}
 }}
 """)
-    return "\n".join(streams)
+    # vppctl exec parses individual lines; keep each brace group on one line.
+    return "\n".join(" ".join(stream.split()) for stream in streams) + "\n"
 
 
 def main():
