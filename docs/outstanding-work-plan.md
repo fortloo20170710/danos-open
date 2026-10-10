@@ -9,6 +9,15 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [~] Actual R2 wire PG probe executed after MAC/address identification:
+  four flows ×20 frames, bounded 10 requested pps, all stopped at count 20.
+  Hardware TX/RX +80; TX bytes +5120. All streams cleaned up. Raw evidence
+  and digest in performance schema. This is wire-emission evidence, not
+  full PCI performance; R3 UART requested for ingress/ECMP egress verification.
+- [x] Remote `45d62b4` workflows verified completed success: CI run
+  `38041111065`, Coverage `38041111036`, Interop Gate `38041111051`.
+  Hosted CI does not replace physical performance qualification.
+
 - [x] Release gate default QEMU evidence updated to the archived shared-L2
   `b3804e0` run. Learned-route ADD/WITHDRAW/RESTORE/POSTFRR validator is now
   mandatory even when callers override the topology; an older basic-only
