@@ -105,6 +105,8 @@ fi
 
 qemu-system-x86_64 -enable-kvm -machine "$QEMU_MACHINE" -cpu host -m 2048 -smp 2 -cdrom "$ISO" \
   -vga none -device VGA,addr=0x4 \
+  -device qemu-xhci,id=console-xhci,addr=0x6 \
+  -device usb-kbd,bus=console-xhci.0 \
   -netdev socket,id=lan1,listen=127.0.0.1:$LAN1_PORT \
   -device "$QEMU_DATAPLANE_MODEL",netdev=lan1,addr=0x2,mac=52:54:00:10:01:01 \
   "${LAN2_ARGS[@]}" \

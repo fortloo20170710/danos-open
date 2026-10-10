@@ -46,6 +46,8 @@ class SharedPeerTopologyTest(unittest.TestCase):
         proc, args, manifest = self.launch('0')
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(len(args), 3)
+        self.assertIn('qemu-xhci,id=console-xhci,addr=0x6', args[0])
+        self.assertIn('usb-kbd,bus=console-xhci.0', args[0])
         self.assertFalse(any('hubport' in arg for call in args for arg in call))
         self.assertIn('socket,id=peer,listen=127.0.0.1:32001', args[1])
         self.assertIn('socket,id=peer,connect=127.0.0.1:32001', args[2])
