@@ -9,6 +9,15 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [x] Shared-L2 clean `b3804e0` cold-boot requalification now PASS: actual
+  learned-route ADD 3/3, WITHDRAW 3/0 plus absent FIB prefix, RESTORE 3/3,
+  POSTFRR 3/3 with zebra reconnect; full topology gate and archived copy PASS.
+  Durable evidence: `build/qemu-shared-b3804e0-accepted/` including ISO, seeds,
+  manifests, serial and machine-readable result. Soak 4000/4000, 81.97 pps,
+  buckets 3000/1000; failover 798/800. Previous failed run stays archived.
+  Earlier pending items below describe execution history, not current verdict.
+  Physical PCI traffic/latency qualification remains open.
+
 - [~] First shared-L2 learned ADD runtime failed (3 TX / 0 RX). Installed
   198.19.0.0/24 remained `arp-ipv4` via 172.31.0.3. Failure evidence preserved
   in `build/qemu-shared-20261010-add-failed/`. Adding 172.31.0.1/24 to VPP's
