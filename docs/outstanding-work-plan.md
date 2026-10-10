@@ -9,6 +9,15 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [x] PCI result recorder now rejects mutually matching but malformed ISO
+  identities (SHA256 must contain 64 lowercase hex digits; source commit
+  7–40). Regression includes short/long/nonhex digests and commits, rather
+  than relying only on the equality check. Dedicated suite: 14/14 PASS.
+- [~] Physical serial inspection confirms clean `3f1691c`, generic DPDK r9
+  installed metadata; no iperf3/trafgen/pktgen executable found. This is
+  installed metadata, not fresh cold-boot ISO-digest qualification. Dedicated
+  traffic generation, CPU measurement and single-core proof remain required.
+
 - [x] ISO source `7b10494f93ff1dbcfa2ab3c7d84732ecca392bee`, clean;
   host verifier `4238a76`: full FRR → DPA → VPP topology gate PASS.
   Durable evidence: `build/qemu-v016-7b10494-accepted/` (ISO, seeds, serial

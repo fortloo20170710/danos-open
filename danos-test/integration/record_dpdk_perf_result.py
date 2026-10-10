@@ -3,6 +3,7 @@
 
 import argparse
 import datetime as dt
+import re
 import shlex
 import sys
 from decimal import Decimal, InvalidOperation
@@ -57,6 +58,10 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
             raise ResultError(f"preflight is missing identity field: {key}")
     if preflight["commit"] != preflight["iso_build_commit"]:
         raise ResultError("preflight commit does not match embedded ISO build commit")
+    if not re.fullmatch(r"[0-9a-f]{7,40}", preflight["iso_build_commit"]):
+        raise ResultError("preflight ISO build commit is malformed")
+    if not re.fullmatch(r"[0-9a-f]{64}", preflight["iso_sha256"]):
+        raise ResultError("preflight ISO SHA256 is malformed")
     if preflight["iso_source_dirty"] != "0":
         raise ResultError("qualified ISO must be built from a clean source tree")
     if preflight["pci_bound_driver"] != preflight.get("pci_driver"):

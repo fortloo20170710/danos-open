@@ -17,7 +17,7 @@ commit=deadbeef
 iso_build_commit=deadbeef
 iso_source_dirty=0
 runner_commit=feedface
-iso_sha256=0123456789abcdef
+iso_sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 target_bdf=0000:01:00.0
 pci_vendor_id=0x8086
 pci_device_id=0x1539
@@ -28,7 +28,7 @@ pci_bound_driver=uio_pci_generic
 MEASUREMENT = """lane=pci-dpdk
 stage=single-core-64b
 commit=deadbeef
-iso_sha256=0123456789abcdef
+iso_sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 packet_size_bytes=64
 flows=2
 packets_tx=10000
@@ -47,18 +47,35 @@ restart_replay=SKIP
 
 
 class RecordDpdkPerfResultTest(unittest.TestCase):
-    def run_case(self, measurement=MEASUREMENT, extra=()):
+    def run_case(self, measurement=MEASUREMENT, extra=(), preflight_data=PREFLIGHT):
         with tempfile.TemporaryDirectory(prefix="dpdk-result-test-") as tmp:
             root = Path(tmp)
             preflight = root / "preflight.env"
             measured = root / "measurement.env"
             output = root / "result.env"
-            preflight.write_text(PREFLIGHT)
+            preflight.write_text(preflight_data)
             measured.write_text(measurement)
             command = [sys.executable, str(TOOL), "--preflight", str(preflight),
                        "--measurement", str(measured), "--out", str(output), *extra]
             proc = subprocess.run(command, text=True, capture_output=True, check=False)
             return proc, output.read_text()
+
+    def test_matching_malformed_identity_is_rejected(self):
+        digest = "0123456789abcdef" * 4
+        for invalid in ("deadbeef", "g" * 64, "0" * 63, "0" * 65):
+            with self.subTest(digest=invalid):
+                proc, output = self.run_case(
+                    measurement=MEASUREMENT.replace(digest, invalid),
+                    preflight_data=PREFLIGHT.replace(digest, invalid))
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn("ISO SHA256 is malformed", output)
+        for invalid in ("xyzabcd", "0" * 6, "0" * 41):
+            with self.subTest(commit=invalid):
+                proc, output = self.run_case(
+                    measurement=MEASUREMENT.replace("deadbeef", invalid),
+                    preflight_data=PREFLIGHT.replace("deadbeef", invalid))
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn("ISO build commit is malformed", output)
 
     def test_valid_measurements_without_thresholds_remain_open(self):
         proc, output = self.run_case()
