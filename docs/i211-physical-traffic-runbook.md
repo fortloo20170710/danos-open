@@ -39,6 +39,22 @@ full hardware traffic PASS.
 
 ### Next physical ECMP topology (not yet qualified)
 
+2026-10-10 R3 ECMP setup: identity MAC `00:1f:7a:69:f7:4c` and
+three peer neighbors verified. CLI installed `30.30.30.0/24` via
+`10.20.0.2 GigabitEthernet1/0/0` and
+`10.30.0.2 GigabitEthernet2/0/0`. FIB shows both paths resolved,
+weight 1/preference 0 and two load-balance buckets.
+Four local-output pings (.2–.5, 100 each, source port4/10.10.0.1)
+reported 0/400 replies; port1 and port2 TX each increased by 200,
+RX unchanged. This is outbound local-output distribution only, not
+transit ECMP PASS. Peers have return routes to R2's 10.10.0.2/32,
+not this diagnostic source 10.10.0.1; the missing matching return route
+is a likely explanation, not a packet-trace-confirmed root cause.
+Next run traffic from R2 with its configured return address; preserve
+the installed ECMP route and do not reboot temporary CLI state.
+Evidence `build/dpdk-installable/r3-ecmp-setup-20261010.serial.log`
+SHA256 `acf04eacea3e92937358135953d5dae692d85ed07f024fac0a5695917112a95f`.
+
 2026-10-10 R4 preparation: UART verified MAC `00:1f:7a:40:01:80`,
 P1 `10.20.0.2/24` and existing return route to `10.10.0.2/32`
 via `10.20.0.1`. Created `loop0`, admin-up, with shared local addresses
