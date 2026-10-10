@@ -39,6 +39,25 @@ full hardware traffic PASS.
 
 ### Next physical ECMP topology (not yet qualified)
 
+2026-10-10 R2 four-target transit run: verified MAC `00:1f:7a:69:f5:ec`,
+source `10.10.0.2`, resolved route `30.30.30.0/24 via 10.10.0.1`.
+Four concurrent VPP pings (.2–.5, interval 0.01, repeat 1000 each) completed
+1000/1000 each, 4000 total, zero loss. Original per-target logs were captured
+on R2 in `/tmp/ecmp-20261010-a/`, transferred compressed over UART, and
+SHA256 matched against the device. All four pass the strict endpoint-log
+verifier (complete sequences, correct destination, TTL 63). This proves
+endpoint transit delivery, not yet two-path distribution: collect R3's
+post-run port counters against the preceding setup snapshot next.
+Elapsed throughput, line rate, recovery, and FRR/DPA programming remain
+unqualified. Local logs under `build/dpdk-installable/`:
+
+| Log | SHA256 |
+|---|---|
+| r2-ecmp-20261010-p2.log | 713e1d64736dfc379c7ef88d18052af1291375eae428250687bd34f51f36504a |
+| r2-ecmp-20261010-p3.log | d4a66aa79d1d5580b71c30bf358b08ccd053ad11de70c6182d8d08bd25b1d5f1 |
+| r2-ecmp-20261010-p4.log | be4172fbbed7e87e5d1c1f957f325662d1795f3fc95f1d7117fe0afb564f5033 |
+| r2-ecmp-20261010-p5.log | 4a7e06188ea6655f3f2bdadd779751f9e27e89d6806a7c33d821ba5df46ac5ef |
+
 2026-10-10 R3 ECMP setup: identity MAC `00:1f:7a:69:f7:4c` and
 three peer neighbors verified. CLI installed `30.30.30.0/24` via
 `10.20.0.2 GigabitEthernet1/0/0` and
