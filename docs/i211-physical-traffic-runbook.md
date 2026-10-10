@@ -37,7 +37,19 @@ full hardware traffic PASS.
 
 ## 拓扑
 
-### Next physical ECMP topology (not yet wired/qualified)
+### Next physical ECMP topology (not yet qualified)
+
+2026-10-10 R2 follow-up: UART identity MAC `00:1f:7a:69:f5:ec`
+confirmed that its FIB lacked the R1 return route. Added
+`10.30.0.2/32 via 10.10.0.1 GigabitEthernet1/0/0` and the planned
+`30.30.30.0/24` route through the same next hop. R2→R3→R1 then passed
+1000 sent/1000 received, 0% loss, replies TTL 63. This validates the
+second transit leg, not ECMP distribution or a repeat of R1-originated traffic.
+Local evidence `build/dpdk-installable/r2-r1-return-route-20261010.serial.log`
+SHA256 `1b093e6d91e7a09284dc59add1b840cb659b5127982dca23be6a853f99066f01`.
+Configurations remain temporary VPP CLI state; no reboot was performed.
+Next prepare R4's shared loopback destinations, then program and measure
+R3's two-next-hop ECMP route.
 
 Operator subsequently installed/booted R1 and connected R1.P1 ↔ R3.P2.
 UART confirms R1 root `/dev/sda1` ext4 and active VPP; port MACs are
