@@ -4,6 +4,26 @@
 
 ## Recovery preparation (not deployed or qualified)
 
+R3 follow-up: identity MAC `00:1f:7a:69:f7:4c` verified before deployment.
+Same hook and additive drop-in installed; R3 profile SHA256
+`247498d09777db22b4e03153b1ff7774b1ddb7fd7ab599da4657f6101cda2dc3`
+matched local renderer. VPP service PID 789→2312, restart exit 0, active,
+journal LAB-REPLAY PASS. Three interface addresses and two equal-weight
+ECMP next hops automatically reappeared. Initial FIB adjacencies were ARP,
+not Ethernet-resolved; first direct probe to each peer was **99/100 (1%)**,
+TTL 64. Correct R1/R2/R4 MACs were subsequently learned. Warm repeats
+are 100/100 on all three direct links; interface RX/TX increase 100 each,
+displayed drops stay 2. This is local-output connectivity, not post-restart
+transit ECMP qualification. Baseline for the next R2 transit run is port1,
+port2 and port4 RX/TX=200/200, drops=2 each. Do not compare reset counters
+against snapshots from the previous VPP process. No machine reboot occurred.
+Next move UART to R2 for endpoint transit regression, then collect R3 deltas.
+Local evidence under `build/dpdk-installable/`:
+
+- `r3-replay-restart-20261010.serial.log`: `4d3307ebd5864eab6556b11bc6a334fa009454cfe78adf1d9e12abe9aa69441a`
+- `r3-post-restart-peers-20261010.serial.log`: `baaeecc091adbd5fdff11376040f4d96e6db12f42a4ed86fb61407c5dadaa752`
+- `r3-post-restart-warm-20261010.serial.log`: `ca5273ca439edd2ca5a91a736a3424900a1eccedb33a6292430a33b8a3aa2d3c`
+
 2026-10-10 update: R2-only hook deployment and service recovery observed.
 Installed `/usr/libexec/danos/replay-physical-lab`, explicit R2 profile
 `/etc/danos/physical-lab.cli`, and additive systemd drop-in
