@@ -4,6 +4,22 @@
 
 ## Recovery checkpoint and preparation history
 
+R4 peer service recovery: MAC `00:1f:7a:40:01:80` confirmed; same lab
+hook/drop-in and R4 profile installed with verified hashes (profile SHA256
+`480a4a5d82df77f80e896298eb1d81bd5a8623ed5ef15549ca7d200a0cd49e05`).
+VPP PID 792→2140, restart exit 0, active, journal LAB-REPLAY PASS. P1
+10.20.0.2/24, loop0 shared 30.30.30.2–.5/32 and 10.10.0.2/32 return
+route restored automatically. Cold-neighbor transit summary 99/100 (1%)
+is retained. Warm R4→R3→R2 completes 1000/1000, TTL 63, zero loss;
+original endpoint log transferred and SHA256 matched, strict verifier PASS.
+Local log `build/dpdk-installable/r4-restart-warm-20261010.log` SHA256
+`06250fb3cd77468c5f965053c428d7d52b3315cbc9eac234c58cb270aed653ed`.
+Deployment/restart transcript is `r4-replay-restart-20261010.serial.log`;
+test transcript `r4-post-restart-test-20261010.serial.log` in the same directory.
+This qualifies R4 lab service replay plus warm transit, not lossless restart,
+whole-machine reboot or simultaneous two-egress recovery. R1 is now the only
+node without a lab hook; older R4-not-deployed statements are superseded.
+
 **PASS, scoped R3 VPP service restart / lab CLI replay with warm-neighbor
 transit regression**. Final UART observation confirms identity MAC
 `00:1f:7a:69:f7:4c`, unchanged post-restart PID 2312, two Ethernet-resolved

@@ -2,6 +2,12 @@
 
 ## 2026-10-10 physical VPP service replay checkpoint
 
+R4 follow-up also verifies lab service replay: interface, shared loopback
+addresses and return route restored automatically; warm transit 1000/1000,
+TTL 63, archived endpoint hash verified. Cold-neighbor test remains 99/100.
+R1 alone still awaits hook deployment; earlier R1/R4 pending statement below
+is historical. No full-machine or lossless-restart qualification is claimed.
+
 R3 lab-only startup replay automatically restores all three test-interface
 addresses and equal-weight ECMP route after VPP service restart (PID
 789→2312). Warm-neighbor R2 transit regression passes 4000/4000, zero loss,
