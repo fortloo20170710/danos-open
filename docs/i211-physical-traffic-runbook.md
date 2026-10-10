@@ -4,6 +4,20 @@
 
 ## Recovery checkpoint and preparation history
 
+All-restored topology regression baseline (before new traffic): R3 MAC
+verified, PID remains 2312. Three peer MACs and interface addresses correct,
+both ECMP adjacencies Ethernet-resolved, FIB aggregate=4000 packets.
+Port1 RX/TX=2300/2300, port2=4300/4300, port4=6398/6398,
+displayed drops=2 on all three. Error snapshot includes one historical
+interface-down event each on ports1/2, three glean ARP requests; retain
+these baselines rather than clearing counters. Previous peer recovery probes
+are already included and must not be attributed to the forthcoming run.
+No configuration or restart action in this capture. Next run four-target
+traffic from R2, then compare same-process counters against this snapshot.
+Evidence `build/dpdk-installable/r3-all-restored-baseline-20261010.serial.log`
+SHA256 `4193263172eaf208125389ca501cb5af3d3701e98e26ae3196179031dc768e14`.
+This is a prepared baseline, not a completed new regression result.
+
 R1 peer service recovery: MAC `00:1f:7a:40:28:20` verified. Hook/drop-in
 and R1 profile deployed with matching hashes; profile SHA256
 `68e0beac8a64a0736db0c5249c96727a0a08070bdeeacb033d44c68331ff0b89`.
