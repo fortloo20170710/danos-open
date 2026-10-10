@@ -1,5 +1,28 @@
 # DANOS Open Project Status
 
+## Current v0.16 qualification verdict — 2026-10-10
+
+Route/NH/NHGroup contract remains frozen; deterministic contract gate and
+CTest 64/64 PASS. The clean `b3804e0` shared-L2 QEMU cold boot now proves
+actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
+FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
+evidence and its independent revalidation are in
+`build/qemu-shared-b3804e0-accepted/`; previous failed ADD evidence is retained.
+
+Default unified release gate now requires learned-route lifecycle, including
+for topology overrides. Full rerun at `666b40d` passes all software and
+virtualization subgates, r13 console/mgrd WAL replay and historical VMware
+2000-packet evidence revalidation. Overall result is still FAIL without waiver:
+`build/v016-release-gate-shared-666b40d.env` records PCI ENVIRONMENT-OPEN
+(development-host invocation lacks a physical target BDF). This does not
+invalidate existing I211 functional tests, nor qualify hardware throughput.
+
+Physical 64-byte traffic, latency and coincident CPU/core/identity evidence,
+whole-machine reboot and physical FRR/DPA-owned replay remain unfinished.
+Bounded disabled peer PG definitions parse on VPP 26.10; they have not yet
+produced qualified wire traffic. R2 serial access is requested for the next
+step. No v0.16 final-release or PCI performance PASS is claimed.
+
 ## Current physical recovery verdict — 2026-10-10
 
 All four explicit lab CLI profiles are deployed and each VPP service has

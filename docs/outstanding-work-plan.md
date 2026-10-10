@@ -14,6 +14,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   mandatory even when callers override the topology; an older basic-only
   topology cannot silently satisfy the expanded software qualification.
   Config regression checks the default and explicit learned-route subgate.
+- [x] Expanded unified gate completed at `666b40d`: software/virtualization
+  subgates PASS, including mandatory learned-route cycle and console/mgrd.
+  `build/v016-release-gate-shared-666b40d.env` remains FAIL, PCI OPEN without
+  waiver; no target BDF was supplied on the development host. Next physical
+  step remains R2 UART generator deployment and coincident actual metrics,
+  not another waiver or promotion of virtual/ICMP results to PCI performance.
 
 - [x] Shared-L2 clean `b3804e0` cold-boot requalification now PASS: actual
   learned-route ADD 3/3, WITHDRAW 3/0 plus absent FIB prefix, RESTORE 3/3,
