@@ -9,6 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [x] Real VPP process CPU sampler implemented with start-tick identity,
+  monotonic timing and one-logical-CPU normalization. Five deterministic
+  cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;
+  10-second idle polling sample measured 99.89394% (not traffic qualification).
+  Full details and command: `docs/v0.16-performance-result-schema.md`.
+
 - [x] PCI result recorder now rejects mutually matching but malformed ISO
   identities (SHA256 must contain 64 lowercase hex digits; source commit
   7–40). Regression includes short/long/nonhex digests and commits, rather
