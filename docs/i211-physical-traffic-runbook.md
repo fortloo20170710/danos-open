@@ -4,6 +4,29 @@
 
 ## Recovery preparation (not deployed or qualified)
 
+2026-10-10 update: R2-only hook deployment and service recovery observed.
+Installed `/usr/libexec/danos/replay-physical-lab`, explicit R2 profile
+`/etc/danos/physical-lab.cli`, and additive systemd drop-in
+`/etc/systemd/system/vpp.service.d/physical-lab.conf`. Existing readiness
+check and PCI discovery remain intact. Hook/profile hashes matched local
+sources before restarting. Hook SHA256
+`518ec5844b43f9e43e526c112857daf7c8c2a62700b62c70d10a69026113c241`;
+R2 profile `7c003e37ac16f9196c44e268c912eb0844bca753f67a7a401ca0fa13c0fc21c0`.
+VPP PID changed 791→2097, restart exit 0, service active, journal records
+LAB-REPLAY PASS. Interface 10.10.0.2/24 and shared-prefix route restored.
+First post-restart cold-neighbor probe was **999/1000 (0.1% actual loss)**,
+despite VPP displaying integer 0%; first reply was sequence 2. Before traffic
+FIB showed an ARP adjacency. Missing first probe is consistent with unresolved
+neighbor but not packet-trace-proven. Warm repeat summary is 1000/1000;
+neighbor matches R3 MAC `00:1f:7a:69:f7:4f`.
+No claim of zero-loss cold restart, complete topology reboot, or DANOS ledger
+replay. Local transcripts: `r2-replay-deploy-20261010.serial.log`,
+`r2-vpp-restart-20261010.serial.log`, `r2-restart-warm-20261010.serial.log`
+under `build/dpdk-installable/`. Remaining nodes have not received hooks.
+Remove only this drop-in and opt-in profile to disable lab replay, then
+daemon-reload; no package unit replacement is necessary.
+The following preparation notes describe the earlier pre-deployment state.
+
 `python3 danos-test/integration/physical_lab_profile.py R2` renders the
 explicit lab CLI topology for the chosen R1/R2/R3/R4 role. Five unit tests
 cover addresses, shared loopbacks, return routes, ECMP and absence of implicit

@@ -44,6 +44,8 @@ install -m 0755 "$ROOT/danos-test/installer/prepare_i211_dpdk.sh" \
 
 install -m 0755 "$ROOT/danos-test/live/bind_dpdk_pci.sh" \
     "$WORK/root/usr/libexec/danos/bind_dpdk_pci.sh"
+install -m 0755 "$ROOT/danos-test/installer/replay_physical_lab.sh" \
+    "$WORK/root/usr/libexec/danos/replay-physical-lab"
 
 cat > "$WORK/root/usr/lib/systemd/system/vpp.service" <<'UNIT'
 [Unit]
@@ -58,6 +60,7 @@ RuntimeDirectoryMode=0755
 ExecStartPre=/usr/libexec/danos/prepare-dpdk-pci
 ExecStart=/usr/bin/vpp -c /run/vpp/startup.conf
 ExecStartPost=/bin/sh -c 'for i in $(seq 1 30); do test -S /run/vpp/api.sock && exit 0; sleep 1; done; exit 1'
+ExecStartPost=/bin/sh /usr/libexec/danos/replay-physical-lab
 ExecStopPost=-/usr/bin/vppctl -s /run/vpp/cli.sock quit
 Restart=on-failure
 RestartSec=2
