@@ -7,6 +7,23 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-10 current-source QEMU lifecycle requalification
+
+- [x] ISO source `7b10494f93ff1dbcfa2ab3c7d84732ecca392bee`, clean;
+  host verifier `4238a76`: full FRR → DPA → VPP topology gate PASS.
+  Live evidence: `/dev/shm/danos-v016-7b10494-runtime/topology/` (volatile).
+  Machine-readable result: `build/qemu-v016-7b10494-result.env`.
+- [x] Four destinations received 4000/4000 soak probes, ECMP output deltas
+  3000/1000, elapsed 48460 ms (82.54 aggregate pps). Withdrawal and restoration
+  each passed all four destinations, 20/20 probes. Concurrent failover window
+  received 799/800 (0.12% loss), within the configured 15% gate, not lossless.
+- [x] VPP restart/replay and both post-restart peers passed; BGP add/withdraw,
+  OSPF adjacency, ZAPI 31/32, FRR add/withdraw/restore and daemon/zserv recovery
+  passed the full verifier. Local CTest: 62/62 PASS.
+- [ ] This functional QEMU lane does not qualify PCI line-rate performance,
+  physical whole-machine reboot, or the separate shared-L2 learned-route gate.
+  Preserve these scope boundaries in the release decision.
+
 ### 2026-10-09 installer performance follow-up
 
 - [x] Inspect r9 installer overhead and select offline rootfs installation
