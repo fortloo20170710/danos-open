@@ -119,6 +119,9 @@ set_tests_properties(vpp_transit_window_parser PROPERTIES TIMEOUT 30)
 add_test(NAME physical_ping_log_evidence
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_physical_ping_log.py)
 set_tests_properties(physical_ping_log_evidence PROPERTIES TIMEOUT 30)
+add_test(NAME physical_lab_profile
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_physical_lab_profile.py)
+set_tests_properties(physical_lab_profile PROPERTIES TIMEOUT 30)
 add_test(NAME frr_dynamic_log_evidence
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_frr_dynamic_log.py)
 set_tests_properties(frr_dynamic_log_evidence PROPERTIES TIMEOUT 30)
