@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GIT_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
 RESULT_FILE="${V016_GATE_RESULT_FILE:-$ROOT/build/v016-release-gate.env}"
 DPDK_RESULT_FILE="${DPDK_RESULT_FILE:-$ROOT/build/v016-dpdk-preflight.env}"
-QEMU_TOPOLOGY_DIR="${QEMU_TOPOLOGY_DIR:-$ROOT/build/qemu-frr-vpp-topology-0ae8acc-failover-soak}"
+QEMU_TOPOLOGY_DIR="${QEMU_TOPOLOGY_DIR:-$ROOT/build/qemu-shared-b3804e0-accepted}"
 QEMU_ECMP_SOAK_REQUIRED="${QEMU_ECMP_SOAK_REQUIRED:-1}"
 QEMU_ECMP_SOAK_COUNT="${QEMU_ECMP_SOAK_COUNT:-1000}"
 QEMU_RESULT_FILE="${V016_QEMU_RESULT_FILE:-$ROOT/build/v016-qemu-ecmp-soak-${GIT_COMMIT:0:7}.env}"
@@ -90,6 +90,8 @@ run_gate qemu-frr-vpp env QEMU_TOPOLOGY_DIR="$QEMU_TOPOLOGY_DIR" \
     QEMU_ECMP_SOAK_REQUIRED="$QEMU_ECMP_SOAK_REQUIRED" \
     QEMU_ECMP_SOAK_COUNT="$QEMU_ECMP_SOAK_COUNT" \
     bash "$ROOT/danos-test/qemu/verify_frr_vpp_topology.sh"
+run_gate qemu-learned-route-lifecycle python3 \
+    "$ROOT/danos-test/qemu/run_learned_route_cycle.py" --topology "$QEMU_TOPOLOGY_DIR"
 if test "$failures" -eq "$qemu_gate_failures_before"; then
     qemu_result_failures_before=$failures
     run_gate qemu-ecmp-soak-result python3 \

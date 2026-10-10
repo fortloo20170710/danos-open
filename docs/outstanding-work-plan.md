@@ -9,6 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
+- [x] Release gate default QEMU evidence updated to the archived shared-L2
+  `b3804e0` run. Learned-route ADD/WITHDRAW/RESTORE/POSTFRR validator is now
+  mandatory even when callers override the topology; an older basic-only
+  topology cannot silently satisfy the expanded software qualification.
+  Config regression checks the default and explicit learned-route subgate.
+
 - [x] Shared-L2 clean `b3804e0` cold-boot requalification now PASS: actual
   learned-route ADD 3/3, WITHDRAW 3/0 plus absent FIB prefix, RESTORE 3/3,
   POSTFRR 3/3 with zebra reconnect; full topology gate and archived copy PASS.
