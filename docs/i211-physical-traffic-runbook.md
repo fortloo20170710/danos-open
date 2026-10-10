@@ -43,7 +43,10 @@ full hardware traffic PASS.
 P1 `10.20.0.2/24` and existing return route to `10.10.0.2/32`
 via `10.20.0.1`. Created `loop0`, admin-up, with shared local addresses
 `30.30.30.2/32` through `30.30.30.5/32`, matching R1. R4→R3→R2
-regression passed 1000/1000, 0% loss, TTL 63. No reboot or persistent
+regression reports 1000/1000, 0% loss, TTL 63 in VPP's summary.
+The UART transcript contains 1000 reply lines, but the strict endpoint
+verifier rejects its reply-line formatting/count match; this is summary-level
+evidence only, not a strict archived-log PASS. No reboot or persistent
 configuration change; R3's two-next-hop route and bucket distribution
 remain unqualified. Next move UART to R3 to install/inspect ECMP.
 Evidence `build/dpdk-installable/r4-shared-ecmp-prep-20261010.serial.log`
