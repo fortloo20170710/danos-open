@@ -126,6 +126,22 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
         self.assertIn("measurement commit does not match preflight", output)
         self.assertIn("status=FAIL", output)
 
+    def test_nonfinite_thresholds_produce_structured_failure(self):
+        for index in (1, 3, 5):
+            for value in ("NaN", "sNaN", "Infinity", "-Infinity"):
+                extra = ["--min-pps", "900", "--max-loss-pct", "0",
+                         "--max-cpu-pct", "50"]
+                extra[index] = value
+                # '=' form also keeps negative infinity from being parsed as an option.
+                arguments = tuple(extra[i] + "=" + extra[i + 1]
+                                  for i in (0, 2, 4))
+                with self.subTest(index=index, value=value):
+                    proc, output = self.run_case(extra=arguments)
+                    self.assertEqual(proc.returncode, 1)
+                    self.assertIn("status=FAIL", output)
+                    self.assertIn("acceptance thresholds must be finite", output)
+                    self.assertNotIn("Traceback", proc.stderr)
+
     def test_preflight_commit_must_match_iso_identity(self):
         with tempfile.TemporaryDirectory(prefix="dpdk-result-test-") as tmp:
             root = Path(tmp)

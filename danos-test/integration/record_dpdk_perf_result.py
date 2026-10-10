@@ -113,6 +113,8 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
     if any(value is not None for value in thresholds) and any(value is None for value in thresholds):
         raise ResultError("provide all three acceptance thresholds or none")
     if all(value is not None for value in thresholds):
+        if any(not value.is_finite() for value in thresholds):
+            raise ResultError("acceptance thresholds must be finite")
         if args.min_pps <= 0:
             raise ResultError("min_pps must be positive")
         if not 0 <= args.max_loss_pct <= 100:

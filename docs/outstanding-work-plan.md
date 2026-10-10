@@ -27,6 +27,14 @@ recorded software or packet-test evidence.
 
 ### 2026-10-10 physical recovery update
 
+Performance-gate hardening: PCI measurement validator now rejects non-finite
+acceptance thresholds (`NaN`, signaling NaN, positive/negative infinity)
+with structured FAIL rather than raising an uncaught Decimal exception or
+accepting an unbounded threshold. Regression covers all three threshold
+positions and preserves finite-threshold behavior; validator suite 13/13,
+configured CTest 61/61 PASS. This is validator qualification, not new PCI
+performance evidence; no missing CPU/throughput metrics were synthesized.
+
 Four-node I211 manual-CLI ECMP and bidirectional next-hop withdrawal/restore
 now have original endpoint logs and device-delta evidence. All four nodes
 have explicit lab startup profiles; independent VPP service restarts followed
