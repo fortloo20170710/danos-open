@@ -4,6 +4,24 @@
 
 ## Recovery checkpoint and preparation history
 
+R1 peer service recovery: MAC `00:1f:7a:40:28:20` verified. Hook/drop-in
+and R1 profile deployed with matching hashes; profile SHA256
+`68e0beac8a64a0736db0c5249c96727a0a08070bdeeacb033d44c68331ff0b89`.
+VPP PID 794→1843, restart exit 0, active, journal LAB-REPLAY PASS.
+P1 10.30.0.2/24, loop0 30.30.30.2–.5/32 and return route to
+10.10.0.2/32 automatically restored. Cold transit summary 99/100 (1%)
+is retained, warm R1→R3→R2 passes 1000/1000, TTL 63. Original warm
+log was transferred, hash matched and strict endpoint verifier passed:
+`build/dpdk-installable/r1-restart-warm-20261010.log` SHA256
+`fb260facb8d3370e5b7e3204b05a1e17720476eb5a2cf9b58e27114070f8119b`.
+Deployment/restart and test transcripts are `r1-replay-restart-20261010.serial.log`
+and `r1-post-restart-test-20261010.serial.log` in the same directory.
+All four nodes now have deployed explicit lab replay profiles and individual
+VPP service restart observations. Earlier undeployed-peer notes below are
+historical. Next re-run R2 four-target traffic in this all-restored state and
+capture a fresh R3 before/after baseline; no collective lossless restart,
+machine reboot or DANOS ledger replay is yet qualified.
+
 R4 peer service recovery: MAC `00:1f:7a:40:01:80` confirmed; same lab
 hook/drop-in and R4 profile installed with verified hashes (profile SHA256
 `480a4a5d82df77f80e896298eb1d81bd5a8623ed5ef15549ca7d200a0cd49e05`).

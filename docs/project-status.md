@@ -2,6 +2,13 @@
 
 ## 2026-10-10 physical VPP service replay checkpoint
 
+R1 follow-up completes lab hook deployment on all four nodes. R1 VPP
+service restart restores interface, shared /32 loopbacks and return route;
+warm transit 1000/1000 passes strict archived-log validation, cold probe
+99/100 retained. Each node now has an individual service-recovery observation.
+Unified all-restored dual-egress regression and whole-machine reboot are still
+pending; earlier pending R1 deployment statements below are superseded.
+
 R4 follow-up also verifies lab service replay: interface, shared loopback
 addresses and return route restored automatically; warm transit 1000/1000,
 TTL 63, archived endpoint hash verified. Cold-neighbor test remains 99/100.
