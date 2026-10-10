@@ -1,5 +1,22 @@
 # DANOS Open Project Status
 
+## 2026-10-10 physical CLI next-hop recovery checkpoint
+
+Four concurrent endpoint streams completed 60000/60000 each (240000 total),
+zero loss, unique complete sequences, TTL 63 and command exit 0. Original
+endpoint/local log SHA256 agree. During traffic R3 underwent separate CLI
+withdrawal of each next hop, with 10.03-second single-path windows carrying
+4007 and 4005 request/reply packets on the remaining path. Both equal-weight
+paths were independently verified restored and active after a UART-corrupted
+explicit restoration command was corrected. Scoped manual-next-hop recovery
+functional qualification is PASS; low-rate probes average about 99.93 pps per
+stream. Evidence, RTT percentiles and digests are in the physical runbook.
+
+This supersedes the previous physical withdrawal/restore OPEN statement only
+for CLI-controlled next-hop changes. Physical link failure detection,
+FRR/DPA convergence, restart/replay, CPU/wire-rate performance and artifact-bound
+cold boot remain OPEN. The unified release gate is not upgraded by this result.
+
 ## 2026-10-10 physical four-node ECMP checkpoint
 
 Installed I211 R2 → R3 → R4/R1 topology passes scoped IPv4 transit ECMP

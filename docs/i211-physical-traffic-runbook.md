@@ -2,6 +2,41 @@
 
 更新时间：2026-10-10
 
+## 2026-10-10 physical next-hop withdrawal/restoration closeout
+
+**PASS, scoped manual-VPP-CLI functional qualification**: four concurrent
+60000-probe endpoint logs completed 240000/240000, zero loss, TTL 63,
+exit status 0. Every sequence is present exactly once for each destination.
+Original logs transferred compressed over UART match device SHA256 and pass
+`verify_physical_ping_log.py`. Combined with the R3 single-path windows and
+independently verified final two-path restoration below, this closes the
+two-direction next-hop withdrawal/restoration run. Both transitions occur
+within the complete endpoint runs; no probe sequence is lost.
+
+| Target | Sent / received | Elapsed s (R2 uptime) | Observed probes/s | RTT p50 / p99 ms |
+|---|---|---|---|---|
+| 30.30.30.2 | 60000 / 60000 | 600.45 | 99.925 | 0.1309 / 0.2305 |
+| 30.30.30.3 | 60000 / 60000 | 600.44 | 99.927 | 0.1317 / 0.1799 |
+| 30.30.30.4 | 60000 / 60000 | 600.44 | 99.927 | 0.1323 / 0.2209 |
+| 30.30.30.5 | 60000 / 60000 | 600.45 | 99.925 | 0.1306 / 0.1931 |
+
+Elapsed time includes the per-command wrapper, not synchronized cross-device
+timestamps. RTT percentiles use nearest-rank over each 60000 ICMP replies;
+these are low-rate RTT, not one-way latency or throughput-capacity metrics.
+CPU and wire-rate Mbps were not measured. No physical link was disconnected,
+and FRR/DPA did not program these routes. Link-detection, restart/replay,
+FRR/DPA convergence, line rate and artifact-bound cold boot remain OPEN.
+Earlier IN PROGRESS/PENDING notes below are historical, superseded for this
+specific run. All original endpoint logs are retained on R2 under
+`/tmp/ecmp-failover-20261010-b/` and locally under `build/dpdk-installable/`:
+
+| Local log | SHA256 |
+|---|---|
+| r2-failover-20261010-p2.log | 422166a30cf7a875df8961e94de7254aedf3c99429235b73d2245fa0113f7604 |
+| r2-failover-20261010-p3.log | 4ba0019123ddb995ec06f82a5c744ceb4405c4746ff3313d6ab37d729a45a512 |
+| r2-failover-20261010-p4.log | 55e50a47c33c0c21c641d40dcbbb71b91b3a70d71b268ba279c8715c2aa2529e |
+| r2-failover-20261010-p5.log | 8acdf919332f72478d2537b8cc1c2e9bf15f4c7097350ee1267e4b4d9ab12455 |
+
 ## 2026-10-10 physical transit ECMP functional checkpoint
 
 Withdrawal/restoration device-side observation completed; final endpoint
