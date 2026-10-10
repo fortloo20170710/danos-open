@@ -7,6 +7,23 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### 2026-10-11 physical receiver and CPU qualification checkpoint
+
+- [x] Three finite NIC-output probes (80/40000/240000 MAC frames) audited:
+  R4 UDP lookup 210060 + R1 70020 = all 280080 emitted frames. Both ECMP
+  egresses exercised; R3 forwarding drops/errors unchanged. All PG streams
+  removed. This supersedes older generator/receiver-not-yet-run statements.
+- [x] 240k run includes traffic-overlapping CPU samples, stable main PID
+  2312/start ticks and single thread CPU 0; approximately 99.69–99.89%.
+  Earlier nonoverlapping short observer remains idle-only evidence.
+- [x] Return discrepancy classified: R4 337 + R1 84 ICMP error responses
+  dropped for UDP ports without listeners, matching total 421 missing
+  returns. Original UDP ingress counts are complete, not UDP echo delivery.
+- [ ] Next: choose an actual receive/latency measurement method, retain
+  paired monotonic counter windows and artifact manifest, and run a bounded
+  load ladder. Do not convert requested PG rate or ICMP errors into measured
+  line-rate/echo performance. PCI release qualification remains OPEN.
+
 ### 2026-10-10 current-source QEMU lifecycle requalification
 
 - [~] Actual R2 wire PG probe executed after MAC/address identification:

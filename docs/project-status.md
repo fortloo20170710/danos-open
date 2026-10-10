@@ -17,11 +17,17 @@ virtualization subgates, r13 console/mgrd WAL replay and historical VMware
 (development-host invocation lacks a physical target BDF). This does not
 invalidate existing I211 functional tests, nor qualify hardware throughput.
 
-Physical 64-byte traffic, latency and coincident CPU/core/identity evidence,
-whole-machine reboot and physical FRR/DPA-owned replay remain unfinished.
-Bounded disabled peer PG definitions parse on VPP 26.10; they have not yet
-produced qualified wire traffic. R2 serial access is requested for the next
-step. No v0.16 final-release or PCI performance PASS is claimed.
+2026-10-11 physical update: bounded 64-byte MAC-frame NIC-output probes
+of 80, 40000 and 240000 frames all reached R1/R4 (280080 total), with
+both R3 ECMP egresses and unchanged forwarding drop/error counters. The
+240k run has traffic-overlapping CPU evidence: one VPP thread on CPU 0,
+approximately 99.69–99.89%, also near saturation while idle polling.
+Receiver audits explain all 421 cumulative missing return frames as ICMP
+error-response drops on unlistened UDP ports, not lost original UDP ingress.
+These are functional delivery/node-count results, not UDP echo or line rate.
+Precise throughput/latency, qualified artifact identity, whole-machine reboot
+and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
+not synchronized. No v0.16 final-release or PCI performance PASS is claimed.
 
 ## Current physical recovery verdict — 2026-10-10
 
