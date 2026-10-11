@@ -36,6 +36,11 @@ def check_pacing(rows, names, enable_times, sample_end, rate, limit):
             raise ValueError(f"source pacing ahead of monotonic budget: {name}")
 
 
+def tx_errors(raw):
+    return sum(int(n) for n in re.findall(
+        r"(?m)^\s*(\d+)\s+\S+-tx\s+Tx packet drops", raw))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for key in ("source-mac", "target-mac", "source-ip", "interface"):
@@ -107,6 +112,12 @@ def main():
                 raw = cli("show packet-generator")
                 rows = stream_counts(raw, names)
                 phase["samples"].append(dict(clock=[start, time.monotonic()], rows=rows, raw=raw))
+                sample = phase["samples"][-1]
+                sample["errors"] = cli("show errors")
+                if len(phase["samples"]) % 10 == 1:
+                    sample["vpp_clock"] = clock_snapshot()
+                if tx_errors(sample["errors"]) > tx_errors(phase["errors_before"]):
+                    raise ValueError("new source TX drops during phase")
                 check_pacing(rows, names, phase["enable_times"],
                              phase["samples"][-1]["clock"][1], rate, a.count)
                 if all(not r["enabled"] and r["count"] == a.count for r in rows.values()):
@@ -120,9 +131,6 @@ def main():
             phase["identity_after"] = identity()
             if phase["identity_after"] != result["identity_before"]:
                 raise ValueError("VPP process or thread mapping changed")
-            def tx_errors(text):
-                return sum(int(n) for n in re.findall(
-                    r"(?m)^\s*(\d+)\s+\S+-tx\s+Tx packet drops", text))
             if tx_errors(phase["errors_after"]) > tx_errors(phase["errors_before"]):
                 raise ValueError("new source TX drops; refusing next pacing phase")
             for name in list(owned):
@@ -150,6 +158,16 @@ def main():
                 failures.append(str(exc))
         if failures:
             result.update(status="FAIL", cleanup_errors=failures)
+        if "identity_before" in result:
+            try:
+                result["identity_final"] = identity()
+                if result["identity_final"] != result["identity_before"]:
+                    raise ValueError("final runtime identity changed")
+                result["hardware_final"] = cli("show hardware-interfaces " + a.interface)
+                result["errors_final"] = cli("show errors")
+                result["streams_final"] = cli("show packet-generator")
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                result.update(status="FAIL", final_snapshot_error=str(exc))
         a.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(dict(status=result["status"], phases=len(result["phases"]),
                           scope=result["scope"], performance_status="ENVIRONMENT-OPEN")))

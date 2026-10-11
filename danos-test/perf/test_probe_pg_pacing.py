@@ -2,10 +2,14 @@ import unittest
 import subprocess
 import sys
 from pathlib import Path
-from probe_pg_pacing import stream_counts, check_pacing
+from probe_pg_pacing import stream_counts, check_pacing, tx_errors
 
 
 class PacingTests(unittest.TestCase):
+    def test_tx_errors_ignore_other_reasons(self):
+        self.assertEqual(tx_errors(" 12 GigabitEthernet1/0/0-tx Tx packet drops (dpdk tx failure) error\n 4 GigabitEthernet2/0/0-tx Tx packet drops error\n 200 ip4-icmp-error error message dropped error\n"), 16)
+        self.assertEqual(tx_errors("no errors"), 0)
+
     def test_invalid_enable_gap_rejected_before_runtime(self):
         for gap in ("nan", "inf", "-1", "1.01"):
             response = subprocess.run([
