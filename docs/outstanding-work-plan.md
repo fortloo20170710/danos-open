@@ -9,6 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 
+- [~] Reduced-load source calibration completed: four ×6000 frames,
+  requested 100 pps each, hardware TX/RX both +24000, source TX-failure
+  counter unchanged at 30542. All streams removed. Source emission PASS
+  only; next audit R3 error-aware paired windows and DUT TX deltas. Higher
+  load failures remain archived and unresolved, not waived by calibration.
+
 - [!] New paired-rate follow-up source failure: R2 PG generated 240000,
   hardware TX only 209458, DPDK TX drops 30542. One stream finished early;
   rate stability/cause remains unverified. Test streams cleaned up, failure
