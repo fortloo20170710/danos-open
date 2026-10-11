@@ -49,6 +49,10 @@ UDP frames across both receivers, no new DUT TX failure, and +69 receiver
 ICMP response drops explaining the entire return deficit. Source pacing
 root cause and long-term performance remain OPEN; see
 `v0.16-performance-result-schema.md` for per-run scope and numbers.
+The subsequent live-error-guarded series likewise reconciles +52224
+original UDP frames on both receivers, no new DUT TX failure, with all
+35 missing ICMP returns accounted for by receiver response-drop deltas.
+This strengthens bounded forwarding evidence, not release qualification.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

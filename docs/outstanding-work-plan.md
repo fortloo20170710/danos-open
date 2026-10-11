@@ -35,6 +35,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   needs actual R4/R1 node snapshots before closing this later interval.
   R4 snapshot now confirms +39168 UDP, +39144 ICMP responses and +24
   response drops. R1's +13056 UDP and 11-response deficit remain to audit.
+  R1 now confirms +13056 UDP, +13045 ICMP responses and +11 response
+  drops, closing the 52224-frame interval. Next work is source pacing
+  root-cause diagnosis and qualified sustained metrics, not further
+  promotion of short probe success to hardware performance PASS.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
