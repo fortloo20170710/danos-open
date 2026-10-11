@@ -21,6 +21,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   R2 UART execution now passes 2/2 with expected MAC setup and command
   outputs in `build/robot-r2-readonly-live/`. Next execute R3's full suite
   including resolved ECMP; these operational checks are not throughput PASS.
+  R3 full UART suite is now 3/3 PASS with raw XML/HTML and scoped manifest.
+  Next adapt backend/object visibility and existing route lifecycle gates;
+  do not claim older installed ISO identity or hardware performance qualified.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

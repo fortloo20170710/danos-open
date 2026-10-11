@@ -92,6 +92,20 @@ decoding failures were corrected and regression-tested. Reports are in
 not forwarding, throughput or ISO qualification. No configuration changes
 or packet-generator traffic were performed. Six adapter unit tests pass.
 
+R3 actual UART full suite also passed 3/3 using adapter commit `81663a6`:
+MAC `00:1f:7a:69:f7:4c`, runtime `v26.10-rc0~545-gad99177fe`, physical
+counter output, and resolved ECMP buckets via 10.20.0.2/GigabitEthernet1/0/0
+and 10.30.0.2/GigabitEthernet2/0/0. Evidence is in
+`build/robot-r3-readonly-live/{output.xml,log.html,report.html,manifest.json}`.
+R3 XML SHA256 is
+`5fed9746fdbe42d200b53b85b1f99dffd1e889b3a7d2aa0d8351d0b6bc1b71c8`;
+R2 XML SHA256 is
+`959cf2fdbeb2185fb3a25a4c013b97e9ba73678732b3fdc31431150bb23fe160`.
+The report manifest explicitly leaves installed ISO digest unknown; adapter
+commit must not be substituted for the older installed image identity.
+Remote `81663a6` CI/Coverage/Interop Gate runs 38150359546/38150359537/
+38150359532 all completed success. These do not certify hardware performance.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML
