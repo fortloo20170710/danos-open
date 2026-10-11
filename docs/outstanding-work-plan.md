@@ -20,6 +20,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   capture receiver pre/post node counters for each next loaded run. Keep
   source and DUT failures visible; do not rerun uncontrolled 60000-frame
   bursts or infer a cause from short-run non-reproduction.
+  R3 reconciliation now confirms +82944 ingress/FIB, hardware egress
+  +62208/+20736 and no new TX failure. Return ICMP deficit is 69 (52/17).
+  Receiver UDP/ICMP node checks remain next; no application-level PASS.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
