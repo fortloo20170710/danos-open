@@ -131,6 +131,9 @@ set_tests_properties(physical_pg_renderer PROPERTIES TIMEOUT 30)
 add_test(NAME physical_counter_window
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_collect_vpp_window.py)
 set_tests_properties(physical_counter_window PROPERTIES TIMEOUT 30)
+add_test(NAME physical_pg_pacing
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_probe_pg_pacing.py)
+set_tests_properties(physical_pg_pacing PROPERTIES TIMEOUT 30)
 add_test(NAME physical_lab_replay
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/installer/test_replay_physical_lab.py)
 set_tests_properties(physical_lab_replay PROPERTIES TIMEOUT 30)
