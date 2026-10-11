@@ -1,9 +1,10 @@
 # DANOS Open Project Status
 
-## Current v0.16 qualification verdict — 2026-10-10
+## Current v0.16 qualification verdict — 2026-10-11
 
 Route/NH/NHGroup contract remains frozen; deterministic contract gate and
-CTest 64/64 PASS. The clean `b3804e0` shared-L2 QEMU cold boot now proves
+Current CTest 66/66 PASS (the historical release-gate run below had its
+then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
 evidence and its independent revalidation are in
@@ -35,6 +36,16 @@ Intermediate requested 500-pps-per-flow regression also passes bounded
 forwarding: 120000 frames, ECMP 90000/30000, no new TX errors; measured
 1998.44–2002.05 pps, about 1.024 MAC Mbps with paired CPU 99.69–99.79%.
 Neither lower-load baseline closes the previous high-load failure.
+The repeated high-load run also failed: source TX drops increased by 61633;
+DUT P1 TX failures increased by 3450, before cleanup. Cumulative receiver
+reconciliation now accounts for 790122 probe ingress frames as 786489
+original UDP frames received plus 3633 DUT TX failures. This is exact
+accounting of real failures, not zero-loss qualification. Subsequent
+source-local finite probes use count/time-budget guards, VPP clock brackets
+and PID/start-tick/thread identity. Two 4096-frame-per-flow probes did not
+reproduce premature completion; the large-run cause remains unresolved.
+Newer source-only probes still need DUT and receiver delta reconciliation;
+see `v0.16-performance-result-schema.md` for per-run scope and numbers.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

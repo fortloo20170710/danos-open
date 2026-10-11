@@ -9,6 +9,18 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 
+- [x] Cumulative receiver ledger closed through the first bounded pacing
+  series: ingress 790122 = receiver original UDP 786489 + DUT TX failures
+  3633. ICMP response drops are separate from original UDP reception.
+- [~] Source-local pacing diagnosis: finite count/time-budget guard, VPP
+  clock brackets and stable process/thread identity deployed on R2. Fast
+  4096-frame-per-flow probes did not reproduce the large-run burst; finite
+  staggered enable experiments are in progress, not a fix or capacity PASS.
+- [ ] Reconcile later source-only probe increments at R3 and both receivers;
+  capture receiver pre/post node counters for each next loaded run. Keep
+  source and DUT failures visible; do not rerun uncontrolled 60000-frame
+  bursts or infer a cause from short-run non-reproduction.
+
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
   ingress 1998.44–2002.05 pps, about 1.024 MAC Mbps, CPU 99.69–99.79%.
@@ -19,7 +31,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Repeat now reproduces premature completion of two streams and +61633
   source TX drops; aborted/cleaned up. Final wire TX +95144, not 240000.
   Matching VPP source inspected, but runtime pacing cause remains unproven.
-  Read R3 aborted-run counters next, then prioritize pacing diagnosis over
+  R3 aborted-run counters were read; prioritize pacing diagnosis over
   further uncontrolled high-load attempts.
   R3 audit: ingress +95144 matches source; P1 new DPDK TX drops +3450,
   hardware TX +71531 versus attempted +74981. Observer failed closed on
@@ -34,8 +46,8 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   R3 audit now completes this low-load regression: +24000 ingress/return,
   ECMP +18000/+6000, TX failure delta zero. Steady paired observations
   399.65–400.33 pps and about 0.205 MAC Mbps, CPU 99.69–99.79%.
-  Next bounded diagnostic ladder step is requested 500 pps per flow,
-  30000 frames each; this is not a capacity/latency qualification.
+  The 500-pps-per-flow next ladder step has since passed as recorded above;
+  this remains a bounded regression, not a capacity/latency qualification.
 
 - [!] New paired-rate follow-up source failure: R2 PG generated 240000,
   hardware TX only 209458, DPDK TX drops 30542. One stream finished early;
