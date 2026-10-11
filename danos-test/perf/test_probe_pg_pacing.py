@@ -2,10 +2,18 @@ import unittest
 import subprocess
 import sys
 from pathlib import Path
-from probe_pg_pacing import stream_counts, check_pacing, tx_errors
+from probe_pg_pacing import stream_counts, check_pacing, tx_errors, vpp_clock_value
 
 
 class PacingTests(unittest.TestCase):
+    def test_clock_values_reject_nonfinite_and_missing(self):
+        self.assertEqual(vpp_clock_value("Time now 12.25, date\n0: Time now 12.26"), 12.25)
+        for raw in ("Time now nan, date", "Time now inf, date", "Time now -1, date", "0: Time now 2"):
+            with self.assertRaises(ValueError):
+                vpp_clock_value(raw)
+        with self.assertRaises(ValueError):
+            check_pacing({"f": {"count": 1}}, ["f"], [[0, 0]], float("nan"), 100, 256)
+
     def test_tx_errors_ignore_other_reasons(self):
         self.assertEqual(tx_errors(" 12 GigabitEthernet1/0/0-tx Tx packet drops (dpdk tx failure) error\n 4 GigabitEthernet2/0/0-tx Tx packet drops error\n 200 ip4-icmp-error error message dropped error\n"), 16)
         self.assertEqual(tx_errors("no errors"), 0)

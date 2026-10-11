@@ -27,7 +27,7 @@ def check_pacing(rows, names, enable_times, sample_end, rate, limit):
     for i, name in enumerate(names):
         count = rows[name]["count"]
         elapsed = sample_end - enable_times[i][0]
-        if elapsed < 0 or count > limit:
+        if not math.isfinite(elapsed) or elapsed < 0 or count > limit:
             raise ValueError("invalid source count or sample clock")
         # Allow 100 ms of scheduling jitter plus 32 frames; never authorize
         # unlimited traffic or describe this margin as measured capacity.
@@ -39,6 +39,16 @@ def check_pacing(rows, names, enable_times, sample_end, rate, limit):
 def tx_errors(raw):
     return sum(int(n) for n in re.findall(
         r"(?m)^\s*(\d+)\s+\S+-tx\s+Tx packet drops", raw))
+
+
+def vpp_clock_value(raw):
+    match = re.search(r"(?m)^Time now (\S+)", raw)
+    if not match:
+        raise ValueError("VPP clock header missing")
+    value = float(match[1].rstrip(","))
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("invalid VPP clock value")
+    return value
 
 
 def main():
@@ -95,6 +105,7 @@ def main():
             phase = dict(requested_pps_per_flow=rate, samples=[], enable_times=[],
                          errors_before=cli("show errors"), clock_before=clock_snapshot())
             result["phases"].append(phase)
+            last_vpp_clock = vpp_clock_value(phase["clock_before"]["raw"])
             names = [f"pace{rate}_{i}" for i in range(4)]
             for i, line in enumerate(definition.splitlines()):
                 owned.append(names[i])
@@ -116,6 +127,10 @@ def main():
                 sample["errors"] = cli("show errors")
                 if len(phase["samples"]) % 10 == 1:
                     sample["vpp_clock"] = clock_snapshot()
+                    value = vpp_clock_value(sample["vpp_clock"]["raw"])
+                    if value < last_vpp_clock:
+                        raise ValueError("sampled VPP clock moved backwards")
+                    last_vpp_clock = value
                 if tx_errors(sample["errors"]) > tx_errors(phase["errors_before"]):
                     raise ValueError("new source TX drops during phase")
                 check_pacing(rows, names, phase["enable_times"],
@@ -128,6 +143,8 @@ def main():
             phase["errors_after"] = cli("show errors")
             phase["hardware_after"] = cli("show hardware-interfaces " + a.interface)
             phase["clock_after"] = clock_snapshot()
+            if vpp_clock_value(phase["clock_after"]["raw"]) < last_vpp_clock:
+                raise ValueError("final phase VPP clock moved backwards")
             phase["identity_after"] = identity()
             if phase["identity_after"] != result["identity_before"]:
                 raise ValueError("VPP process or thread mapping changed")
