@@ -14,6 +14,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   counter unchanged at 30542. All streams removed. Source emission PASS
   only; next audit R3 error-aware paired windows and DUT TX deltas. Higher
   load failures remain archived and unresolved, not waived by calibration.
+  R3 audit now completes this low-load regression: +24000 ingress/return,
+  ECMP +18000/+6000, TX failure delta zero. Steady paired observations
+  399.65–400.33 pps and about 0.205 MAC Mbps, CPU 99.69–99.79%.
+  Next bounded diagnostic ladder step is requested 500 pps per flow,
+  30000 frames each; this is not a capacity/latency qualification.
 
 - [!] New paired-rate follow-up source failure: R2 PG generated 240000,
   hardware TX only 209458, DPDK TX drops 30542. One stream finished early;

@@ -25,6 +25,12 @@ approximately 99.69–99.89%, also near saturation while idle polling.
 Receiver audits explain all 421 cumulative missing return frames as ICMP
 error-response drops on unlistened UDP ports, not lost original UDP ingress.
 These are functional delivery/node-count results, not UDP echo or line rate.
+Subsequent 1000-pps-per-flow follow-up failed with source TX drops 30542
+and DUT P2 TX drops 183; this failure remains open. Reduced-load 100-pps-
+per-flow regression then passed at +24000 transit/return, ECMP 18000/6000,
+no new TX errors, measured steady ingress 399.65–400.33 pps (about 0.205
+MAC Mbps), paired polling CPU 99.69–99.79%. This is a regression baseline,
+not hardware capacity; unchanged generic drops alone cannot imply success.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.
