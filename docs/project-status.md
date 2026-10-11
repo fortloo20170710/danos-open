@@ -60,6 +60,9 @@ R3 full UART suite now passes 3/3 including resolved ECMP; raw XML/HTML
 and manifest are retained, but installed ISO digest is not qualified.
 See `upstream-danos-tests-adaptation.md`; the existing gNMI
 write suite is not promoted to a safe physical default.
+Robot DPA orchestration now passes 4/4 for rebuilt local mock contract tests
+and archived learned-route lifecycle evidence. Fresh physical DPA object
+visibility and new live route lifecycle execution are not implied.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

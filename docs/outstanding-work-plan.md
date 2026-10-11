@@ -24,6 +24,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   R3 full UART suite is now 3/3 PASS with raw XML/HTML and scoped manifest.
   Next adapt backend/object visibility and existing route lifecycle gates;
   do not claim older installed ISO identity or hardware performance qualified.
+  Local DPA conformance and archived learned-route evidence now execute via
+  `DPA_CONFORMANCE.robot` (4/4 PASS after rebuilding its three binaries).
+  Physical backend/object views remain a real interface gap, not covered by
+  this mock/archive scope. Next specify read-only capability/ledger visibility
+  before adding mutable topology orchestration.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

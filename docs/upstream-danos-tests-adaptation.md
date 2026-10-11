@@ -106,6 +106,35 @@ commit must not be substituted for the older installed image identity.
 Remote `81663a6` CI/Coverage/Interop Gate runs 38150359546/38150359537/
 38150359532 all completed success. These do not certify hardware performance.
 
+### DPA contract and route evidence orchestration
+
+Added `DPA_CONFORMANCE.robot`, original orchestration of existing acceptance
+implementations rather than duplicate assertions or legacy commands. The
+first three cases execute the current local conformance, programming pipeline
+and composite route binaries, with explicit timeout and exit/output checks.
+They use in-process/mock adapters, not R3's installed backend. Targets were
+rebuilt before the passing run. The fourth invokes the existing learned-route
+validator without `--run`, checks the clean archived topology/ISO identity
+and ADD/WITHDRAW/RESTORE/POSTFRR evidence, and is tagged
+`archived-evidence-only`. It neither modifies nor restarts a topology.
+
+```sh
+cmake --build build --target conformance_test programming_pipeline_test \
+  route_composite_test -j 2
+python3 -m robot --outputdir build/robot-dpa-conformance \
+  danos-test/danos-robot/DPA_CONFORMANCE.robot
+```
+
+Actual Robot result 4/4 PASS; XML SHA256
+`5cc0ec38ad4dd002a73e861e9b200265cda295f550d3859d92035bd7c5c04497`.
+Reports are in `build/robot-dpa-conformance/`. Current CLI implements
+interface/route/VRF views, not legacy `show platform dataplane`. Physical
+DPA backend/object state visibility is still a gap; local conformance and
+VPP FIB views must not be substituted for desired/programmed ledger views.
+Next design a bounded read-only capability/ledger query with authenticated
+management transport and explicit ownership, then integrate fresh isolated
+route lifecycle orchestration. Do not enable plaintext mgrd on R3 for this.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML
