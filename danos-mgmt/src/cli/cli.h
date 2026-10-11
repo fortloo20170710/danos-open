@@ -35,6 +35,7 @@ int danos_cli_run(danos_cli_ctx_t *ctx);
 int cli_cmd_show_interface(danos_cli_ctx_t *ctx, const char *args);
 int cli_cmd_show_route(danos_cli_ctx_t *ctx, const char *args);
 int cli_cmd_show_vrf(danos_cli_ctx_t *ctx, const char *args);
+int cli_cmd_show_dataplane(danos_cli_ctx_t *ctx, const char *args);
 int cli_cmd_configure(danos_cli_ctx_t *ctx, const char *args);
 int cli_cmd_exit(danos_cli_ctx_t *ctx, const char *args);
 int cli_cmd_help(danos_cli_ctx_t *ctx, const char *args);

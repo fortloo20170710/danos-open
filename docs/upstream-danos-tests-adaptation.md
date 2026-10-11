@@ -135,6 +135,25 @@ Next design a bounded read-only capability/ledger query with authenticated
 management transport and explicit ownership, then integrate fresh isolated
 route lifecycle orchestration. Do not enable plaintext mgrd on R3 for this.
 
+### Minimal in-process summary — 2026-10-12
+
+Implemented `show dataplane`: active programming backend, separately
+registered capabilities, and desired/programmed counts for every DPA type.
+TYPE is the public numeric object enumeration; MAX_COUNT=0 means unlimited.
+Registration does not imply active selection. Counts are sampled independently,
+not an atomic cross-store snapshot. Programmed means local ledger, not hardware
+FIB readback. Unknown subarguments such as `clear` are rejected. The query
+does not program, clear or enumerate individual objects.
+
+CLI tests seed a desired route, unsupported registered capability and
+separately named active backend, check output and unchanged desired/programmed
+counts. Full build and CTest 67/67 PASS; updated DPA Robot suite 5/5 PASS.
+Updated XML SHA256 is
+`e97ecc42b9363d1cf9dda802711e89a99a945b1c385cee7cf840d9aa6c5e4562`;
+the earlier 4/4 digest refers to its earlier report. This is local-source
+implementation, not deployment to R3's old ISO. Per-object states,
+authenticated remote query and physical image qualification remain pending.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML

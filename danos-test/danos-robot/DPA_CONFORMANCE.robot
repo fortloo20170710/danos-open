@@ -22,6 +22,16 @@ Run bounded conformance binary
     Should Contain    ${result.stdout}    ${marker}
 
 *** Test Cases ***
+Read-only dataplane capability and ledger summary
+    [Tags]    local-in-process-cli
+    ${binary}    Normalize Path    ${BUILD_DIR}/danos-mgmt/tests/cli_test
+    File Should Exist    ${binary}
+    ${result}    Run Process    ${binary}    timeout=30s    on_timeout=terminate
+    Log    ${result.stdout}
+    Log    ${result.stderr}
+    Should Be Equal As Integers    ${result.rc}    0
+    Should Contain    ${result.stdout}    [PASS] test_dataplane_readonly
+
 Capability and transaction conformance
     [Tags]    local-mock-contract
     Run bounded conformance binary    conformance_test    0 failed

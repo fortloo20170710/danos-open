@@ -6,6 +6,57 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
+#include <danos/core/object_registry.h>
+#include <danos/core/backend_ops.h>
+
+static int test_dataplane_readonly(void)
+{
+    danos_cli_ctx_t ctx;
+    danos_cli_init(&ctx);
+    danos_object_store_t *saved = g_default_store;
+    g_default_store = danos_object_store_create(16);
+    assert(g_default_store);
+    danos_route_t route = {0};
+    assert(danos_object_create(g_default_store, DANOS_OBJ_ROUTE, 123,
+                              &route, sizeof(route)) == DANOS_OK);
+    uint64_t programmed = danos_programming_programmed_count(DANOS_OBJ_ROUTE);
+    danos_capability_t capability = { .type = DANOS_OBJ_ROUTE,
+                                     .supported = false, .max_count = 123 };
+    danos_backend_info_t backend = { .name = "cli-observe-test",
+                                    .caps = &capability, .cap_count = 1 };
+    assert(danos_backend_register(&backend) == DANOS_OK);
+    const danos_backend_ops_t *saved_ops = danos_backend_ops_get();
+    danos_backend_ops_t ops = { .name = "cli-observe-active" };
+    danos_backend_ops_set(&ops);
+    FILE *output = tmpfile();
+    assert(output);
+    fflush(stdout);
+    int original = dup(STDOUT_FILENO);
+    assert(original >= 0 && dup2(fileno(output), STDOUT_FILENO) >= 0);
+    assert(danos_cli_process(&ctx, "show dataplane") == 0);
+    fflush(stdout);
+    assert(dup2(original, STDOUT_FILENO) >= 0);
+    close(original);
+    rewind(output);
+    char text[4096] = {0};
+    assert(fread(text, 1, sizeof(text)-1, output) > 0);
+    fclose(output);
+    assert(strstr(text, "TYPE DESIRED PROGRAMMED"));
+    assert(strstr(text, "ledger state, not a hardware FIB readback"));
+    assert(strstr(text, "4 1 "));
+    assert(strstr(text, "Active programming backend: cli-observe-active"));
+    assert(strstr(text, "cli-observe-test 4 no 123"));
+    assert(danos_object_count(g_default_store, DANOS_OBJ_ROUTE) == 1);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == programmed);
+    assert(danos_cli_process(&ctx, "show dataplane clear") == -1);
+    danos_backend_ops_set(saved_ops);
+    assert(danos_backend_unregister("cli-observe-test") == DANOS_OK);
+    danos_object_store_destroy(g_default_store);
+    g_default_store = saved;
+    printf("[PASS] test_dataplane_readonly\n");
+    return 0;
+}
 
 int test_cli_basic(void)
 {
@@ -85,6 +136,7 @@ int main(void)
     if (test_cli_configure_mode() != 0) failed++;
     if (test_cli_exit() != 0) failed++;
     if (test_cli_unknown() != 0) failed++;
+    if (test_dataplane_readonly() != 0) failed++;
     printf("=== cli_test: %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;

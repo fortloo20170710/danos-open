@@ -29,6 +29,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Physical backend/object views remain a real interface gap, not covered by
   this mock/archive scope. Next specify read-only capability/ledger visibility
   before adding mutable topology orchestration.
+  2026-10-12: minimal local `show dataplane` summary implemented; registered
+  capability and active programming backend are distinct, as are desired
+  and programmed-ledger counts. Full build/CTest 67/67, DPA Robot 5/5 PASS.
+  Per-object state, authenticated remote query and identifiable updated
+  physical image deployment remain open.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

@@ -7,6 +7,9 @@
 #include "cli.h"
 #include "../gnmi/model_paths.h"
 #include <danos/core/object_registry.h>
+#include <danos/core/backend_ops.h>
+#include <danos/core/capability_registry.h>
+#include <inttypes.h>
 #include <danos/dpa.h>
 #include <stdio.h>
 #include <string.h>
@@ -69,10 +72,43 @@ int cli_cmd_help(danos_cli_ctx_t *ctx, const char *args)
     printf("  show interface          Show all interfaces\n");
     printf("  show route              Show routing table\n");
     printf("  show vrf                Show VRF table\n");
+    printf("  show dataplane          Registered capabilities and desired/programmed counts\n");
     printf("  set interface <name> mtu <N>       (configure mode)\n");
     printf("  set interface <name> [no] shutdown (configure mode)\n");
     printf("  exit                    Exit current mode / quit\n");
     printf("  help                    Show this help\n");
+    return 0;
+}
+
+int cli_cmd_show_dataplane(danos_cli_ctx_t *ctx, const char *args)
+{
+    (void)ctx;
+    if (args && *args) {
+        printf("Usage: show dataplane\n");
+        return -1;
+    }
+    const danos_backend_ops_t *ops = danos_backend_ops_get();
+    printf("Dataplane scope: in-process DPA; counts sampled independently\n");
+    printf("Active programming backend: %s\n", ops && ops->name ? ops->name : "none");
+    printf("Programmed counts are ledger state, not a hardware FIB readback\n");
+    printf("TYPE DESIRED PROGRAMMED\n");
+    for (int type = DANOS_OBJ_IFACE; type < DANOS_OBJ_MAX; type++)
+        printf("%d %" PRIu64 " %" PRIu64 "\n", type,
+               danos_object_count(g_default_store, (danos_obj_type_t)type),
+               danos_programming_programmed_count((danos_obj_type_t)type));
+    printf("REGISTERED_BACKEND TYPE SUPPORTED MAX_COUNT\n");
+    unsigned count = 0;
+    for (uint32_t i = 0; i < DANOS_MAX_BACKENDS; i++) {
+        danos_backend_info_t backend;
+        if (danos_backend_get_info(i, &backend) != DANOS_OK) break;
+        count++;
+        for (uint32_t c = 0; c < backend.cap_count; c++) {
+            const danos_capability_t *cap = &backend.caps[c];
+            printf("%s %d %s %u\n", backend.name, cap->type,
+                   cap->supported ? "yes" : "no", cap->max_count);
+        }
+    }
+    printf("Registered backends: %u (registration does not imply active selection)\n", count);
     return 0;
 }
 
@@ -278,6 +314,8 @@ int danos_cli_process(danos_cli_ctx_t *ctx, const char *line)
             return cli_cmd_show_route(ctx, subargs);
         } else if (strcmp(subcmd, "vrf") == 0) {
             return cli_cmd_show_vrf(ctx, subargs);
+        } else if (strcmp(subcmd, "dataplane") == 0) {
+            return cli_cmd_show_dataplane(ctx, subargs);
         } else {
             printf("Unknown show command: %s\n", subcmd);
             return -1;
