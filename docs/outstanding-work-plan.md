@@ -30,6 +30,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   82875 ICMP responses plus 69 response drops; no new DUT TX failure.
   This completes receiver reconciliation, not the source pacing root-cause
   investigation or hardware performance qualification.
+  Latest live-error probes are now reconciled on R3 at +52224 ingress/FIB,
+  egress +39168/+13056, no new TX failure. ICMP return deficit 35 (24/11)
+  needs actual R4/R1 node snapshots before closing this later interval.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
