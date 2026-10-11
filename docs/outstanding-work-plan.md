@@ -33,6 +33,8 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Latest live-error probes are now reconciled on R3 at +52224 ingress/FIB,
   egress +39168/+13056, no new TX failure. ICMP return deficit 35 (24/11)
   needs actual R4/R1 node snapshots before closing this later interval.
+  R4 snapshot now confirms +39168 UDP, +39144 ICMP responses and +24
+  response drops. R1's +13056 UDP and 11-response deficit remain to audit.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
