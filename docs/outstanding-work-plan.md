@@ -23,6 +23,8 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   R3 reconciliation now confirms +82944 ingress/FIB, hardware egress
   +62208/+20736 and no new TX failure. Return ICMP deficit is 69 (52/17).
   Receiver UDP/ICMP node checks remain next; no application-level PASS.
+  R4 now confirms +62208 UDP, +62156 ICMP responses and +52 response
+  drops, closing its branch exactly. R1 actual delta snapshot remains next.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
