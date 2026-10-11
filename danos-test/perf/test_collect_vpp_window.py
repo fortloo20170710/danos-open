@@ -1,0 +1,24 @@
+import unittest
+from collect_vpp_window import parse_interfaces, rate_bounds
+
+
+class WindowTests(unittest.TestCase):
+    def test_nonphysical_rows_cannot_overwrite_port(self):
+        ports = parse_interfaces("GigabitEthernet1/0/0 1 up 9000/0/0/0 rx packets 10\n"
+                                 " drops 2\nlocal0 0 down 0/0/0/0 drops 99\n")
+        self.assertEqual(ports["GigabitEthernet1/0/0"], {"rx packets": 10, "drops": 2})
+
+    def test_bracketed_rates(self):
+        self.assertEqual(rate_bounds(120, (0, 1), (11, 12)), dict(lower=10, upper=12))
+
+    def test_reject_resets_bad_clocks_and_missing_ports(self):
+        for delta, before, after in [(-1, (0, 1), (2, 3)), (1, (0, 2), (1, 3)),
+                                     (1, (0, 1), (2, float("nan")))]:
+            with self.assertRaises(ValueError):
+                rate_bounds(delta, before, after)
+        with self.assertRaises(ValueError):
+            parse_interfaces("show interface: unknown input")
+
+
+if __name__ == "__main__":
+    unittest.main()
