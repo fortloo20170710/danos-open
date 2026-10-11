@@ -7,6 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 from render_physical_pg import render
+from collect_vpp_cpu import parse_threads, parse_stat
 
 
 def stream_counts(raw, names):
@@ -60,15 +61,28 @@ def main():
     result = dict(scope="bounded-source-pacing-only", performance_status="ENVIRONMENT-OPEN",
                   phases=[], maximum_generated_frames=12 * a.count)
     owned = []
+    def identity():
+        threads = parse_threads(cli("show threads"))
+        pid = threads[0]["lwp"]
+        proc = Path("/proc") / str(pid)
+        if (proc / "exe").resolve(strict=True).name != "vpp":
+            raise ValueError("runtime executable is not VPP")
+        stat = parse_stat((proc / "stat").read_text())
+        return dict(threads=threads, process=list(stat[:2]))
+    def clock_snapshot():
+        start = time.monotonic()
+        raw = cli("show clock")
+        return dict(monotonic=[start, time.monotonic()], raw=raw)
     try:
         result["hardware_before"] = cli("show hardware-interfaces " + a.interface)
         if a.source_mac.lower() not in result["hardware_before"].lower():
             raise ValueError("source identity mismatch")
         if "no streams currently defined" not in cli("show packet-generator"):
             raise ValueError("existing PG streams; refusing mutation")
+        result["identity_before"] = identity()
         for rate, definition in definitions:
             phase = dict(requested_pps_per_flow=rate, samples=[], enable_times=[],
-                         errors_before=cli("show errors"))
+                         errors_before=cli("show errors"), clock_before=clock_snapshot())
             result["phases"].append(phase)
             names = [f"pace{rate}_{i}" for i in range(4)]
             for i, line in enumerate(definition.splitlines()):
@@ -94,6 +108,10 @@ def main():
                 raise ValueError("bounded phase deadline exceeded")
             phase["errors_after"] = cli("show errors")
             phase["hardware_after"] = cli("show hardware-interfaces " + a.interface)
+            phase["clock_after"] = clock_snapshot()
+            phase["identity_after"] = identity()
+            if phase["identity_after"] != result["identity_before"]:
+                raise ValueError("VPP process or thread mapping changed")
             def tx_errors(text):
                 return sum(int(n) for n in re.findall(
                     r"(?m)^\s*(\d+)\s+\S+-tx\s+Tx packet drops", text))
@@ -108,6 +126,14 @@ def main():
         result.update(status="FAIL", failure_reason=str(exc))
     finally:
         failures = []
+        if owned and "identity_before" in result:
+            try:
+                if identity() != result["identity_before"]:
+                    failures.append("runtime changed; refusing cleanup in replacement VPP")
+                    owned = []
+            except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                failures.append("cleanup identity unavailable: " + str(exc))
+                owned = []
         for name in owned:
             try:
                 cli("packet-generator disable-stream " + name)
