@@ -3,7 +3,7 @@
 ## Current v0.16 qualification verdict — 2026-10-11
 
 Route/NH/NHGroup contract remains frozen; deterministic contract gate and
-Current CTest 66/66 PASS (the historical release-gate run below had its
+Current CTest 67/67 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
@@ -53,6 +53,10 @@ The subsequent live-error-guarded series likewise reconciles +52224
 original UDP frames on both receivers, no new DUT TX failure, with all
 35 missing ICMP returns accounted for by receiver response-drop deltas.
 This strengthens bounded forwarding evidence, not release qualification.
+An upstream-inspired read-only Robot VPP adapter is now implemented;
+Robot 7.3.2 dry-run 3/3 and adapter unit tests pass, but live runner execution
+is pending. See `upstream-danos-tests-adaptation.md`; the existing gNMI
+write suite is not promoted to a safe physical default.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

@@ -7,6 +7,18 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### Upstream DANOS test adaptation — 2026-10-11
+
+- [x] Review i-danos/tests pinned commit 1c731e0 and document transport,
+  topology, management-preservation and licensing boundaries.
+- [x] Add original read-only Robot VPP adapter with explicit MAC identity,
+  timeouts and invalid-output rejection. CTest 67/67 and Robot dry-run
+  3/3 PASS; neither is live hardware qualification.
+- [ ] Execute read-only suite on an explicit runner, archive Robot XML/HTML
+  with artifact/runtime identity, then wrap existing route lifecycle gates.
+  Preserve management connectivity; do not run legacy blanket deletes,
+  disable SSH host verification, or enable plaintext physical management.
+
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 
 - [x] Cumulative receiver ledger closed through the first bounded pacing
