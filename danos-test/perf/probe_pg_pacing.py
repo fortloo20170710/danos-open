@@ -26,10 +26,14 @@ def main():
         p.add_argument("--" + key, required=True)
     p.add_argument("--target", action="append", required=True)
     p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--count", type=int, default=256,
+                   help="finite frames per flow per phase (256..4096)")
     a = p.parse_args()
+    if not 256 <= a.count <= 4096:
+        p.error("count must be between 256 and 4096")
     # Validate everything before contacting the runtime; cap all phases.
     definitions = [(rate, render(a.interface, a.source_mac, a.target_mac,
-                                a.source_ip, a.target, rate, 256))
+                                a.source_ip, a.target, rate, a.count))
                    for rate in (100, 500, 1000)]
     if len(a.target) != 4:
         p.error("exactly four isolated destination flows required")
@@ -40,7 +44,7 @@ def main():
             raise ValueError(reply.stdout)
         return reply.stdout
     result = dict(scope="bounded-source-pacing-only", performance_status="ENVIRONMENT-OPEN",
-                  phases=[], maximum_generated_frames=3072)
+                  phases=[], maximum_generated_frames=12 * a.count)
     owned = []
     try:
         result["hardware_before"] = cli("show hardware-interfaces " + a.interface)
@@ -61,13 +65,13 @@ def main():
                 start = time.monotonic()
                 cli("packet-generator enable-stream " + name)
                 phase["enable_times"].append([start, time.monotonic()])
-            deadline = time.monotonic() + 8
+            deadline = time.monotonic() + a.count / rate + 5
             while time.monotonic() < deadline:
                 start = time.monotonic()
                 raw = cli("show packet-generator")
                 rows = stream_counts(raw, names)
                 phase["samples"].append(dict(clock=[start, time.monotonic()], rows=rows, raw=raw))
-                if all(not r["enabled"] and r["count"] == 256 for r in rows.values()):
+                if all(not r["enabled"] and r["count"] == a.count for r in rows.values()):
                     break
                 time.sleep(.1)
             else:
