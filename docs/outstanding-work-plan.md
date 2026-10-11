@@ -9,6 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 
+- [!] New paired-rate follow-up source failure: R2 PG generated 240000,
+  hardware TX only 209458, DPDK TX drops 30542. One stream finished early;
+  rate stability/cause remains unverified. Test streams cleaned up, failure
+  archived in performance schema. Inspect R3 windows then reduce load;
+  previous successful functional probes remain valid for their own runs.
+
 - [x] Three finite NIC-output probes (80/40000/240000 MAC frames) audited:
   R4 UDP lookup 210060 + R1 70020 = all 280080 emitted frames. Both ECMP
   egresses exercised; R3 forwarding drops/errors unchanged. All PG streams
