@@ -1,8 +1,22 @@
 import unittest
+import subprocess
+import sys
+from pathlib import Path
 from probe_pg_pacing import stream_counts, check_pacing
 
 
 class PacingTests(unittest.TestCase):
+    def test_invalid_enable_gap_rejected_before_runtime(self):
+        for gap in ("nan", "inf", "-1", "1.01"):
+            response = subprocess.run([
+                sys.executable, str(Path(__file__).with_name("probe_pg_pacing.py")),
+                "--source-mac", "invalid", "--target-mac", "invalid",
+                "--source-ip", "invalid", "--interface", "invalid",
+                "--target", "invalid", "--out", "/tmp/unused-pacing-gap.json",
+                "--enable-gap", gap], capture_output=True, text=True)
+            self.assertEqual(response.returncode, 2)
+            self.assertIn("enable-gap must be finite", response.stderr)
+
     def test_pacing_guard(self):
         rows = {"flow": dict(enabled=True, count=1000)}
         check_pacing(rows, ["flow"], [[10, 10.01]], 11, 1000, 4096)

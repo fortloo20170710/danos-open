@@ -2,6 +2,7 @@
 """Small finite source pacing diagnostic, never a throughput qualification."""
 import argparse
 import json
+import math
 import re
 import subprocess
 import time
@@ -43,9 +44,13 @@ def main():
     p.add_argument("--out", type=Path, required=True)
     p.add_argument("--count", type=int, default=256,
                    help="finite frames per flow per phase (256..4096)")
+    p.add_argument("--enable-gap", type=float, default=0,
+                   help="diagnostic delay between flow enables (0..1 second)")
     a = p.parse_args()
     if not 256 <= a.count <= 4096:
         p.error("count must be between 256 and 4096")
+    if not math.isfinite(a.enable_gap) or not 0 <= a.enable_gap <= 1:
+        p.error("enable-gap must be finite and between 0 and 1 second")
     # Validate everything before contacting the runtime; cap all phases.
     definitions = [(rate, render(a.interface, a.source_mac, a.target_mac,
                                 a.source_ip, a.target, rate, a.count))
@@ -59,7 +64,8 @@ def main():
             raise ValueError(reply.stdout)
         return reply.stdout
     result = dict(scope="bounded-source-pacing-only", performance_status="ENVIRONMENT-OPEN",
-                  phases=[], maximum_generated_frames=12 * a.count)
+                  phases=[], maximum_generated_frames=12 * a.count,
+                  enable_gap_seconds=a.enable_gap)
     owned = []
     def identity():
         threads = parse_threads(cli("show threads"))
@@ -89,7 +95,9 @@ def main():
                 owned.append(names[i])
                 cli(line.replace(f"danos_physical_udp_{i}", names[i]))
             stream_counts(cli("show packet-generator"), names)
-            for name in names:
+            for i, name in enumerate(names):
+                if i:
+                    time.sleep(a.enable_gap)
                 start = time.monotonic()
                 cli("packet-generator enable-stream " + name)
                 phase["enable_times"].append([start, time.monotonic()])
