@@ -16,6 +16,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [ ] Repeat failing requested 1000-pps-per-flow bounded diagnostic with
   both source and DUT error deltas; distinguish a transient/source burst
   from a repeatable limit. Do not declare a fix from lower-load success.
+  Repeat now reproduces premature completion of two streams and +61633
+  source TX drops; aborted/cleaned up. Final wire TX +95144, not 240000.
+  Matching VPP source inspected, but runtime pacing cause remains unproven.
+  Read R3 aborted-run counters next, then prioritize pacing diagnosis over
+  further uncontrolled high-load attempts.
 
 - [~] Reduced-load source calibration completed: four ×6000 frames,
   requested 100 pps each, hardware TX/RX both +24000, source TX-failure
