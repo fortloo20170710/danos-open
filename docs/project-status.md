@@ -44,8 +44,11 @@ accounting of real failures, not zero-loss qualification. Subsequent
 source-local finite probes use count/time-budget guards, VPP clock brackets
 and PID/start-tick/thread identity. Two 4096-frame-per-flow probes did not
 reproduce premature completion; the large-run cause remains unresolved.
-Newer source-only probes still need DUT and receiver delta reconciliation;
-see `v0.16-performance-result-schema.md` for per-run scope and numbers.
+The later guarded/clock/stagger probe series also closes at +82944 original
+UDP frames across both receivers, no new DUT TX failure, and +69 receiver
+ICMP response drops explaining the entire return deficit. Source pacing
+root cause and long-term performance remain OPEN; see
+`v0.16-performance-result-schema.md` for per-run scope and numbers.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

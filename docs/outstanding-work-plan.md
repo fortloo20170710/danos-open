@@ -25,6 +25,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Receiver UDP/ICMP node checks remain next; no application-level PASS.
   R4 now confirms +62208 UDP, +62156 ICMP responses and +52 response
   drops, closing its branch exactly. R1 actual delta snapshot remains next.
+  R1 snapshot now confirms +20736 UDP, +20719 responses and +17 response
+  drops. The combined later interval is closed: 82944 original UDP received,
+  82875 ICMP responses plus 69 response drops; no new DUT TX failure.
+  This completes receiver reconciliation, not the source pacing root-cause
+  investigation or hardware performance qualification.
 
 - [x] Intermediate requested 500-pps-per-flow forward regression: source
   and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
