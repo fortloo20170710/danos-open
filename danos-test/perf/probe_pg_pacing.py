@@ -20,6 +20,20 @@ def stream_counts(raw, names):
     return rows
 
 
+def check_pacing(rows, names, enable_times, sample_end, rate, limit):
+    """Conservative diagnostic guard, not a wire-rate conformance test."""
+    for i, name in enumerate(names):
+        count = rows[name]["count"]
+        elapsed = sample_end - enable_times[i][0]
+        if elapsed < 0 or count > limit:
+            raise ValueError("invalid source count or sample clock")
+        # Allow 100 ms of scheduling jitter plus 32 frames; never authorize
+        # unlimited traffic or describe this margin as measured capacity.
+        budget = rate * (elapsed + .1) + 32
+        if count > budget:
+            raise ValueError(f"source pacing ahead of monotonic budget: {name}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     for key in ("source-mac", "target-mac", "source-ip", "interface"):
@@ -71,6 +85,8 @@ def main():
                 raw = cli("show packet-generator")
                 rows = stream_counts(raw, names)
                 phase["samples"].append(dict(clock=[start, time.monotonic()], rows=rows, raw=raw))
+                check_pacing(rows, names, phase["enable_times"],
+                             phase["samples"][-1]["clock"][1], rate, a.count)
                 if all(not r["enabled"] and r["count"] == a.count for r in rows.values()):
                     break
                 time.sleep(.1)
