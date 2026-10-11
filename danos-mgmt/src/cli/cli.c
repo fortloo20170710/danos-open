@@ -10,6 +10,7 @@
 #include <danos/core/backend_ops.h>
 #include <danos/core/capability_registry.h>
 #include <inttypes.h>
+#include <errno.h>
 #include <danos/dpa.h>
 #include <stdio.h>
 #include <string.h>
@@ -73,6 +74,7 @@ int cli_cmd_help(danos_cli_ctx_t *ctx, const char *args)
     printf("  show route              Show routing table\n");
     printf("  show vrf                Show VRF table\n");
     printf("  show dataplane          Registered capabilities and desired/programmed counts\n");
+    printf("  show dataplane object <type> <id>  Desired/ledger presence (numeric keys)\n");
     printf("  set interface <name> mtu <N>       (configure mode)\n");
     printf("  set interface <name> [no] shutdown (configure mode)\n");
     printf("  exit                    Exit current mode / quit\n");
@@ -84,6 +86,26 @@ int cli_cmd_show_dataplane(danos_cli_ctx_t *ctx, const char *args)
 {
     (void)ctx;
     if (args && *args) {
+        char word[32], type_text[32], id_text[32], extra;
+        if (sscanf(args, "%31s %31s %31s %c", word, type_text, id_text, &extra) == 3 &&
+            strcmp(word, "object") == 0 && isdigit((unsigned char)type_text[0]) &&
+            isdigit((unsigned char)id_text[0])) {
+            char *end;
+            errno = 0;
+            unsigned long type = strtoul(type_text, &end, 10);
+            if (errno || *end || type == 0 || type >= DANOS_OBJ_MAX) return -1;
+            errno = 0;
+            unsigned long long id = strtoull(id_text, &end, 10);
+            if (errno || *end) return -1;
+            bool desired, recorded;
+            danos_status_t st = danos_programming_object_presence((danos_obj_type_t)type,
+                                                                (danos_obj_id_t)id, &desired, &recorded);
+            if (st != DANOS_OK) return -1;
+            printf("Object presence only: independently sampled; not dependency sync or hardware readback\n");
+            printf("TYPE ID DESIRED LEDGER_RECORDED\n%lu %llu %s %s\n", type, id,
+                   desired ? "yes" : "no", recorded ? "yes" : "no");
+            return 0;
+        }
         printf("Usage: show dataplane\n");
         return -1;
     }

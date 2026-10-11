@@ -501,6 +501,29 @@ uint64_t danos_programming_programmed_count(danos_obj_type_t type)
     return danos_object_count(ledger(), type);
 }
 
+danos_status_t danos_programming_object_presence(danos_obj_type_t type,
+                                                danos_obj_id_t id,
+                                                bool *desired, bool *recorded)
+{
+    if (type <= DANOS_OBJ_INVALID || type >= DANOS_OBJ_MAX || !desired || !recorded)
+        return DANOS_ERR_INVALID_ARG;
+    *desired = *recorded = false;
+    uint8_t data[LEDGER_REC_MAX];
+    size_t size = sizeof(data);
+    pthread_mutex_lock(&g_prog_lock);
+    danos_status_t st = g_default_store ?
+        danos_object_read(g_default_store, type, id, data, &size) : DANOS_ERR_NOT_FOUND;
+    if (st == DANOS_OK) *desired = true;
+    else if (st != DANOS_ERR_NOT_FOUND) goto done;
+    size = sizeof(data);
+    st = g_programmed ? danos_object_read(g_programmed, type, id, data, &size) : DANOS_ERR_NOT_FOUND;
+    if (st == DANOS_OK) *recorded = true;
+    if (st == DANOS_ERR_NOT_FOUND) st = DANOS_OK;
+done:
+    pthread_mutex_unlock(&g_prog_lock);
+    return st;
+}
+
 /* ---- v0.10: tombstone sweep ----------------------------------------------
  * Ledger entries whose desired object disappeared: routes are withdrawn
  * through ops->route_del (the ledger holds the original bytes, so the

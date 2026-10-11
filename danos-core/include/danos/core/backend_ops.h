@@ -68,6 +68,13 @@ uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed);
 /* Number of objects currently marked PROGRAMMED for a type. */
 uint64_t danos_programming_programmed_count(danos_obj_type_t type);
 
+/* Read-only presence of one desired object and its ledger record.
+ * Not an equality/dependency or hardware-readback verdict. Desired and
+ * ledger reads are individually locked, not a cross-store atomic snapshot. */
+danos_status_t danos_programming_object_presence(danos_obj_type_t type,
+                                                danos_obj_id_t id,
+                                                bool *desired, bool *recorded);
+
 /* Mark desired state dirty (e.g. on store mutation): the next
  * reconciler pass runs immediately instead of waiting for the period. */
 void danos_programming_mark_dirty(void);

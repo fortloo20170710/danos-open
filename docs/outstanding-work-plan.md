@@ -34,6 +34,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   and programmed-ledger counts. Full build/CTest 67/67, DPA Robot 5/5 PASS.
   Per-object state, authenticated remote query and identifiable updated
   physical image deployment remain open.
+  Targeted `show dataplane object <type> <id>` now reports desired/ledger
+  presence without programming or sweeping. Four presence combinations
+  are tested, but dependency sync, retry/error reasons and per-object
+  backend ownership are not yet provided. Remote authentication and
+  deployment remain separate unfinished steps.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

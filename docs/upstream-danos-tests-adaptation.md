@@ -154,6 +154,26 @@ the earlier 4/4 digest refers to its earlier report. This is local-source
 implementation, not deployment to R3's old ISO. Per-object states,
 authenticated remote query and physical image qualification remain pending.
 
+### Targeted desired/ledger presence — 2026-10-12
+
+Added `show dataplane object <numeric-type> <numeric-id>` and core API
+`danos_programming_object_presence()`. One key is sampled, with programming
+mutex and each store's read lock; no table enumeration, mutation, programming,
+sweep or ledger initialization is requested by this API. Desired/ledger
+reads are not cross-store atomic because CRUD has independent locks.
+Invalid type, unsigned-ID overflow and extra arguments fail closed.
+
+The output's `DESIRED` and `LEDGER_RECORDED` flags have deliberately limited
+meaning: no/no is absent, yes/no is desired-only, yes/yes has a ledger
+record (not necessarily current dependencies or hardware state), no/yes
+has a retained record awaiting reconciliation. A recorded object cannot
+be assigned to the current active backend merely from these flags.
+No failure reason, retry state or per-object backend ownership is inferred.
+Tests cover all four combinations and confirm no backend programming calls
+occur during queries; test setup explicitly programs/deletes its mock route
+to construct the latter states. These fixture mutations are not CLI query
+behavior. Physical deployment and authenticated remote API remain pending.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML
