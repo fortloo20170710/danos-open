@@ -14,6 +14,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   rate stability/cause remains unverified. Test streams cleaned up, failure
   archived in performance schema. Inspect R3 windows then reduce load;
   previous successful functional probes remain valid for their own runs.
+  R3 return audit also finds P2 DPDK TX failure 183 despite unchanged drops;
+  ingress matches R2 emitted frames. New collector regression includes
+  tx-error/rx-error. This run remains FAIL, not a forwarding PASS.
 
 - [x] Three finite NIC-output probes (80/40000/240000 MAC frames) audited:
   R4 UDP lookup 210060 + R1 70020 = all 280080 emitted frames. Both ECMP

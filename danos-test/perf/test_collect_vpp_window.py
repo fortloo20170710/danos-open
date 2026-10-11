@@ -11,6 +11,12 @@ class WindowTests(unittest.TestCase):
     def test_bracketed_rates(self):
         self.assertEqual(rate_bounds(120, (0, 1), (11, 12)), dict(lower=10, upper=12))
 
+    def test_tx_errors_are_not_hidden_by_unchanged_drops(self):
+        ports = parse_interfaces("GigabitEthernet2/0/0 2 up 9000/0/0/0 rx packets 1\n"
+                                 " drops 2\n tx-error 183\n rx-error 4\n")
+        self.assertEqual(ports["GigabitEthernet2/0/0"]["tx-error"], 183)
+        self.assertEqual(ports["GigabitEthernet2/0/0"]["rx-error"], 4)
+
     def test_reject_resets_bad_clocks_and_missing_ports(self):
         for delta, before, after in [(-1, (0, 1), (2, 3)), (1, (0, 2), (1, 3)),
                                      (1, (0, 1), (2, float("nan")))]:

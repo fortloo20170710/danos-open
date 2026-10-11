@@ -18,7 +18,7 @@ def parse_interfaces(raw):
             current = row[1] if row[1].startswith("GigabitEthernet") else None
             if current:
                 ports[current] = {}
-        match = re.search(r"\b(rx packets|tx packets|rx bytes|tx bytes|drops)\s+(\d+)", line)
+        match = re.search(r"\b(rx packets|tx packets|rx bytes|tx bytes|drops|tx-error|rx-error)\s+(\d+)", line)
         if current and match:
             ports[current][match[1]] = int(match[2])
     if not ports:
