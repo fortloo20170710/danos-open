@@ -9,6 +9,14 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 
+- [x] Intermediate requested 500-pps-per-flow forward regression: source
+  and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
+  ingress 1998.44–2002.05 pps, about 1.024 MAC Mbps, CPU 99.69–99.79%.
+  Return deficit 47 is upstream of R3; receiver cause still unverified.
+- [ ] Repeat failing requested 1000-pps-per-flow bounded diagnostic with
+  both source and DUT error deltas; distinguish a transient/source burst
+  from a repeatable limit. Do not declare a fix from lower-load success.
+
 - [~] Reduced-load source calibration completed: four ×6000 frames,
   requested 100 pps each, hardware TX/RX both +24000, source TX-failure
   counter unchanged at 30542. All streams removed. Source emission PASS

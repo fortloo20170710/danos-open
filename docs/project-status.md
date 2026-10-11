@@ -31,6 +31,10 @@ per-flow regression then passed at +24000 transit/return, ECMP 18000/6000,
 no new TX errors, measured steady ingress 399.65–400.33 pps (about 0.205
 MAC Mbps), paired polling CPU 99.69–99.79%. This is a regression baseline,
 not hardware capacity; unchanged generic drops alone cannot imply success.
+Intermediate requested 500-pps-per-flow regression also passes bounded
+forwarding: 120000 frames, ECMP 90000/30000, no new TX errors; measured
+1998.44–2002.05 pps, about 1.024 MAC Mbps with paired CPU 99.69–99.79%.
+Neither lower-load baseline closes the previous high-load failure.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.
