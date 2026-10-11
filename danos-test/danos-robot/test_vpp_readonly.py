@@ -1,10 +1,31 @@
 import subprocess
+import base64
+import json
 import unittest
 from unittest.mock import patch
 from vpp_readonly import VppReadOnly
+from serial_readonly import read_command, decode_reply
 
 
 class ReadOnlyTests(unittest.TestCase):
+    def test_partial_uart_reply_is_not_decoded(self):
+        payload = base64.b64encode(json.dumps([0, "vpp version", ""]).encode())
+        prefix = b"MARK:"
+        self.assertIsNone(decode_reply(prefix + payload[:5], "MARK:"))
+        self.assertIsNone(decode_reply(prefix + payload, "MARK:"))
+        self.assertEqual(decode_reply(prefix + payload + b"\r\n", "MARK:"),
+                         [0, "vpp version", ""])
+        self.assertEqual(decode_reply(b"\x1b[?2004l\r" + prefix + payload + b"\r\n", "MARK:"),
+                         [0, "vpp version", ""])
+
+    def test_uart_rejects_mutating_commands_before_open(self):
+        for command in (["clear", "errors"], ["set", "interface", "state"],
+                        ["show", "hardware-interfaces", "port; reboot"]):
+            with patch("serial_readonly.os.open") as opened:
+                with self.assertRaises(ValueError):
+                    read_command("/dev/ttyUSB0", command)
+                opened.assert_not_called()
+
     def test_rejects_wrong_identity_before_suite(self):
         with patch("vpp_readonly.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "Ethernet address 00:11:22:33:44:55", "")):
             with self.assertRaises(AssertionError):

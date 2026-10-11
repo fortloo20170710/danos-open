@@ -64,7 +64,33 @@ Robot dry-run similarly validates structure only.
 Initial validation: four adapter unit tests PASS, full CTest 67/67 PASS,
 and Robot 7.3.2 actual dry-run 3/3 PASS after fixing library path/class
 discovery. Reports are in `build/robot-vpp-readonly-dryrun/`. No physical
-runner Robot execution or configuration change was performed in this step.
+runner Robot execution or configuration change was performed in that initial step.
+
+### Actual UART runner execution
+
+A bounded UART transport now allows host-side Robot to execute only
+allowlisted VPP show commands on the physical node. Remote endpoint is
+fixed to `/usr/bin/vppctl -s /run/vpp/cli.sock`; Python 3 is required.
+It locks the UART, uses 115200 8N1, nonce-delimited JSON, complete-line
+decoding, timeouts and a 1 MiB response bound. Mutating commands are
+rejected before opening the device. This is not a general shell API;
+the UART must not be shared with another operator. Successful command
+output is retained in Robot logs.
+
+```sh
+python3 -m robot --pythonpath danos-test/danos-robot --exclude r3-only \
+  --variable SERIAL_DEVICE:/dev/ttyUSB0 \
+  --variable EXPECTED_MAC:00:1f:7a:69:f5:ec \
+  --outputdir build/robot-r2-readonly-live \
+  danos-test/danos-robot/VPP_READONLY.robot
+```
+
+R2 actual run passed 2/2 after required MAC setup, then passed again with
+command output logging. Initial fragmented-response and ANSI-prefix
+decoding failures were corrected and regression-tested. Reports are in
+`build/robot-r2-readonly-live/`. This is live operational-read acceptance,
+not forwarding, throughput or ISO qualification. No configuration changes
+or packet-generator traffic were performed. Six adapter unit tests pass.
 
 ## Next sequence
 

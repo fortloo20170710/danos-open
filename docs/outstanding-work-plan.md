@@ -18,6 +18,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   with artifact/runtime identity, then wrap existing route lifecycle gates.
   Preserve management connectivity; do not run legacy blanket deletes,
   disable SSH host verification, or enable plaintext physical management.
+  R2 UART execution now passes 2/2 with expected MAC setup and command
+  outputs in `build/robot-r2-readonly-live/`. Next execute R3's full suite
+  including resolved ECMP; these operational checks are not throughput PASS.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

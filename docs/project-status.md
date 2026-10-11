@@ -54,8 +54,9 @@ original UDP frames on both receivers, no new DUT TX failure, with all
 35 missing ICMP returns accounted for by receiver response-drop deltas.
 This strengthens bounded forwarding evidence, not release qualification.
 An upstream-inspired read-only Robot VPP adapter is now implemented;
-Robot 7.3.2 dry-run 3/3 and adapter unit tests pass, but live runner execution
-is pending. See `upstream-danos-tests-adaptation.md`; the existing gNMI
+Robot 7.3.2 dry-run 3/3 and adapter unit tests pass. R2 UART live read-only
+suite now passes 2/2 with MAC identity setup and raw command logging;
+R3 ECMP suite remains pending. See `upstream-danos-tests-adaptation.md`; the existing gNMI
 write suite is not promoted to a safe physical default.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are

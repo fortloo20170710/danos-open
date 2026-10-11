@@ -6,17 +6,28 @@ import subprocess
 class VppReadOnly:
     ROBOT_LIBRARY_SCOPE = "SUITE"
 
-    def __init__(self, executable="/usr/bin/vppctl", socket="/run/vpp/cli.sock"):
+    def __init__(self, executable="/usr/bin/vppctl", socket="/run/vpp/cli.sock", serial_device=""):
         self.executable = executable
         self.socket = socket
+        self.serial_device = serial_device
 
     def _read(self, command):
-        result = subprocess.run([self.executable, "-s", self.socket, *command],
-                                capture_output=True, text=True, timeout=10)
+        if self.serial_device:
+            from serial_readonly import read_command
+            result = read_command(self.serial_device, command)
+        else:
+            result = subprocess.run([self.executable, "-s", self.socket, *command],
+                                    capture_output=True, text=True, timeout=10)
         if result.returncode or not result.stdout.strip():
             raise AssertionError(f"read-only command failed: {command}: {result.stderr}")
         if re.search(r"unknown input|invalid command|connection refused", result.stdout, re.I):
             raise AssertionError("invalid operational command output")
+        try:
+            from robot.api import logger
+        except ImportError:
+            pass
+        else:
+            logger.info("read-only " + " ".join(command) + "\n" + result.stdout)
         return result.stdout
 
     def runtime_version_should_be_available(self):
