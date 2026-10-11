@@ -21,6 +21,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Matching VPP source inspected, but runtime pacing cause remains unproven.
   Read R3 aborted-run counters next, then prioritize pacing diagnosis over
   further uncontrolled high-load attempts.
+  R3 audit: ingress +95144 matches source; P1 new DPDK TX drops +3450,
+  hardware TX +71531 versus attempted +74981. Observer failed closed on
+  new tx-error field and stopped. Collector now preserves failed snapshots
+  in structured output; source pacing/runtime fault remains unresolved.
 
 - [~] Reduced-load source calibration completed: four ×6000 frames,
   requested 100 pps each, hardware TX/RX both +24000, source TX-failure

@@ -35,6 +35,28 @@ def rate_bounds(delta, before, after):
     return dict(lower=delta / low_time, upper=delta / high_time)
 
 
+def window_result(first, last, initial_identity, final_identity):
+    result = dict(scope="interface-counter-rate-only", performance_status="ENVIRONMENT-OPEN",
+                  before=first, after=last, identity=initial_identity,
+                  final_identity=final_identity, latency=None, cpu_pct=None)
+    try:
+        if final_identity != initial_identity:
+            raise ValueError("VPP process/thread identity changed")
+        if first["ports"].keys() != last["ports"].keys():
+            raise ValueError("interface set changed")
+        rates = {}
+        for port, counters in first["ports"].items():
+            if counters.keys() != last["ports"][port].keys():
+                raise ValueError("counter fields changed; refuse implicit zeros")
+            rates[port] = {field: rate_bounds(last["ports"][port][field] - value,
+                                            first["clock"], last["clock"])
+                           for field, value in counters.items()}
+        result.update(status="PASS", rates_per_second=rates)
+    except ValueError as exc:
+        result.update(status="FAIL", failure_reason=str(exc))
+    return result
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--duration", type=float, default=10)
@@ -62,23 +84,11 @@ def main():
     first = snapshot()
     time.sleep(a.duration)
     last = snapshot()
-    if identity() != initial_identity:
-        raise ValueError("VPP process/thread identity changed")
-    rates = {}
-    if first["ports"].keys() != last["ports"].keys():
-        raise ValueError("interface set changed")
-    for port, counters in first["ports"].items():
-        if counters.keys() != last["ports"][port].keys():
-            raise ValueError("counter fields changed; refuse implicit zeros")
-        rates[port] = {field: rate_bounds(last["ports"][port][field] - value,
-                                        first["clock"], last["clock"])
-                       for field, value in counters.items()}
-    result = dict(scope="interface-counter-rate-only", performance_status="ENVIRONMENT-OPEN",
-                  before=first, after=last, rates_per_second=rates,
-                  identity=initial_identity, latency=None, cpu_pct=None)
+    result = window_result(first, last, initial_identity, identity())
     a.out.write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result))
+    return 0 if result["status"] == "PASS" else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

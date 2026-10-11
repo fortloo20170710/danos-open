@@ -1,8 +1,24 @@
 import unittest
-from collect_vpp_window import parse_interfaces, rate_bounds
+from collect_vpp_window import parse_interfaces, rate_bounds, window_result
 
 
 class WindowTests(unittest.TestCase):
+    def test_failed_window_retains_snapshots_without_rates(self):
+        first = dict(clock=[0, 1], ports={"p": {"rx packets": 10}}, raw="before")
+        last = dict(clock=[11, 12], ports={"p": {"rx packets": 20, "tx-error": 3}}, raw="after")
+        result = window_result(first, last, {"pid": 1}, {"pid": 1})
+        self.assertEqual(result["status"], "FAIL")
+        self.assertEqual(result["after"], last)
+        self.assertNotIn("rates_per_second", result)
+
+    def test_restart_and_counter_reset_keep_failed_evidence(self):
+        first = dict(clock=[0, 1], ports={"p": {"rx packets": 10}})
+        last = dict(clock=[11, 12], ports={"p": {"rx packets": 9}})
+        self.assertEqual(window_result(first, last, 1, 1)["status"], "FAIL")
+        last["ports"]["p"]["rx packets"] = 20
+        self.assertEqual(window_result(first, last, 1, 2)["status"], "FAIL")
+        self.assertEqual(window_result(first, last, 1, 1)["status"], "PASS")
+
     def test_nonphysical_rows_cannot_overwrite_port(self):
         ports = parse_interfaces("GigabitEthernet1/0/0 1 up 9000/0/0/0 rx packets 10\n"
                                  " drops 2\nlocal0 0 down 0/0/0/0 drops 99\n")
