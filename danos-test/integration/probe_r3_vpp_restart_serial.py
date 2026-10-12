@@ -56,7 +56,9 @@ try:
     assert str(hook) in command(["systemctl","show","vpp","-p","ExecStartPost","--value"]),"VPP replay hook absent"
     result["pid_before"]=command(["systemctl","show","vpp","-p","MainPID","--value"]).strip()
     result["fib_before"]=command(vpp+["show","ip","fib","30.30.30.0/24"])
+    result["restart_requested_unix"]=time.time()
     command(["systemctl","restart","vpp"],45)
+    result["restart_command_completed_unix"]=time.time()
     result["pid_after"]=command(["systemctl","show","vpp","-p","MainPID","--value"]).strip()
     assert result["pid_before"] not in ("","0") and result["pid_after"] not in ("","0") and result["pid_after"]!=result["pid_before"],"VPP PID did not change"
     deadline=time.monotonic()+25
