@@ -140,6 +140,21 @@ passed 3/3.
 | `r2-r9-to-r3-r14-ecmp-20261013/result.json` | `b194863111690e512e02178495bb6d9bb32088dcdb5719c21bfb508f26aefa92` |
 | `robot-r3-r14-after-r2-ecmp-20261013/output.xml` | `334cbd72fa4dba903e688bddbfe1fc28058d642268dd341f3b72c7b664233b40` |
 
+### R3 r14 VPP service-restart recovery — 2026-10-13
+
+With the verified R3 profile and post-start hook present, VPP service restart
+changed PID `741 → 1576`. The profile returned P1/P2/P4 to up, FIB again had
+two resolved ECMP paths, and direct 100-packet probes to R4 (`10.20.0.2`)
+and R1 (`10.30.0.2`) each passed with zero loss. Post-restart UART Robot
+passed 3/3. This proves VPP service replay of the lab CLI profile and direct
+peer recovery; it is not mgrd WAL/FRR replay, packet transit during restart,
+lossless recovery or restart downtime measurement.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-r14-vpp-restart-20261013/result.json` | `285359f67a10d7d3c5f6d3c73be8b765e7da2b8e266a9bced613d8fffe7d2bce` |
+| `robot-r3-r14-after-vpp-restart-20261013/output.xml` | `ea6ac321f73a7a4f27ec2b45e89f50490efbe960df2a2cc188f0c8637c975a5e` |
+
 ## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)

@@ -36,6 +36,18 @@ qualify an all-r14 topology or FRR/DPA-driven route changes. Original JSON,
 ping logs, post-run Robot XML and hashes are indexed in
 `iso-installation-acceptance.md`.
 
+## R3 r14 VPP service restart — 2026-10-13
+
+With the explicit R3 profile and verified post-start replay hook installed,
+`systemctl restart vpp` changed PID 741→1576. P1/P2/P4 returned up, the
+`30.30.30.0/24` FIB again showed two resolved paths, and R3-originated direct
+100-packet probes to `10.20.0.2` and `10.30.0.2` each passed 100/100, zero
+loss. UART Robot after restart passed 3/3. This verifies VPP service replay
+plus direct adjacency recovery. No packet stream was left running across the
+restart, so it does not test transit continuity, loss window or downtime;
+FRR/ZAPI and mgrd WAL were not used. Result and ping hashes are indexed in
+`iso-installation-acceptance.md`.
+
 ## R1 r14 installed-runtime checkpoint — 2026-10-12
 
 R1 identity `00:1f:7a:40:28:20`, SATA ext4 root and exact r14 binary digest

@@ -25,6 +25,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] Mixed-version R2 r9 → R3 r14 → R1/R4 physical transit: four endpoints
   100/100, zero loss; R3 ECMP DPO 430 packets, egress P1/P2 110/320.
   This closes functional use of both paths only, not statistical balance.
+- [x] R3 VPP service restart with lab post-start replay: PID 741→1576,
+  dual resolved ECMP paths restored and both direct peer probes 100/100.
+  Transit during restart and mgrd WAL replay remain open.
 - [ ] Live reconnect with mgrd remaining active during VPP restart; actual
   current-release packet ECMP distribution, R2/R4 r14 rollout and production PKI.
   Synthetic adjacency and restarted-daemon recovery do not close these gates.

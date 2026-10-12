@@ -46,6 +46,12 @@ use of both paths, not balanced ECMP performance. Evidence and hashes are in
 `iso-installation-acceptance.md`; R2/R4 rollout and homogeneous four-node
 r14 qualification remain open.
 
+R3 VPP service restart recovery also passes: PID 741→1576, P1/P2/P4 profile
+restored, both ECMP next hops resolved, and 100/100 direct peer probes to R1
+and R4. Post-restart UART Robot 3/3 PASS. This is the VPP lab-hook path;
+FRR/ZAPI or mgrd WAL replay and transit continuity during the restart were
+not exercised. Evidence hashes are indexed in `iso-installation-acceptance.md`.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
