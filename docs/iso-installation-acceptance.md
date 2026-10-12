@@ -84,6 +84,36 @@ Failed attempts: `r1-r14-lab-restore-20261012` (missing helper),
 `r1-r14-peer-restart-linkready-20261012` (neighbor not ready).
 Successful helper deployment: `r1-r14-lab-restore-hook-20261012`.
 
+### R3 physical installed-runtime qualification — 2026-10-12
+
+R3 (P1 MAC `00:1f:7a:69:f7:4c`) now also boots the r14 installed disk.
+Installed root, clean source identity, mgrd binary digest, VPP/FRR services,
+runtime sockets, four I211 DPDK bindings and four VPP ports all pass. The
+R3 lab profile and VPP post-start replay hook were restored after install;
+profile SHA256 is
+`247498d09777db22b4e03153b1ff7774b1ddb7fd7ab599da4657f6101cda2dc3`.
+R3 ports 1, 2 and 4 report 1 Gbps carrier; port 3 is administratively down.
+The R3 `30.30.30.0/24` FIB has two `oper-flags:resolved` paths via
+`10.20.0.2` on port 1 and `10.30.0.2` on port 2. UART Robot read-only suite
+passes 3/3; CTest adapter passes. The initial adapter run exposed a stale
+text parser for current VPP FIB output and zero-traffic counter display; both
+were corrected, and the original failed report remains archived.
+
+This establishes installed runtime and resolved ECMP FIB state. No packet
+stream was generated during this R3 check, so packet distribution, forwarding
+loss and throughput remain unmeasured. R3 install completion was operator
+reported; physical disk write/readback transcript was not captured.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-r14-installed-post-replay-20261012/inventory.json` | `a3797b921602b2018cb67675b5420709cacc4d0b2eaeadfcbc386d97ca49cbd6` |
+| `r3-r14-lab-restore-20261012/result.json` | `3b23ee6ab75c38877c09760ba350e8e15b280607d3ef2e5ed75b7f7dd441760e` |
+| `robot-r3-r14-readonly-fixed-20261012/output.xml` | `83ec65d39f4057184b4ac4015df41045b94cdd72b6b3afec3a476cbe1dbc2cbc` |
+
+The preceding inventory before profile replay is under
+`r3-r14-installed-20261012-recheck1/`; the first parser-mismatch Robot result
+is retained under `robot-r3-r14-readonly-20261012/`.
+
 ## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)

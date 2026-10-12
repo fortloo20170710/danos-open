@@ -15,7 +15,7 @@ ${EXPECTED_MAC}    MUST_BE_SET
 Runtime version exists
     Runtime Version Should Be Available
 
-Physical counters exist
+Physical interface counter table is available
     Interface Counters Should Be Available
 
 Physical lab ECMP route is resolved

@@ -19,8 +19,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] R1 r14 physical installed-disk runtime, four I211 bindings, read-only
   Robot 2/2 and warmed direct/transit ICMP 100/100 after VPP lab CLI replay.
   Cold/restart losses retained; installed-disk UEFI observed on R1 only.
+- [x] R3 r14 installed-runtime inventory and read-only ECMP FIB qualification;
+  two resolved next hops and 1 Gbps carrier on ports 1/2/4. No R3 packet
+  stream was generated in this checkpoint.
 - [ ] Live reconnect with mgrd remaining active during VPP restart; actual
-  current-release packet ECMP distribution, remaining-node r14 rollout and production PKI.
+  current-release packet ECMP distribution, R2/R4 r14 rollout and production PKI.
   Synthetic adjacency and restarted-daemon recovery do not close these gates.
 
 The chronological notes below describe earlier checkpoints; r14 above is

@@ -87,6 +87,23 @@ class ReadOnlyTests(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 VppReadOnly().ecmp_route_should_have_two_buckets()
 
+    def test_ecmp_accepts_current_vpp_resolved_path_format(self):
+        output = """30.30.30.0/24
+path:[31] pl-index:25 ip4 weight=1 oper-flags:resolved,
+  10.20.0.2 GigabitEthernet1/0/0
+path:[32] pl-index:25 ip4 weight=1 oper-flags:resolved,
+  10.30.0.2 GigabitEthernet2/0/0
+forwarding:
+  [@0]: dpo-load-balance: [proto:ip4 index:20 buckets:2]
+"""
+        with patch("vpp_readonly.subprocess.run", return_value=subprocess.CompletedProcess([], 0, output, "")):
+            VppReadOnly().ecmp_route_should_have_two_buckets()
+
+    def test_interface_counter_table_accepts_zero_traffic(self):
+        output = "Name Idx State Counter Count\nGigabitEthernet1/0/0 1 up\n"
+        with patch("vpp_readonly.subprocess.run", return_value=subprocess.CompletedProcess([], 0, output, "")):
+            VppReadOnly().interface_counters_should_be_available()
+
     def test_version_uses_readonly_argv(self):
         with patch("vpp_readonly.subprocess.run", return_value=subprocess.CompletedProcess([], 0, "vpp v26.10-test", "")) as run:
             VppReadOnly().runtime_version_should_be_available()

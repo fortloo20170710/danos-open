@@ -46,15 +46,29 @@ class VppReadOnly:
 
     def interface_counters_should_be_available(self):
         output = self._read(["show", "interface"])
-        if "GigabitEthernet" not in output or not re.search(r"\b(?:rx|tx) packets\s+\d+", output):
-            raise AssertionError("physical packet counters missing")
+        physical = re.findall(r"(?m)^GigabitEthernet\d+/\d+/\d+\s+\d+\s+", output)
+        if not physical or not re.search(r"\bCounter\s+Count\b", output):
+            raise AssertionError("physical interface counter table missing")
 
     def ecmp_route_should_have_two_buckets(self):
         output = self._read(["show", "ip", "fib", "30.30.30.0/24"])
         if "30.30.30.0/24" not in output or not re.search(r"\bbuckets:2\b", output):
             raise AssertionError("expected physical lab ECMP route absent")
-        for gateway in ("10.20.0.2", "10.30.0.2"):
-            if not re.search(r"ipv4 via " + re.escape(gateway) + r"\s", output):
+        paths = re.findall(
+            r"(?m)^\s*path:\[\d+\].*?(?=^\s*path:\[\d+\]|^\s*forwarding:)",
+            output,
+            re.S | re.M,
+        )
+        expected = {
+            "10.20.0.2": "GigabitEthernet1/0/0",
+            "10.30.0.2": "GigabitEthernet2/0/0",
+        }
+        for gateway, interface in expected.items():
+            if not any(
+                "oper-flags:resolved" in path
+                and re.search(re.escape(gateway) + r"\s+" + re.escape(interface) + r"\b", path)
+                for path in paths
+            ):
                 raise AssertionError("expected resolved ECMP next hop absent")
 
 

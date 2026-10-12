@@ -31,6 +31,13 @@ Cold/restart losses remain archived: no lossless restart or physical mgrd
 WAL/production mTLS claim. UART read-only Robot 2/2 PASS. Evidence is indexed
 in `iso-installation-acceptance.md`; hardware throughput remains OPEN.
 
+R3 has now completed the same r14 installed-runtime inventory: exact build and
+binary identity, four I211 DPDK bindings, VPP/FRR and sockets PASS. Its lab
+startup replay is installed; UART read-only Robot 3/3 PASS, including the two
+resolved ECMP paths on ports 1 and 2. Ports 1/2/4 have 1 Gbps carrier. The
+other nodes are still on older images. R3 packet forwarding/distribution was
+not exercised in this check; its current evidence is runtime plus FIB only.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

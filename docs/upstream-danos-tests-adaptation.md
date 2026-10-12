@@ -5,6 +5,18 @@ Reviewed 2026-10-11 at immutable upstream commit
 GitHub identifies i-danos/tests as a fork of danos/tests; this document does
 not assume every fork change is an original DANOS release requirement.
 
+## R3 r14 physical read-only suite — 2026-10-12
+
+UART execution of `VPP_READONLY.robot` on verified R3 MAC
+`00:1f:7a:69:f7:4c` passes 3/3: runtime version, physical interface counter
+table availability, and two resolved ECMP FIB paths. The VPP output format
+uses per-path `oper-flags:resolved` plus the gateway/interface pair; the
+adapter now validates that representation. A zero-traffic interface table
+is accepted as available without asserting packet activity. Unit tests cover
+both behaviors. The first stale-parser failure is retained in
+`build/robot-r3-r14-readonly-20261012/`; passing UART result is in
+`build/robot-r3-r14-readonly-fixed-20261012/`.
+
 ## Findings and boundary
 
 The upstream framework separates Robot scripts, reusable keywords, Python

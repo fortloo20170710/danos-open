@@ -2,6 +2,20 @@
 
 更新时间：2026-10-12
 
+## R3 r14 post-install checkpoint — 2026-10-12
+
+R3 identity `00:1f:7a:69:f7:4c`, installed r14 build/binary, SATA/ext4 root,
+VPP/FRR runtime, sockets and all four I211 DPDK bindings pass inventory.
+After install, the existing R3 lab role was restored and the VPP post-start
+replay hook registered. Ports 1, 2 and 4 show 1 Gbps carrier; port 3 remains
+down. Read-only FIB shows two resolved paths for `30.30.30.0/24`: R4
+`10.20.0.2` via port 1 and R1 `10.30.0.2` via port 2. UART Robot 3/3 and
+CTest adapter pass. The first Robot report failed on a stale FIB text parser;
+the updated parser checks each resolved path and port, and that failed report
+is preserved. No packet traffic was generated during this checkpoint, so
+forwarding/distribution is still open. Hashes and result locations are in
+`iso-installation-acceptance.md`.
+
 ## R1 r14 installed-runtime checkpoint — 2026-10-12
 
 R1 identity `00:1f:7a:40:28:20`, SATA ext4 root and exact r14 binary digest
