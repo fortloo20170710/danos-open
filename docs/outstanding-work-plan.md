@@ -27,7 +27,8 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   This closes functional use of both paths only, not statistical balance.
 - [x] Bracket a fresh R2 four-destination batch with R3 counter snapshots:
   420 ingress requests matched P1/P2 egress TX +105/+315; both paths used,
-  no drop-counter increase. Four-flow distribution/performance remains open.
+  no drop-counter increase. Machine verifier added with negative-case tests;
+  CTest is now 70/70. Four-flow distribution/performance remains open.
 - [x] R3 VPP service restart with lab post-start replay: PID 741→1576,
   dual resolved ECMP paths restored and both direct peer probes 100/100.
   Transit during restart and mgrd WAL replay remain open.

@@ -46,7 +46,8 @@ Application package: `build/danos-open_0.16.0~rc1-1_28b4a9e_amd64.deb`, SHA256
 
 Verifier SHA256: `f14ac6c7d1509552e0f557c92ab3c2c7d121d3b760ca4a998395a55231eff3d8`.
 Management test SHA256: `a1e902ebcfb34ba4ac9e7afc9b7414a9417d191928375337533ec99df5f5fa15`.
-Current CTest: 69/69 PASS, including the R3 physical FIB/DPO evidence parser.
+Current CTest: 70/70 PASS, including R3 physical FIB/DPO and counter-window
+evidence verifiers.
 
 ### R1 physical installed-runtime qualification — 2026-10-12
 
@@ -203,7 +204,7 @@ and `r3-r14-ecmp-failover-final-20261013/`.
 
 The evidence parser unit tests cover two-path state, single-path state, and
 the stale-path-list case where the forwarding DPO is still unresolved ARP.
-Full CTest now passes 69/69.
+Full CTest now passes 70/70.
 
 ### R2 four-flow ECMP counter correlation — 2026-10-13
 
@@ -222,7 +223,10 @@ throughput or line-rate qualification.
 | `r3-r14-r2-ecmp-counters-20261013/before/result.json` | `08d1731ef50d22dd9f4b9c90aef4a447937e20bb89fa4ccb0288a341459d3a72` |
 | `r3-r14-r2-ecmp-counters-20261013/after/result.json` | `eb41a3617d1366d193920bfa9210f7bce96dde2bb48333cdce74a9a6648e842c` |
 | `r2-r9-to-r3-r14-ecmp-counters-20261013/result.json` | `69e692b4ca8742a1ef38778d9070496eee48923ee30ddf4118fd31edb9920ba9` |
+| `verification.json` | `6d5a7de298278e3ed64395788a1e359c6bd8c63b4f6be89e2802e95c313a4405` |
 | counter capture utility | `b520c5d047c3693ec2f306d86eb357eaf2635a1ce6c4f723d21f571d51ba1b69` |
+| counter-window verifier | `def4caf47275052d85645b2a25a076fc55bf67cfd146cbdd48515b91fc2c6732` |
+| counter-window tests | `f2b072f9d107124baf642be2901d33d73e2196bcecc7ef9e9ff1f2a24a35ce30` |
 
 ### R2 endpoint reachability after R3 recovery — 2026-10-13
 

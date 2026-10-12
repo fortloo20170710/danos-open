@@ -69,7 +69,8 @@ R3's P2/R1 path has since passed a controlled physical withdrawal/restore:
 the forwarding DPO changed 2→1→2, the surviving and restored direct peer paths
 each passed 5/5, and the final VPP PID was unchanged. ARP re-learning required
 bounded retries; this is not FRR/ZAPI withdrawal or R2 transit evidence.
-Full CTest at the current source tree passes 69/69.
+Full CTest at the current source tree passes 70/70, including the new
+physical R3 counter-window verifier tests.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
@@ -77,7 +78,7 @@ hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
 runner environment only. A measured 64-byte result and independent receiver
 counts remain OPEN.
 
-Current CTest 69/69 PASS (the historical release-gate run below had its
+Current CTest 70/70 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
