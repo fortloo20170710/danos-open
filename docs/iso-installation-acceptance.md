@@ -4,6 +4,26 @@
 
 ## Latest delivery: r13 BIOS installable lab ISO
 
+### Installed-image management qualification (2026-10-12)
+
+An independent COW child of the accepted installation passed the project's
+`danos-mgmt/tests/test_mtls.py` against the exact installed mgrd binary under
+Debian Python 3.13. TLS 1.2/1.3, certificate RBAC, operational DPA state and
+recorded-backend Get, rejection of state writes, invalid credentials/ALPN,
+fail-closed startup and worker shutdown passed. The test additionally checks
+explicit laboratory plaintext opt-in; it does not enable the installed service.
+Temporary PKI is generated and removed inside the disposable guest. No test
+private keys were added to the delivery ISO or original installed disk.
+
+Evidence: `build/install-r13-20261012/management-mtls-result.json` and
+`management-mtls.serial.log`. The source script SHA256 is
+`4cb52e9c3985ffc6b23b2f4f7d109c0f5d2775ab84c1b0a1f39df8bc0efb4fc2`.
+The first attempt exposed missing CA keyUsage under Python 3.13 strict
+verification; the fixture was fixed with critical keyCertSign/cRLSign, without
+weakening verification. The retry and subsequent genuine reboot passed.
+Scope is guest loopback with `--no-vpp`, not physical management deployment,
+backend FIB programming or PCI performance. Production PKI remains OPEN.
+
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r13.iso`
 - Size: 569704448 bytes; SHA256
   `ebb996269e5ca59b9cb38255cac5e429022704e9c7d291b165aae8095df2783d`.

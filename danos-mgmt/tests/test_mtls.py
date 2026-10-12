@@ -174,7 +174,8 @@ def main(root):
     for ca in ("ca", "foreign"):
         run("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
             "-keyout", str(root / (ca + ".key")), "-out", str(root / (ca + ".pem")),
-            "-subj", "/CN=" + ca, "-addext", "basicConstraints=critical,CA:TRUE")
+            "-subj", "/CN=" + ca, "-addext", "basicConstraints=critical,CA:TRUE",
+            "-addext", "keyUsage=critical,keyCertSign,cRLSign")
     certificate(root, "server", purpose="serverAuth")
     for name in ("admin", "operator", "viewer", "unmapped"):
         certificate(root, name)

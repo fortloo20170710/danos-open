@@ -55,7 +55,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Updated r13 installable ISO now has QEMU installation readback,
   ISO-detached coldboot and fresh-kernel reboot/persistence PASS, with
   LIVE/installed binary digests tied to the Debian-trixie build. Current
-  CTest 68/68 PASS. Physical install/PKI and hardware performance are next;
+  CTest 68/68 PASS. Installed r13 guest mTLS/RBAC and read-only DPA queries
+  now PASS using ephemeral PKI and --no-vpp; physical install/production PKI
+  and hardware performance are next;
   no USB or physical disk has been overwritten in this build step.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint

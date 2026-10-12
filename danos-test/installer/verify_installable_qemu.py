@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import socket
 import subprocess
@@ -28,6 +29,8 @@ def main():
     p.add_argument("--mgrd-sha256", required=True)
     p.add_argument("--installed-disk", type=Path,
                    help="read-only backing disk with matching successful installation evidence")
+    p.add_argument("--management-smoke-script", type=Path,
+                   help="project mTLS test run inside the disposable guest, with ephemeral PKI")
     a = p.parse_args()
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
@@ -36,6 +39,14 @@ def main():
     out.mkdir(parents=True)
     disk = out / "target.qcow2"
     iso_digest = hashlib.file_digest(iso.open("rb"), "sha256").hexdigest()
+    seed = None
+    if a.management_smoke_script:
+        script = a.management_smoke_script.resolve(strict=True)
+        seed_dir = out / "management-seed"
+        seed_dir.mkdir()
+        shutil.copyfile(script, seed_dir / "test_mtls.py")
+        seed = out / "management-seed.iso"
+        subprocess.run(["xorriso", "-as", "mkisofs", "-o", str(seed), str(seed_dir)], check=True)
     if a.installed_disk:
         source = a.installed_disk.resolve(strict=True)
         prior = json.loads((source.parent / "result.json").read_text())
@@ -67,6 +78,8 @@ def main():
                 args += ["-device", "qemu-xhci,id=usb", "-drive",
                          f"if=none,id=iso,file={iso},format=raw,readonly=on",
                          "-device", "usb-storage,drive=iso,bus=usb.0,bootindex=1"]
+            elif seed:
+                args += ["-drive", f"file={seed},format=raw,if=virtio,readonly=on"]
             proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=(out / (name + ".qemu.log")).open("wb"))
             deadline = time.monotonic() + 10
             while not serial.exists():
@@ -147,6 +160,16 @@ def main():
         connection.sendall(command.encode())
         wait("\nINSTALLED_RUNTIME_PASS\n", 120)
         result["coldboot"] = "PASS"
+        if seed:
+            smoke_offset = len(log.read_text(errors="replace"))
+            connection.sendall(("mkdir -p /mnt/management-smoke && mount -o ro /dev/vdb /mnt/management-smoke && "
+                                "timeout 180 python3 /mnt/management-smoke/test_mtls.py /usr/bin/danos-mgrd /usr/bin/openssl "
+                                ">/tmp/management-smoke.log 2>&1; smoke_rc=$?; cat /tmp/management-smoke.log; "
+                                "if test $smoke_rc -eq 0 && ! systemctl is-active --quiet danos-mgrd; then "
+                                f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; fi\n").encode())
+            wait(f"\nMANAGEMENT_SMOKE_{token}_PASS\n", 210, smoke_offset)
+            result.update(management_mtls="PASS", management_scope="guest-loopback --no-vpp; ephemeral PKI; lab opt-in tested separately; no physical backend qualification",
+                          management_script_sha256=hashlib.file_digest(script.open("rb"), "sha256").hexdigest())
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")
         wait("Linux version ", 180, offset)
