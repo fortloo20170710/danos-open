@@ -2,7 +2,9 @@
 import contextlib
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import json
 import os
+import re
 from pathlib import Path
 import signal
 import socket
@@ -62,8 +64,75 @@ def literal(name, value):
 
 
 def blob(field, value):
-    assert field < 16 and len(value) < 128
-    return bytes(((field << 3) | 2, len(value))) + value
+    assert field < 16
+    length = len(value)
+    encoded = bytearray()
+    while length >= 128:
+        encoded.append((length & 127) | 128)
+        length >>= 7
+    encoded.append(length)
+    return bytes(((field << 3) | 2,)) + encoded + value
+
+
+def route_lifecycle(root, p):
+    """Isolated guest only: actual authenticated Set and independent VPP CLI."""
+    prefix = "198.18.253.0/24"
+    def fib():
+        output = subprocess.check_output(["/usr/bin/vppctl", "-s", "/run/vpp/cli.sock", "show", "ip", "fib"],
+                                         stderr=subprocess.STDOUT, timeout=10).decode()
+        assert not any(error in output.lower() for error in ("unknown input", "failed to connect")), output
+        return output
+    assert not re.search(r"^198\.18\.253\.0/24\s*$", fib(), re.M), "test route already exists"
+    key = blob(1, b"prefix") + blob(2, prefix.encode())
+    path = blob(3, blob(1, b"routes")) + blob(3, blob(1, b"route") + blob(2, key))
+    # Core route_key: FNV-1a of vrf, 16 address bytes, prefix length and static protocol.
+    ident = 14695981039346656037
+    for value in (0, 198, 18, 253, 0, *([0] * 12), 24, 2):
+        ident = ((ident ^ value) * 1099511628211) & ((1 << 64) - 1)
+    keys = blob(2, blob(1, b"type") + blob(2, b"4")) + blob(2, blob(1, b"id") + blob(2, str(ident).encode()))
+    state = blob(3, blob(1, b"dataplane")) + blob(3, blob(1, b"object") + keys) + blob(3, blob(1, b"state"))
+    with connect(root, p, "admin") as s:
+        s.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+        stream = 1
+        def call(method, request, response=None):
+            nonlocal stream
+            status = rpc(s, method, stream, responses=response, request_override=request)
+            stream += 2
+            assert status == "0", (method, status)
+        for cycle in range(2):
+            call("Set", blob(4, blob(1, path) + blob(3, blob(11, b'{"gateway":"198.18.0.2","oif":1}'))))
+            for installed in (True, False):
+                if not installed:
+                    call("Set", blob(2, path))
+                deadline = time.monotonic() + 15
+                while True:
+                    response = []
+                    call("Get", blob(2, state), response)
+                    payload = b"".join(response)
+                    output = fib()
+                    present = bool(re.search(r"^198\.18\.253\.0/24\s*$", output, re.M))
+                    matched = route_state_converged(payload, installed)
+                    if matched and present == installed:
+                        print(f"VPP ROUTE cycle={cycle + 1} phase={'ADD' if installed else 'WITHDRAW'} id={ident}")
+                        print("STATE", payload.hex())
+                        print("INDEPENDENT FIB", output)
+                        break
+                    assert time.monotonic() < deadline, (installed, payload, output)
+                    time.sleep(.2)
+    print("mTLS VPP ROUTE PASS: two add/withdraw cycles, ledger attribution and independent FIB; no packet/performance qualification")
+
+
+def route_state_converged(payload, installed):
+    """Compare top-level ledger flags; retry flags must never satisfy them."""
+    text = payload.decode(errors="replace")
+    start = text.find('{"desired":')
+    if start < 0:
+        return False
+    state, _ = json.JSONDecoder().raw_decode(text[start:])
+    if installed:
+        return (state.get("desired") is True and state.get("recorded") is True and
+                state.get("matches") is True and blob(1, b"vpp") in payload)
+    return state.get("desired") is False and state.get("recorded") is False
 
 
 def exact(s, n):
@@ -177,7 +246,12 @@ def rejected(root, p, name, **kwargs):
     raise AssertionError("accepted invalid client: " + str(name) + str(kwargs))
 
 
-def main(root, real_vpp_readonly=False, program_vpp=False):
+def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
+    # Regression: retry metadata must not masquerade as ledger convergence.
+    assert not route_state_converged(b'{"desired":false,"recorded":true,"retry":{"recorded":false}}', False)
+    assert not route_state_converged(b'{"desired":true,"recorded":true,"matches":false,"retry":{"matches":true}}' + blob(1, b"vpp"), True)
+    assert route_state_converged(b'{"desired":false,"recorded":false}', False)
+    assert blob(1, b"x" * 128)[:3] == b"\x0a\x80\x01"
     for ca in ("ca", "foreign"):
         run("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
             "-keyout", str(root / (ca + ".key")), "-out", str(root / (ca + ".pem")),
@@ -200,6 +274,9 @@ def main(root, real_vpp_readonly=False, program_vpp=False):
               "DANOS_TLS_CLIENT_CA": str(root / "ca.pem"), "DANOS_TLS_ROLE_FILE": str(roles),
               "DANOS_AUTHZ_REQUIRE_AUTH": "1"}
     with daemon(root, config, real_vpp=real_vpp_readonly, program_vpp=program_vpp) as p:
+        if routes:
+            route_lifecycle(root, p)
+            return
         if real_vpp_readonly:
             keys = blob(2, blob(1, b"type") + blob(2, b"4")) + blob(2, blob(1, b"id") + blob(2, b"99"))
             path = blob(3, blob(1, b"dataplane")) + blob(3, blob(1, b"object") + keys) + blob(3, blob(1, b"state"))
@@ -318,5 +395,6 @@ def main(root, real_vpp_readonly=False, program_vpp=False):
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="danos-mtls-") as directory:
         program_vpp = "--vpp-programming-readonly" in sys.argv[3:]
-        main(Path(directory), real_vpp_readonly=program_vpp or "--vpp-readonly" in sys.argv[3:],
-             program_vpp=program_vpp)
+        routes = "--vpp-route-lifecycle" in sys.argv[3:]
+        main(Path(directory), real_vpp_readonly=routes or program_vpp or "--vpp-readonly" in sys.argv[3:],
+             program_vpp=program_vpp or routes, routes=routes)

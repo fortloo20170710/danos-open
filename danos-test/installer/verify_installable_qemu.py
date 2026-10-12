@@ -35,11 +35,15 @@ def main():
                    help="require real guest VPP connection; only operational reads and rejected state writes")
     p.add_argument("--management-candidate-mgrd", type=Path,
                    help="test a separate candidate from the read-only seed, without replacing installed mgrd")
+    p.add_argument("--management-vpp-route-lifecycle", action="store_true",
+                   help="mutate only the disposable guest: authenticated route add/withdraw and independent FIB")
     a = p.parse_args()
     if a.management_vpp_readonly and not a.management_smoke_script:
         p.error("--management-vpp-readonly requires --management-smoke-script")
     if a.management_candidate_mgrd and not a.management_vpp_readonly:
         p.error("candidate testing requires --management-vpp-readonly")
+    if a.management_vpp_route_lifecycle and not a.management_candidate_mgrd:
+        p.error("route lifecycle requires explicit candidate binary")
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
     if out.exists() or len(a.mgrd_sha256) != 64 or any(c not in "0123456789abcdef" for c in a.mgrd_sha256):
@@ -178,7 +182,7 @@ def main():
                                 "timeout 180 python3 /mnt/management-smoke/test_mtls.py "
                                 + ("/mnt/management-smoke/candidate-mgrd " if a.management_candidate_mgrd else "/usr/bin/danos-mgrd ")
                                 + "/usr/bin/openssl "
-                                + ("--vpp-programming-readonly " if a.management_candidate_mgrd else ("--vpp-readonly " if a.management_vpp_readonly else "")) +
+                                + ("--vpp-route-lifecycle " if a.management_vpp_route_lifecycle else ("--vpp-programming-readonly " if a.management_candidate_mgrd else ("--vpp-readonly " if a.management_vpp_readonly else ""))) +
                                 ">/tmp/management-smoke.log 2>&1; smoke_rc=$?; cat /tmp/management-smoke.log; "
                                 "if test $smoke_rc -eq 0 && ! systemctl is-active --quiet danos-mgrd; then "
                                 f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; fi\n").encode())
@@ -190,6 +194,9 @@ def main():
             if a.management_candidate_mgrd:
                 result.update(management_candidate_sha256=hashlib.file_digest(candidate.open("rb"), "sha256").hexdigest(),
                               management_scope="separate candidate on read-only seed; explicit VPP programming backend activation and mTLS operational reads only; installed binary unchanged; no route/FIB or physical qualification")
+            if a.management_vpp_route_lifecycle:
+                result.update(management_scope="separate candidate in disposable guest: authenticated route add/withdraw, ledger attribution and independent VPP FIB; no physical or packet/performance qualification",
+                              management_route_lifecycle="PASS")
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")
         wait("Linux version ", 180, offset)

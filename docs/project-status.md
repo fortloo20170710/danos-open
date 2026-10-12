@@ -18,6 +18,13 @@ The delivered r13 binary is unchanged and does not contain this option.
 Authenticated route add/withdraw plus independent FIB readback remain next;
 see `management-mtls.md` for separate candidate and installed-image identities.
 
+Candidate admin-mTLS route add/withdraw now PASS: two isolated guest cycles
+with exact-prefix independent VPP FIB readback and parsed top-level ledger
+convergence/backend attribution. The first loose substring verdict is
+retracted; only the strict rerun is accepted. This does not add ECMP, route
+restart replay, packet transit or physical performance qualification, and
+does not change the r13 ISO's binary identity.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

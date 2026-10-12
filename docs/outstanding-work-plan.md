@@ -68,6 +68,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   This source candidate is not in r13. Next qualify authenticated route
   add/withdraw with ledger backend attribution and independent VPP FIB
   readback, then rebuild and installation-qualify a new delivery image.
+  Candidate authenticated route programming now PASS in an independent
+  COW guest: two add/withdraw cycles, top-level ledger convergence/backend
+  attribution and independent exact-prefix VPP FIB presence/absence.
+  First substring-based verdict retracted; only strict JSON rerun qualifies.
+  Next ECMP and persisted-route replay across daemon/VPP restart, followed
+  by a rebuilt installation-qualified image; physical performance stays OPEN.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

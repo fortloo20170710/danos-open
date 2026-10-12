@@ -119,6 +119,36 @@ deployment feature; no new NETCONF network listener is introduced here.
 
 ## Repeatable acceptance
 
+### Authenticated route lifecycle on the explicit VPP candidate
+
+2026-10-12: isolated QEMU COW qualification now includes two actual admin-mTLS
+Set add/delete cycles for `198.18.253.0/24`, gateway `198.18.0.2`, VPP oif 1,
+default VRF. Each ADD waits for top-level desired/recorded/matches flags and
+the typed recorded-backend `vpp` value; each WITHDRAW waits for desired and
+recorded to be false. An independent `vppctl show ip fib` confirms exact
+prefix presence/absence in every phase, including initial absence. This
+qualifies programming/readback, not adjacency resolution or packet transit.
+
+Evidence: `build/install-r13-20261012/candidate-mtls-route-result.json` and
+`candidate-mtls-route.serial.log`, SHA256
+`16f74fcbf1c624831a019a409bc3b10b4a50d950de67b0d56b59f48540a271c6`.
+Executed script SHA256:
+`f44c71715c0cb70633838edc0a610bd8b6dde40c6a5ef0c5c54f49d21fac61c9`.
+Candidate binary remains `bca8c8fcd70d8210b2fe349058b28f385764b2607145b5f39cf4b7157630c6e0`.
+It runs from a separate seed, not the unchanged installed r13 binary.
+Coldboot and genuine reboot/persistence also PASS after route removal;
+this is not route persistence/replay across a daemon/VPP restart.
+
+The first route run's PASS is retracted: substring matching could accept
+retry.recorded=false while the main ledger was still recorded=true. Only
+the strict JSON top-level parsing rerun above is authoritative. Regression
+assertions now reject this case and retry.matches masking a main mismatch.
+The protobuf fixture also supports multibyte lengths for larger route requests.
+Use `--management-vpp-route-lifecycle` with an explicit candidate and smoke
+script in the QEMU verifier; never invoke this mutating mode on physical
+equipment without a separately scoped topology. ECMP/restart replay and
+physical deployment/performance remain separate qualification work.
+
 Installed r13 qualification (2026-10-12): the QEMU verifier's
 `--management-vpp-readonly` mode requires the actual daemon's VPP API
 connection success message. TLS 1.2/1.3 and all mapped roles pass absent-object
