@@ -14,6 +14,8 @@ class TransitWatchSerialTests(unittest.TestCase):
             self.assertTrue(marker.startswith("DANOS_R2_TRANSIT_WATCH_"))
             if action == "start":
                 self.assertIn("30.30.30.2", script)
+                self.assertNotIn("Path(None", script)
+                self.assertRegex(script, r"danos-r2-transit-watch-[0-9a-f]{32}\.json")
 
     def test_collect_rejects_untrusted_path(self):
         with self.assertRaisesRegex(ValueError, "invalid bounded worker token"):

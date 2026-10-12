@@ -18,6 +18,8 @@ R2_MAC = "00:1f:7a:69:f5:ec"
 
 def remote_script(action, token, duration):
     marker = "DANOS_R2_TRANSIT_WATCH_" + uuid.uuid4().hex + ":"
+    if action == "start":
+        token = "/tmp/danos-r2-transit-watch-" + uuid.uuid4().hex + ".json"
     worker = f'''import json,re,subprocess,time,os
 from pathlib import Path
 target=("30.30.30.2","30.30.30.3","30.30.30.4","30.30.30.5")
@@ -43,7 +45,6 @@ result["status"]="COMPLETE"
 tmp=Path({token!r}+".tmp"); dest=Path({token!r}); tmp.write_text(json.dumps(result,indent=2)+"\\n"); os.replace(tmp,dest)
 '''
     if action == "start":
-        token = "/tmp/danos-r2-transit-watch-" + uuid.uuid4().hex + ".json"
         script = f'''
 import subprocess,json,re,base64,sys
 from pathlib import Path
