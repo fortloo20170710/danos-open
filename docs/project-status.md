@@ -47,6 +47,14 @@ use of both paths, not balanced ECMP performance. Evidence and hashes are in
 `iso-installation-acceptance.md`; R2/R4 rollout and homogeneous four-node
 r14 qualification remain open.
 
+A second R2 four-destination batch was bracketed by R3 counter snapshots:
+100/100 packets per endpoint, zero loss, TTL 63; R3 P4 RX/TX +420/+420 and
+egress P1/P2 TX +105/+315, with unchanged drop counters and unchanged two-path
+FIB. The exact ingress/egress/request total match confirms both physical ECMP
+paths carried this sample. The 25/75 split is not a statistical balance or
+performance claim. Snapshot and probe hashes are in
+`iso-installation-acceptance.md`.
+
 R3 VPP service restart recovery also passes: PID 741→1576, P1/P2/P4 profile
 restored, both ECMP next hops resolved, and 100/100 direct peer probes to R1
 and R4. Post-restart UART Robot 3/3 PASS. This is the VPP lab-hook path;

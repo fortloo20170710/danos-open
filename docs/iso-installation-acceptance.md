@@ -205,6 +205,25 @@ The evidence parser unit tests cover two-path state, single-path state, and
 the stale-path-list case where the forwarding DPO is still unresolved ARP.
 Full CTest now passes 69/69.
 
+### R2 four-flow ECMP counter correlation — 2026-10-13
+
+Read-only R3 snapshots bracketed a fresh identity-checked R2 probe batch.
+The same two resolved FIB/DPO next hops and VPP PID 1576 were present before
+and after. R2 sent 420 requests total: four 100-packet measured probes plus
+one 5-packet readiness probe per endpoint. All measured probes passed 100/100,
+zero loss, TTL 63. R3 P4 RX/TX increased by 420/420; P1 TX by 105 and P2 TX
+by 315. The egress total equals the ingress and sent total; P1/P2 drop counters
+did not increase. This proves that both physical paths carried this batch.
+The 25/75 split is a four-destination sample, not statistical ECMP balance,
+throughput or line-rate qualification.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-r14-r2-ecmp-counters-20261013/before/result.json` | `08d1731ef50d22dd9f4b9c90aef4a447937e20bb89fa4ccb0288a341459d3a72` |
+| `r3-r14-r2-ecmp-counters-20261013/after/result.json` | `eb41a3617d1366d193920bfa9210f7bce96dde2bb48333cdce74a9a6648e842c` |
+| `r2-r9-to-r3-r14-ecmp-counters-20261013/result.json` | `69e692b4ca8742a1ef38778d9070496eee48923ee30ddf4118fd31edb9920ba9` |
+| counter capture utility | `b520c5d047c3693ec2f306d86eb357eaf2635a1ce6c4f723d21f571d51ba1b69` |
+
 ### R2 endpoint reachability after R3 recovery — 2026-10-13
 
 After the R3 VPP restart/replay checkpoint, the identity-guarded R2 probe

@@ -2,6 +2,24 @@
 
 更新时间：2026-10-13
 
+## R2 four-flow ECMP counter correlation — 2026-10-13
+
+Captured identity-bound, read-only R3 counter/FIB snapshots immediately before
+and after a fresh R2 probe batch. R2 sent 420 requests total (four targets,
+each 100 measured plus one 5-packet readiness probe); all measured probes were
+100/100 with zero loss and TTL 63. R3 VPP PID stayed 1576 and the same two
+resolved forwarding DPO adjacencies remained installed. Counter deltas were:
+R3 P4 ingress RX/TX +420/+420; P1 toward R4 TX +105; P2 toward R1 TX +315.
+The two egress deltas sum exactly to the ingress and transmitted request count;
+their drop counters did not increase. Thus both current-release physical ECMP
+paths carried this batch. The 25/75 split is only four destination flows and
+is not a balance, throughput, or line-rate qualification. No FRR/ZAPI change
+or traffic during restart was tested.
+
+Evidence snapshots, probe logs and hashes are indexed in
+`iso-installation-acceptance.md`. Counter-capture utility SHA256:
+`b520c5d047c3693ec2f306d86eb357eaf2635a1ce6c4f723d21f571d51ba1b69`.
+
 ## R2 → R3 post-restart endpoint regression — 2026-10-13
 
 After the R3 VPP service restart/replay checkpoint, the identity-guarded R2
