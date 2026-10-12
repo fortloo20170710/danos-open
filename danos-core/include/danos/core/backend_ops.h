@@ -82,6 +82,7 @@ typedef struct {
     uint32_t attempts;
     uint64_t retry_after_ms;
     danos_status_t last_error;
+    char recorded_backend[64]; /* empty = absent/unknown, not active backend */
 } danos_programming_object_status_t;
 
 /* Sample one object, its dependency digest, ledger and retry metadata.

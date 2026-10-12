@@ -110,6 +110,8 @@ int cli_cmd_show_dataplane(danos_cli_ctx_t *ctx, const char *args)
                 return -1;
             printf("Separate status sample: ledger_matches_sampled_desired=%s\n",
                    status.ledger_matches_sampled_desired ? "yes" : "no");
+            printf("Recorded programming backend: %s\n", status.recorded_backend[0] ?
+                   status.recorded_backend : "unknown-or-absent");
             printf("Retry: recorded=%s matches_sampled_desired=%s attempts=%u "
                    "last_error=%d backoff=%s retry_after_ms=%" PRIu64 " flapping=%s exhausted=%s\n",
                    status.retry_recorded ? "yes" : "no", status.retry_matches_sampled_desired ? "yes" : "no",

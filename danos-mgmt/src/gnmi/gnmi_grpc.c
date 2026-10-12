@@ -1040,6 +1040,14 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
             danos_programming_object_status_t status;
             st = danos_programming_object_status(type, id, &status);
             if (st != DANOS_OK) return -(int)st;
+            if (p->elem_count == 4) {
+                gnmi_typed_value_t owner = { .kind = GNMI_VAL_STRING };
+                snprintf(owner.s, sizeof(owner.s), "%s", status.recorded_backend);
+                size_t us = gnmi_pb_begin_nested(&w, 4);
+                gnmi_encode_path(&w, 1, p); gnmi_encode_typed_value(&w, 3, &owner);
+                gnmi_pb_end_nested(&w, us);
+                continue;
+            }
             gnmi_typed_value_t value = { .kind = GNMI_VAL_JSON_IETF };
             int count = snprintf(value.s, sizeof(value.s),
                 "{\"desired\":%s,\"recorded\":%s,\"matches\":%s,\"retry\":{\"recorded\":%s,\"matches\":%s,"
@@ -1052,6 +1060,15 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
             if (count < 0 || (size_t)count >= sizeof(value.s)) return -(int)DANOS_ERR_NO_MEMORY;
             size_t us = gnmi_pb_begin_nested(&w, 4);
             gnmi_encode_path(&w, 1, p); gnmi_encode_typed_value(&w, 3, &value);
+            gnmi_pb_end_nested(&w, us);
+            gnmi_path_t owner_path = *p;
+            owner_path.elem_count = 4;
+            memset(&owner_path.elems[3], 0, sizeof(owner_path.elems[3]));
+            snprintf(owner_path.elems[3].name, sizeof(owner_path.elems[3].name), "recorded-backend");
+            gnmi_typed_value_t owner = { .kind = GNMI_VAL_STRING };
+            snprintf(owner.s, sizeof(owner.s), "%s", status.recorded_backend);
+            us = gnmi_pb_begin_nested(&w, 4);
+            gnmi_encode_path(&w, 1, &owner_path); gnmi_encode_typed_value(&w, 3, &owner);
             gnmi_pb_end_nested(&w, us);
             continue;
         }

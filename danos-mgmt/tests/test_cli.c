@@ -80,6 +80,13 @@ static int test_dataplane_readonly(void)
     assert(desired && recorded && observed_program_calls == 1);
     assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 123, &status) == DANOS_OK);
     assert(status.ledger_matches_sampled_desired && !status.retry_recorded);
+    assert(strcmp(status.recorded_backend, "cli-observe-active") == 0);
+    danos_backend_ops_t changed_ops = { .name = "cli-not-the-recorded-backend", .route_add = observe_route_add };
+    danos_backend_ops_set(&changed_ops);
+    assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 123, &status) == DANOS_OK);
+    assert(strcmp(status.recorded_backend, "cli-observe-active") == 0);
+    assert(observed_program_calls == 1);
+    danos_backend_ops_set(&ops);
     route.admin_distance++;
     assert(danos_object_update(g_default_store, DANOS_OBJ_ROUTE, 123, &route, sizeof(route)) == DANOS_OK);
     assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 123, &status) == DANOS_OK);
@@ -101,7 +108,10 @@ static int test_dataplane_readonly(void)
     assert(!desired && recorded && observed_program_calls == 1);
     assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 123, &status) == DANOS_OK);
     assert(!status.desired && status.recorded && !status.retry_matches_sampled_desired);
+    assert(strcmp(status.recorded_backend, "cli-observe-active") == 0);
     danos_programming_forget_programmed(); /* test cleanup only, never query */
+    assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 123, &status) == DANOS_OK);
+    assert(!status.recorded && !status.recorded_backend[0]);
     danos_programming_set_policy(5, 1000, 60000, 5000, 3);
     danos_nexthop_t nh = {0};
     nh.ifindex = 1;
@@ -124,6 +134,14 @@ static int test_dataplane_readonly(void)
     assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 500, &status) == DANOS_OK);
     assert(!status.ledger_matches_sampled_desired && observed_program_calls == 2);
     danos_programming_forget_programmed();
+    assert(danos_object_delete(g_default_store, DANOS_OBJ_ROUTE, 500) == DANOS_OK);
+    unsigned char oversized[DANOS_MAX_OBJECT_BYTES] = {0};
+    assert(danos_object_create(g_default_store, DANOS_OBJ_ROUTE, 600, oversized, sizeof(oversized)) == DANOS_OK);
+    uint64_t attempted = 0, failed = 0;
+    assert(danos_programming_run(&attempted, &failed) == 0);
+    assert(attempted == 1 && failed == 1 && observed_program_calls == 2);
+    assert(danos_programming_object_status(DANOS_OBJ_ROUTE, 600, &status) == DANOS_OK);
+    assert(status.desired && !status.recorded && !status.recorded_backend[0]);
     danos_backend_ops_set(saved_ops);
     assert(danos_backend_unregister("cli-observe-test") == DANOS_OK);
     danos_object_store_destroy(g_default_store);

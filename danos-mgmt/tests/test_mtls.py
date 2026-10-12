@@ -216,11 +216,17 @@ def main(root):
                                request_override=blob(2, state_path)) == "0"
                     assert b'"retry"' in b"".join(response)
                     assert b'"desired":false' in b"".join(response)
+                    assert b"recorded-backend" in b"".join(response)
                     for stream, operation in ((15, 4), (17, 3), (19, 2)):
                         change = (blob(operation, state_path) if operation == 2 else
                                   blob(operation, blob(1, state_path) + blob(3, blob(11, b'{}'))))
                         assert rpc(s, "Set", stream, request_override=change) == (
                             "7" if role == "viewer" else "3")
+                    owner_path = state_path + blob(3, blob(1, b"recorded-backend"))
+                    assert rpc(s, "Get", 21, request_override=blob(2, owner_path)) == "0"
+                    owner_change = blob(4, blob(1, owner_path) + blob(3, blob(11, b'"forged"')))
+                    assert rpc(s, "Set", 23, request_override=owner_change) == (
+                        "7" if role == "viewer" else "3")
         def concurrent_client(_):
             with connect(root, p, "viewer") as s:
                 s.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))

@@ -901,6 +901,8 @@ static int test_dataplane_operational_path(void)
     gnmi_pb_put_enum(&writer, 3, 1); /* CONFIG must exclude operational state */
     int config_size = gnmi_handle_get(NULL, req, writer.len, resp, sizeof(resp));
     assert(config_size > 0 && config_size < state_size);
+    assert(gnmi_path_from_str(&path, "/dataplane/object[type=4][id=99]/state/recorded-backend"));
+    assert(gnmi_model_resolve(&path, &binding) == DANOS_OK);
     const char *bad[] = {"/dataplane/object[type=0][id=99]/state",
                         "/dataplane/object[type=4][id=-1]/state",
                         "/dataplane/object[type=4][id=18446744073709551616]/state",

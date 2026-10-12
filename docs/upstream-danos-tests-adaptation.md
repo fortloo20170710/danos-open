@@ -211,6 +211,25 @@ new plaintext listener or production credentials. Full formal YANG binding,
 STREAM notifications, backend ownership and physical image deployment
 remain separate work; see `management-mtls.md` for field semantics.
 
+### Recorded backend attribution — 2026-10-12
+
+Private in-memory ledger records now store the backend name copied at
+successful programming, separately from the active backend pointer.
+CLI object status displays that recorded name; native gNMI state container
+Get emits an additional `recorded-backend` string update, also readable
+directly at `/state/recorded-backend`. Empty means unknown or absent, not
+a guessed active backend; names longer than 63 bytes are not truncated
+into misleading identities. No persistent WAL schema is changed.
+
+Tests demonstrate recorded attribution survives an active-backend switch
+and a desired delete until ledger reconciliation, then disappears when the
+record is forgotten. This does not add dynamic migration or hardware
+ownership readback. The ledger header/payload capacity is checked before
+backend IO; an oversized raw registry blob fails rather than programming
+without an attributable record. Current modeled programmable types fit.
+TLS 1.2/1.3 tests read the owner leaf and reject forged leaf writes for
+every role. Updated physical ISO deployment and production PKI remain open.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML

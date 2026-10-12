@@ -14,10 +14,12 @@
 danos_status_t gnmi_model_dataplane_key(const gnmi_path_t *p,
                                        danos_obj_type_t *type, uint64_t *id)
 {
-    if (!p || !type || !id || p->elem_count != 3 ||
+    if (!p || !type || !id || (p->elem_count != 3 && p->elem_count != 4) ||
         strcmp(p->elems[0].name, "dataplane") || p->elems[0].has_key ||
         strcmp(p->elems[1].name, "object") || !p->elems[1].has_key || !p->elems[1].has_extra_key ||
         strcmp(p->elems[2].name, "state") || p->elems[2].has_key)
+        return DANOS_ERR_NOT_FOUND;
+    if (p->elem_count == 4 && (strcmp(p->elems[3].name, "recorded-backend") || p->elems[3].has_key))
         return DANOS_ERR_NOT_FOUND;
     const gnmi_path_elem_t *e = &p->elems[1];
     const char *t, *key;

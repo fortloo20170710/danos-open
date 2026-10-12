@@ -114,6 +114,15 @@ The query requires the active global desired store used by programming;
 an unrelated alternate desired store is rejected, not silently mixed with
 the global ledger. Output capacity errors fail rather than truncate JSON.
 
+The read-only `/state/recorded-backend` leaf returns the backend name copied
+into the successful programming ledger record. A container state Get includes
+that leaf as a separate string-valued update alongside sampled-state JSON;
+it is not substituted with the current active backend. Empty string means
+absent or unknown (including a name too long for the 63-byte record field).
+Backend names remain in-memory history, not hardware ownership attestation
+or dynamic backend-migration support. The leaf follows the same read-only
+role policy; TLS tests verify leaf reads and rejected forged writes.
+
 Actual TLS 1.2/1.3 tests query this path with all mapped roles and verify
 all three Set operation forms are rejected. Invalid key/type/ID and CONFIG
 filtering are tested at the gNMI handler boundary. Deployment to the older

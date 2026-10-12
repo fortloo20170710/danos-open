@@ -48,6 +48,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   TLS 1.2/1.3 role tests cover reads and denial of all three Set forms.
   Physical deployment/PKI, per-object backend attribution and formal YANG
   schema/notification coverage remain open. No R3 service was enabled.
+  Per-record backend name is now captured at successful programming and
+  exposed by CLI and read-only gNMI leaf, with backend-switch/deletion/
+  forget and TLS denial tests. It is not hardware attestation or dynamic
+  migration. Next deployment/PKI qualification on an updated image.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

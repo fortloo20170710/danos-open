@@ -384,20 +384,20 @@ typedef struct {
     uint64_t attempted, ok, failed;
 } program_ctx_t;
 
-/* ledger record layout: [u64 dep_digest][object bytes] */
-#define LEDGER_REC_MAX (DANOS_MAX_OBJECT_BYTES + 8)
+/* Private, in-memory ledger: [u64 digest][64-byte backend name][object]. */
+#define LEDGER_HEADER_SIZE (8 + 64)
+#define LEDGER_REC_MAX (DANOS_MAX_OBJECT_BYTES + LEDGER_HEADER_SIZE)
 
 static void program_entry(danos_object_entry_t *e, void *user)
 {
     program_ctx_t *c = user;
     if (type_skipped(e->type)) return;
 
-    /* The registry caps payloads at DANOS_MAX_OBJECT_BYTES, so this is
-     * unreachable via the public API; the check keeps the fixed buffers
-     * below safe if an entry is ever injected by another path. Count it
-     * as a failure rather than skipping silently, so an unprogrammable
-     * object is visible in the reconciler stats (ADR-0007). */
-    if (e->data_size + 8 > LEDGER_REC_MAX) { c->attempted++; c->failed++; return; }
+    /* Ledger uses the same registry payload cap; reject before backend IO
+     * rather than report success when metadata cannot be recorded. */
+    if (e->data_size > DANOS_MAX_OBJECT_BYTES - LEDGER_HEADER_SIZE) {
+        c->attempted++; c->failed++; return;
+    }
 
     uint64_t dep = dep_digest(e->type, e->data, e->data_size);
 
@@ -406,11 +406,11 @@ static void program_entry(danos_object_entry_t *e, void *user)
     size_t lsz = sizeof(last);
     bool have_last = danos_object_read(ledger(), e->type, e->id,
                                        last, &lsz) == DANOS_OK;
-    if (have_last && lsz == e->data_size + 8) {
+    if (have_last && lsz == e->data_size + LEDGER_HEADER_SIZE) {
         uint64_t last_dep;
         memcpy(&last_dep, last, 8);
         if (last_dep == dep &&
-            memcmp(last + 8, e->data, e->data_size) == 0) {
+            memcmp(last + LEDGER_HEADER_SIZE, e->data, e->data_size) == 0) {
             /* Healthy: drop any accumulated backoff so a later failure
              * starts from a clean slate. */
             retry_clear(e->type, e->id, mono_ns(), true);
@@ -435,11 +435,11 @@ static void program_entry(danos_object_entry_t *e, void *user)
     if (defer) return;
 
     c->attempted++;
-    if (e->type == DANOS_OBJ_IFACE && have_last && lsz == e->data_size + 8 &&
+    if (e->type == DANOS_OBJ_IFACE && have_last && lsz == e->data_size + LEDGER_HEADER_SIZE &&
         g_ops->iface_addr_del) {
         danos_iface_t old_iface;
         if (e->data_size == sizeof(old_iface)) {
-            memcpy(&old_iface, last + 8, sizeof(old_iface));
+            memcpy(&old_iface, last + LEDGER_HEADER_SIZE, sizeof(old_iface));
             if (memcmp(&old_iface.ipv4_address, &((const danos_iface_t *)e->data)->ipv4_address,
                        sizeof(old_iface.ipv4_address)) != 0 ||
                 memcmp(&old_iface.ipv6_address, &((const danos_iface_t *)e->data)->ipv6_address,
@@ -458,10 +458,10 @@ static void program_entry(danos_object_entry_t *e, void *user)
          * gateway. */
         if (st == DANOS_ERR_RETRY && have_last &&
             e->type == DANOS_OBJ_ROUTE && g_ops->route_del &&
-            lsz >= 8 + sizeof(danos_route_t)) {
+            lsz >= LEDGER_HEADER_SIZE + sizeof(danos_route_t)) {
             danos_resolved_route_t rr;
             memset(&rr, 0, sizeof(rr));
-            memcpy(&rr.route, last + 8, sizeof(danos_route_t));
+            memcpy(&rr.route, last + LEDGER_HEADER_SIZE, sizeof(danos_route_t));
             if (g_ops->route_del(&rr, g_ops->user) == DANOS_OK) {
                 danos_object_delete(ledger(), e->type, e->id);
                 c->failed--;
@@ -472,15 +472,17 @@ static void program_entry(danos_object_entry_t *e, void *user)
     c->ok++;
     retry_clear(e->type, e->id, mono_ns(), true);
 
-    uint8_t rec[LEDGER_REC_MAX];
+    uint8_t rec[LEDGER_REC_MAX] = {0};
     memcpy(rec, &dep, 8);
-    memcpy(rec + 8, e->data, e->data_size);
-    if (have_last && lsz == e->data_size + 8)
+    if (g_ops->name && strlen(g_ops->name) < 64)
+        memcpy(rec + 8, g_ops->name, strlen(g_ops->name));
+    memcpy(rec + LEDGER_HEADER_SIZE, e->data, e->data_size);
+    if (have_last && lsz == e->data_size + LEDGER_HEADER_SIZE)
         (void)danos_object_update(ledger(), e->type, e->id, rec,
-                                  e->data_size + 8);
+                                  e->data_size + LEDGER_HEADER_SIZE);
     else
         (void)danos_object_create(ledger(), e->type, e->id, rec,
-                                  e->data_size + 8);
+                                  e->data_size + LEDGER_HEADER_SIZE);
 }
 
 uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)
@@ -549,11 +551,13 @@ danos_status_t danos_programming_object_status(danos_obj_type_t type,
     st = g_programmed ? danos_object_read(g_programmed, type, id, rec, &rec_size) : DANOS_ERR_NOT_FOUND;
     if (st == DANOS_OK) {
         out->recorded = true;
-        if (out->desired && rec_size == size + 8) {
+        if (rec_size >= LEDGER_HEADER_SIZE && rec[LEDGER_HEADER_SIZE-1] == 0)
+            memcpy(out->recorded_backend, rec + 8, sizeof(out->recorded_backend));
+        if (out->desired && rec_size == size + LEDGER_HEADER_SIZE) {
             uint64_t recorded_dep;
             memcpy(&recorded_dep, rec, 8);
             out->ledger_matches_sampled_desired = recorded_dep == dep &&
-                memcmp(rec + 8, desired, size) == 0;
+                memcmp(rec + LEDGER_HEADER_SIZE, desired, size) == 0;
         }
     } else if (st != DANOS_ERR_NOT_FOUND) goto done;
     pthread_mutex_lock(&g_retry_lock);
@@ -648,9 +652,9 @@ uint64_t danos_programming_sweep(uint64_t *failed)
          * delete for every smaller object type and leak the entry. */
 
         if (type == DANOS_OBJ_ROUTE && g_ops && g_ops->route_del &&
-            lsz >= 8 + sizeof(danos_route_t)) {
+            lsz >= LEDGER_HEADER_SIZE + sizeof(danos_route_t)) {
             danos_route_t r;
-            memcpy(&r, last + 8, sizeof(r));
+            memcpy(&r, last + LEDGER_HEADER_SIZE, sizeof(r));
             danos_resolved_route_t rr;
             memset(&rr, 0, sizeof(rr));
             rr.route = r;
@@ -663,11 +667,11 @@ uint64_t danos_programming_sweep(uint64_t *failed)
             }
         }
         if (type == DANOS_OBJ_IFACE && g_ops && g_ops->iface_up &&
-            lsz >= 8 + sizeof(danos_iface_t)) {
+            lsz >= LEDGER_HEADER_SIZE + sizeof(danos_iface_t)) {
             /* withdraw = admin down (we never delete kernel ifaces we
              * did not create) */
             danos_iface_t ifc;
-            memcpy(&ifc, last + 8, sizeof(ifc));
+            memcpy(&ifc, last + LEDGER_HEADER_SIZE, sizeof(ifc));
             (void)g_ops->iface_up(ifc.ifindex, false, g_ops->user);
         }
         /* VRF: registration-only backend ops — ledger drop suffices */
