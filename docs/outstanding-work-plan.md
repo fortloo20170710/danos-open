@@ -57,7 +57,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   LIVE/installed binary digests tied to the Debian-trixie build. Current
   CTest 68/68 PASS. Installed r13 guest mTLS/RBAC and read-only DPA queries
   now PASS using ephemeral PKI and --no-vpp; physical install/production PKI
-  and hardware performance are next;
+  and hardware performance are next. The subsequent real guest VPP API
+  connection plus mTLS operational Get/state-write rejection also PASS;
+  absent-object reads are not populated-ledger or FIB programming evidence;
   no USB or physical disk has been overwritten in this build step.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint

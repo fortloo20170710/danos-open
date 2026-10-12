@@ -24,6 +24,11 @@ weakening verification. The retry and subsequent genuine reboot passed.
 Scope is guest loopback with `--no-vpp`, not physical management deployment,
 backend FIB programming or PCI performance. Production PKI remains OPEN.
 
+The subsequent `management-vpp-readonly-result.json` run additionally
+requires real VPP API connectivity and passes authenticated read-only state
+queries, write rejection and genuine reboot. See `management-mtls.md` for
+the evidence identities. No route programming/FIB readback is qualified.
+
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r13.iso`
 - Size: 569704448 bytes; SHA256
   `ebb996269e5ca59b9cb38255cac5e429022704e9c7d291b165aae8095df2783d`.

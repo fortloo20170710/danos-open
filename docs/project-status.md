@@ -2,11 +2,14 @@
 
 ## Current v0.16 qualification verdict — 2026-10-12
 
-Route/NH/NHGroup contract remains frozen; deterministic contract gate and
+Route/NH/NHGroup contract remains frozen; deterministic contract gate PASS.
 Installed r13 guest management transport now PASS: TLS 1.2/1.3, certificate
 RBAC, DPA state Get/write rejection and genuine reboot, using ephemeral PKI
 with --no-vpp. This is not physical backend/performance qualification;
-production PKI deployment remains OPEN. See `iso-installation-acceptance.md`.
+production PKI deployment remains OPEN. A subsequent installed-guest test
+also requires real VPP API connectivity and passes authenticated operational
+Get/state-write rejection; no route programming/FIB readback is qualified
+by that run. See `iso-installation-acceptance.md`.
 
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves

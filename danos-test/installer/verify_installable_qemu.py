@@ -31,7 +31,11 @@ def main():
                    help="read-only backing disk with matching successful installation evidence")
     p.add_argument("--management-smoke-script", type=Path,
                    help="project mTLS test run inside the disposable guest, with ephemeral PKI")
+    p.add_argument("--management-vpp-readonly", action="store_true",
+                   help="require real guest VPP connection; only operational reads and rejected state writes")
     a = p.parse_args()
+    if a.management_vpp_readonly and not a.management_smoke_script:
+        p.error("--management-vpp-readonly requires --management-smoke-script")
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
     if out.exists() or len(a.mgrd_sha256) != 64 or any(c not in "0123456789abcdef" for c in a.mgrd_sha256):
@@ -164,12 +168,15 @@ def main():
             smoke_offset = len(log.read_text(errors="replace"))
             connection.sendall(("mkdir -p /mnt/management-smoke && mount -o ro /dev/vdb /mnt/management-smoke && "
                                 "timeout 180 python3 /mnt/management-smoke/test_mtls.py /usr/bin/danos-mgrd /usr/bin/openssl "
+                                + ("--vpp-readonly " if a.management_vpp_readonly else "") +
                                 ">/tmp/management-smoke.log 2>&1; smoke_rc=$?; cat /tmp/management-smoke.log; "
                                 "if test $smoke_rc -eq 0 && ! systemctl is-active --quiet danos-mgrd; then "
                                 f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; fi\n").encode())
             wait(f"\nMANAGEMENT_SMOKE_{token}_PASS\n", 210, smoke_offset)
             result.update(management_mtls="PASS", management_scope="guest-loopback --no-vpp; ephemeral PKI; lab opt-in tested separately; no physical backend qualification",
                           management_script_sha256=hashlib.file_digest(script.open("rb"), "sha256").hexdigest())
+            if a.management_vpp_readonly:
+                result["management_scope"] = "guest-loopback real VPP API connection; ephemeral PKI; operational Get and rejected state writes only; no route/FIB or physical qualification"
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")
         wait("Linux version ", 180, offset)

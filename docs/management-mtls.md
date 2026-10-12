@@ -89,6 +89,23 @@ deployment feature; no new NETCONF network listener is introduced here.
 
 ## Repeatable acceptance
 
+Installed r13 qualification (2026-10-12): the QEMU verifier's
+`--management-vpp-readonly` mode requires the actual daemon's VPP API
+connection success message. TLS 1.2/1.3 and all mapped roles pass absent-object
+state/recorded-backend Get and update/replace/delete rejection. No seed or
+interface/route Set is issued. Ephemeral PKI/WAL stay in the disposable COW
+guest; the original disk and delivery ISO are unchanged. Fresh-kernel reboot
+and persistence also pass, with the production service still inactive.
+
+Evidence: `build/install-r13-20261012/management-vpp-readonly-result.json`
+and `management-vpp-readonly.serial.log` (SHA256
+`e1ffb0c28c464167867eb13bc0521c8eba92f035fced362b9c75c34811cbb28e`).
+Test-script SHA256:
+`e05b3104b96e4ae6a12989e4ff18b08d03ce4dbcfdab1fe4c9375cca622259f9`.
+Scope is guest API connectivity/authenticated read-only transport, not an
+active VPP programming backend, populated ledger, FIB readback, physical PKI
+or real PCI performance.
+
 ### Native read-only dataplane status (2026-10-12)
 
 gNMI Get supports `/dataplane/object[type=N][id=K]/state`, with numeric
@@ -105,7 +122,8 @@ JSON fields: `desired`, `recorded`, `matches`, and nested `retry` containing
 ledger and retry metadata, not a hardware readback or atomic snapshot.
 An absent object returns false presence flags; `retry.error` is meaningful
 only when retry metadata is recorded, and may belong to an older candidate
-when `retry.matches=false`. Backend ownership is not supplied.
+when `retry.matches=false`. The separate `recorded-backend` leaf attributes
+the successful in-memory programming record; it is not hardware ownership.
 
 Only targeted Get is qualified here. CONFIG Get omits operational state;
 update/replace/delete fail for admin/operator and are permission-denied

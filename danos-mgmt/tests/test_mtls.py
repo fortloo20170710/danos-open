@@ -109,14 +109,14 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 
 
 @contextlib.contextmanager
-def daemon(root, config):
+def daemon(root, config, real_vpp=False):
     p = port()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
     env.update(config)
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
     with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen([BINARY, "--no-vpp", "--port", str(p), "--metrics-port", str(port()),
+        proc = subprocess.Popen([BINARY, *([] if real_vpp else ["--no-vpp"]), "--port", str(p), "--metrics-port", str(port()),
                                  "--wal", str(root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
@@ -140,6 +140,9 @@ def daemon(root, config):
             output = log.read().decode()
             assert proc.returncode == 0, output
             assert "AddressSanitizer" not in output and "ThreadSanitizer" not in output, output
+            if real_vpp:
+                assert "VPP backend connected" in output, output
+                print("Installed runtime: VPP backend connected (not FIB readback)")
 
 
 def connect(root, p, name, version=None, alpn="h2", hostname="localhost"):
@@ -170,7 +173,7 @@ def rejected(root, p, name, **kwargs):
     raise AssertionError("accepted invalid client: " + str(name) + str(kwargs))
 
 
-def main(root):
+def main(root, real_vpp_readonly=False):
     for ca in ("ca", "foreign"):
         run("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
             "-keyout", str(root / (ca + ".key")), "-out", str(root / (ca + ".pem")),
@@ -192,7 +195,25 @@ def main(root):
     config = {"DANOS_TLS_CERT": str(root / "server.pem"), "DANOS_TLS_KEY": str(root / "server.key"),
               "DANOS_TLS_CLIENT_CA": str(root / "ca.pem"), "DANOS_TLS_ROLE_FILE": str(roles),
               "DANOS_AUTHZ_REQUIRE_AUTH": "1"}
-    with daemon(root, config) as p:
+    with daemon(root, config, real_vpp=real_vpp_readonly) as p:
+        if real_vpp_readonly:
+            keys = blob(2, blob(1, b"type") + blob(2, b"4")) + blob(2, blob(1, b"id") + blob(2, b"99"))
+            path = blob(3, blob(1, b"dataplane")) + blob(3, blob(1, b"object") + keys) + blob(3, blob(1, b"state"))
+            for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
+                for role in ("admin", "operator", "viewer"):
+                    with connect(root, p, role, version=version) as s:
+                        s.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+                        response = []
+                        assert rpc(s, "Get", 1, responses=response, request_override=blob(2, path)) == "0"
+                        assert b'"desired":false' in b"".join(response)
+                        assert b"recorded-backend" in b"".join(response)
+                        owner = path + blob(3, blob(1, b"recorded-backend"))
+                        assert rpc(s, "Get", 3, request_override=blob(2, owner)) == "0"
+                        for stream, operation in ((5, 4), (7, 3), (9, 2)):
+                            change = blob(operation, path) if operation == 2 else blob(operation, blob(1, path) + blob(3, blob(11, b'{}')))
+                            assert rpc(s, "Set", stream, request_override=change) == ("7" if role == "viewer" else "3")
+            print("mTLS VPP READONLY PASS: TLS 1.2/1.3, mapped roles, state Get and Set rejection; no route programming qualification")
+            return
         for version in (ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3):
             for role in ("admin", "operator", "viewer"):
                 with connect(root, p, role, version=version) as s:
@@ -284,4 +305,4 @@ def main(root):
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="danos-mtls-") as directory:
-        main(Path(directory))
+        main(Path(directory), real_vpp_readonly="--vpp-readonly" in sys.argv[3:])
