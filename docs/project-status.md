@@ -11,6 +11,13 @@ also requires real VPP API connectivity and passes authenticated operational
 Get/state-write rejection; no route programming/FIB readback is qualified
 by that run. See `iso-installation-acceptance.md`.
 
+New source candidate adds explicit mgrd `--backend vpp`: no netlink overwrite
+and no silent fallback when VPP is unavailable. Independent guest activation,
+mTLS operational reads and failure-mode tests PASS; CTest remains 68/68.
+The delivered r13 binary is unchanged and does not contain this option.
+Authenticated route add/withdraw plus independent FIB readback remain next;
+see `management-mtls.md` for separate candidate and installed-image identities.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

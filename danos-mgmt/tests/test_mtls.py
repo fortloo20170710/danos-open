@@ -109,14 +109,14 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 
 
 @contextlib.contextmanager
-def daemon(root, config, real_vpp=False):
+def daemon(root, config, real_vpp=False, program_vpp=False):
     p = port()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
     env.update(config)
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
     with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen([BINARY, *([] if real_vpp else ["--no-vpp"]), "--port", str(p), "--metrics-port", str(port()),
+        proc = subprocess.Popen([BINARY, *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p), "--metrics-port", str(port()),
                                  "--wal", str(root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
@@ -143,6 +143,10 @@ def daemon(root, config, real_vpp=False):
             if real_vpp:
                 assert "VPP backend connected" in output, output
                 print("Installed runtime: VPP backend connected (not FIB readback)")
+            if program_vpp:
+                assert "programming pipeline active (vpp)" in output, output
+                assert "programming pipeline active (netlink" not in output, output
+                print("Candidate runtime: explicit VPP programming backend active (not FIB readback)")
 
 
 def connect(root, p, name, version=None, alpn="h2", hostname="localhost"):
@@ -173,7 +177,7 @@ def rejected(root, p, name, **kwargs):
     raise AssertionError("accepted invalid client: " + str(name) + str(kwargs))
 
 
-def main(root, real_vpp_readonly=False):
+def main(root, real_vpp_readonly=False, program_vpp=False):
     for ca in ("ca", "foreign"):
         run("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2",
             "-keyout", str(root / (ca + ".key")), "-out", str(root / (ca + ".pem")),
@@ -195,7 +199,7 @@ def main(root, real_vpp_readonly=False):
     config = {"DANOS_TLS_CERT": str(root / "server.pem"), "DANOS_TLS_KEY": str(root / "server.key"),
               "DANOS_TLS_CLIENT_CA": str(root / "ca.pem"), "DANOS_TLS_ROLE_FILE": str(roles),
               "DANOS_AUTHZ_REQUIRE_AUTH": "1"}
-    with daemon(root, config, real_vpp=real_vpp_readonly) as p:
+    with daemon(root, config, real_vpp=real_vpp_readonly, program_vpp=program_vpp) as p:
         if real_vpp_readonly:
             keys = blob(2, blob(1, b"type") + blob(2, b"4")) + blob(2, blob(1, b"id") + blob(2, b"99"))
             path = blob(3, blob(1, b"dataplane")) + blob(3, blob(1, b"object") + keys) + blob(3, blob(1, b"state"))
@@ -283,6 +287,14 @@ def main(root, real_vpp_readonly=False):
         result = subprocess.run([BINARY, "--no-vpp"], env=env, capture_output=True, timeout=5)
         assert result.returncode != 0
     clean = {k: v for k, v in os.environ.items() if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
+    for arguments in (("--backend", "unknown"), ("--backend", "vpp", "--no-vpp"),
+                      ("--no-vpp", "--backend", "vpp")):
+        result = subprocess.run([BINARY, *arguments], env=dict(clean, **config), capture_output=True, timeout=5)
+        assert result.returncode == 2 and b"invalid backend arguments" in result.stderr
+    result = subprocess.run([BINARY, "--backend", "vpp", "--vpp-sock", str(root / "absent-api.sock")],
+                            env=dict(clean, **config), capture_output=True, timeout=5)
+    assert result.returncode != 0 and b"refusing fallback" in result.stderr
+    assert b"gNMI (" not in result.stdout
     result = subprocess.run([BINARY, "--no-vpp"], env=clean, capture_output=True, timeout=5)
     assert result.returncode != 0 and b"mTLS required" in result.stderr
     # Permission mistakes and ambiguous/malformed authorization tables fail closed.
@@ -305,4 +317,6 @@ def main(root, real_vpp_readonly=False):
 
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="danos-mtls-") as directory:
-        main(Path(directory), real_vpp_readonly="--vpp-readonly" in sys.argv[3:])
+        program_vpp = "--vpp-programming-readonly" in sys.argv[3:]
+        main(Path(directory), real_vpp_readonly=program_vpp or "--vpp-readonly" in sys.argv[3:],
+             program_vpp=program_vpp)

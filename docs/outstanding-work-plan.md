@@ -61,6 +61,13 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   connection plus mTLS operational Get/state-write rejection also PASS;
   absent-object reads are not populated-ledger or FIB programming evidence;
   no USB or physical disk has been overwritten in this build step.
+  The daemon's optional VPP API connection did not select its programming
+  backend. New explicit --backend vpp now installs the VPP adapter without
+  netlink overwrite and refuses startup fallback. Negative startup tests
+  and isolated candidate/real-VPP mTLS read-only activation PASS, CTest 68/68.
+  This source candidate is not in r13. Next qualify authenticated route
+  add/withdraw with ledger backend attribution and independent VPP FIB
+  readback, then rebuild and installation-qualify a new delivery image.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

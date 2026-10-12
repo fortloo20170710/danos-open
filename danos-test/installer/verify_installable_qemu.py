@@ -33,9 +33,13 @@ def main():
                    help="project mTLS test run inside the disposable guest, with ephemeral PKI")
     p.add_argument("--management-vpp-readonly", action="store_true",
                    help="require real guest VPP connection; only operational reads and rejected state writes")
+    p.add_argument("--management-candidate-mgrd", type=Path,
+                   help="test a separate candidate from the read-only seed, without replacing installed mgrd")
     a = p.parse_args()
     if a.management_vpp_readonly and not a.management_smoke_script:
         p.error("--management-vpp-readonly requires --management-smoke-script")
+    if a.management_candidate_mgrd and not a.management_vpp_readonly:
+        p.error("candidate testing requires --management-vpp-readonly")
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
     if out.exists() or len(a.mgrd_sha256) != 64 or any(c not in "0123456789abcdef" for c in a.mgrd_sha256):
@@ -49,6 +53,10 @@ def main():
         seed_dir = out / "management-seed"
         seed_dir.mkdir()
         shutil.copyfile(script, seed_dir / "test_mtls.py")
+        if a.management_candidate_mgrd:
+            candidate = a.management_candidate_mgrd.resolve(strict=True)
+            shutil.copyfile(candidate, seed_dir / "candidate-mgrd")
+            (seed_dir / "candidate-mgrd").chmod(0o755)
         seed = out / "management-seed.iso"
         subprocess.run(["xorriso", "-as", "mkisofs", "-o", str(seed), str(seed_dir)], check=True)
     if a.installed_disk:
@@ -167,8 +175,10 @@ def main():
         if seed:
             smoke_offset = len(log.read_text(errors="replace"))
             connection.sendall(("mkdir -p /mnt/management-smoke && mount -o ro /dev/vdb /mnt/management-smoke && "
-                                "timeout 180 python3 /mnt/management-smoke/test_mtls.py /usr/bin/danos-mgrd /usr/bin/openssl "
-                                + ("--vpp-readonly " if a.management_vpp_readonly else "") +
+                                "timeout 180 python3 /mnt/management-smoke/test_mtls.py "
+                                + ("/mnt/management-smoke/candidate-mgrd " if a.management_candidate_mgrd else "/usr/bin/danos-mgrd ")
+                                + "/usr/bin/openssl "
+                                + ("--vpp-programming-readonly " if a.management_candidate_mgrd else ("--vpp-readonly " if a.management_vpp_readonly else "")) +
                                 ">/tmp/management-smoke.log 2>&1; smoke_rc=$?; cat /tmp/management-smoke.log; "
                                 "if test $smoke_rc -eq 0 && ! systemctl is-active --quiet danos-mgrd; then "
                                 f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; fi\n").encode())
@@ -177,6 +187,9 @@ def main():
                           management_script_sha256=hashlib.file_digest(script.open("rb"), "sha256").hexdigest())
             if a.management_vpp_readonly:
                 result["management_scope"] = "guest-loopback real VPP API connection; ephemeral PKI; operational Get and rejected state writes only; no route/FIB or physical qualification"
+            if a.management_candidate_mgrd:
+                result.update(management_candidate_sha256=hashlib.file_digest(candidate.open("rb"), "sha256").hexdigest(),
+                              management_scope="separate candidate on read-only seed; explicit VPP programming backend activation and mTLS operational reads only; installed binary unchanged; no route/FIB or physical qualification")
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")
         wait("Linux version ", 180, offset)

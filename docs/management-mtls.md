@@ -52,6 +52,36 @@ joins all gNMI connection workers before releasing TLS configuration.
 
 ## Service configuration
 
+### Explicit programming backend (source candidate, 2026-10-12)
+
+The daemon defaults to netlink programming, independently of optional VPP
+API/stat connectivity. `--backend vpp` explicitly installs the existing VPP
+adapter and does not subsequently overwrite it with netlink. If the requested
+VPP API cannot connect, startup fails before WAL recovery or listeners;
+there is no silent netlink fallback. Unknown backend names and combining
+`--backend vpp` with `--no-vpp` are rejected. `--backend netlink` preserves
+the existing behaviour; MGRD_NETLINK_REAL controls only that backend.
+
+This option is in the new source candidate, **not in the delivered r13 ISO**.
+Do not enable an old physical binary with these arguments. A later image must
+be rebuilt and separately installation-qualified. After provisioning PKI on
+that updated image, a systemd drop-in can clear ExecStart and replace it with
+`/usr/bin/danos-mgrd --backend vpp --port 59200 --metrics-port 59201 --wal
+/var/lib/danos/mgrd.wal`. Preserve the environment-file and service protections;
+do not enable services on the physical lab until deployment is explicitly scoped.
+
+Candidate activation/read-only qualification: an independent COW guest passed
+TLS role-based operational queries and state-write rejection, with actual VPP
+connection and `programming pipeline active (vpp)` required in daemon output.
+The candidate ran from a read-only seed, without replacing installed mgrd.
+Candidate SHA256: `bca8c8fcd70d8210b2fe349058b28f385764b2607145b5f39cf4b7157630c6e0`;
+test script: `96bc9fdddd3c12140b7bd0d53b3ebc63af0242776b55e516210b9da055c87fe3`.
+Evidence: `build/install-r13-20261012/candidate-vpp-backend-result.json` and
+`candidate-vpp-backend.serial.log` (SHA256
+`a5b919af7e6c9324a7ab776639e53f3ddde6fe3f78d284c74c31e6a60bb2db0d`).
+Coldboot/reboot/persistence and CTest 68/68 pass. This is backend activation,
+not route add/withdraw, populated-ledger/FIB readback or physical performance.
+
 Place the following values in `/etc/danos/mgrd.env` (protect the file and its
 parent directory; use actual certificate paths):
 

@@ -15,7 +15,7 @@
  *
  * Usage:
  *   danos-mgrd [--port N] [--metrics-port N] [--wal PATH]
- *              [--seed] [--vpp-sock PATH] [--no-vpp]
+ *              [--seed] [--vpp-sock PATH] [--no-vpp] [--backend netlink|vpp]
  */
 
 #include <danos/core/persist.h>
@@ -26,6 +26,7 @@
 #include "../danos-mgmt/src/gnmi/gnmi_grpc.h"
 #include "../danos-mgmt/src/authz/authz.h"
 #include "../danos-vpp/src/api/vpp_api.h"
+#include "../danos-vpp/src/vpp_adapter.h"
 #include "../danos-netlink/danos_netlink.h"
 #include <danos/core/reconciler.h>
 #include <stdio.h>
@@ -132,6 +133,7 @@ int main(int argc, char **argv)
     uint16_t metrics_port = 59201;
     const char *wal = "/var/lib/danos/mgrd.wal";
     const char *vpp_sock = NULL;
+    const char *backend = "netlink";
     bool seed = false, use_vpp = true;
 
     static struct option opts[] = {
@@ -141,6 +143,7 @@ int main(int argc, char **argv)
         {"seed",        no_argument,       0, 's'},
         {"vpp-sock",    required_argument, 0, 'v'},
         {"no-vpp",      no_argument,       0, 'n'},
+        {"backend",     required_argument, 0, 'b'},
         {0, 0, 0, 0},
     };
     /* 0. authorization + audit, before opening any listener. */
@@ -202,7 +205,7 @@ int main(int argc, char **argv)
     }
 
     int c;
-    while ((c = getopt_long(argc, argv, "p:m:w:sv:n", opts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "p:m:w:sv:nb:", opts, NULL)) != -1) {
         switch (c) {
         case 'p': gnmi_port = (uint16_t)atoi(optarg); break;
         case 'm': metrics_port = (uint16_t)atoi(optarg); break;
@@ -210,12 +213,20 @@ int main(int argc, char **argv)
         case 's': seed = true; break;
         case 'v': vpp_sock = optarg; break;
         case 'n': use_vpp = false; break;
+        case 'b': backend = optarg; break;
         default:
             fprintf(stderr, "usage: mgrd [--port N] [--metrics-port N] "
-                    "[--wal PATH] [--seed] [--vpp-sock PATH] [--no-vpp]\n");
+                    "[--wal PATH] [--seed] [--vpp-sock PATH] [--no-vpp] [--backend netlink|vpp]\n");
             danos_gnmi_tls_free(tls);
             return 2;
         }
+    }
+    bool program_vpp = strcmp(backend, "vpp") == 0;
+    if ((strcmp(backend, "netlink") != 0 && !program_vpp) ||
+        (program_vpp && !use_vpp) || optind != argc) {
+        fprintf(stderr, "mgrd: invalid backend arguments (vpp requires VPP connectivity)\n");
+        danos_gnmi_tls_free(tls);
+        return 2;
     }
 
     signal(SIGINT, on_signal);
@@ -230,12 +241,19 @@ int main(int argc, char **argv)
     bind_pipeline_metrics();
     if (use_vpp) {
         if (vpp_sock) danos_vpp_api_set_sock_path(vpp_sock);
-        if (danos_vpp_api_connect() == 0) {
+        int connected = program_vpp ? danos_vpp_adapter_install(true, vpp_sock)
+                                    : danos_vpp_api_connect();
+        if (connected == 0) {
             danos_vpp_api_connect_stat();
             printf("mgrd: VPP backend connected (%u api messages, "
                    "stat segment mapped)\n",
                    danos_vpp_api_msg_table_count());
         } else {
+            if (program_vpp) {
+                fprintf(stderr, "mgrd: requested VPP programming backend unavailable; refusing fallback\n");
+                danos_gnmi_tls_free(tls);
+                return 1;
+            }
             printf("mgrd: VPP not reachable (%s) — running without "
                    "dataplane backend\n",
                    vpp_sock ? vpp_sock : "/run/vpp/api.sock");
@@ -246,12 +264,18 @@ int main(int argc, char **argv)
      * programs desired state into the kernel FIB; the reconciler thread
      * re-issues anything not yet PROGRAMMED. */
     bool nl_real = (getenv("MGRD_NETLINK_REAL") != NULL);
-    if (danos_netlink_init(nl_real) == 0) {
-        danos_netlink_register_backend();
+    if (program_vpp || danos_netlink_init(nl_real) == 0) {
+        if (!program_vpp) danos_netlink_register_backend();
         danos_reconcile_config_t rcfg;
         memset(&rcfg, 0, sizeof(rcfg));
         rcfg.reconcile_period_ms = 1000;   /* fast pipeline convergence */
-        (void)danos_reconciler_init(NULL, &rcfg);
+        if (danos_reconciler_init(NULL, &rcfg) != 0) {
+            fprintf(stderr, "mgrd: programming reconciler initialization failed\n");
+            danos_vpp_api_disconnect();
+            danos_netlink_shutdown();
+            danos_gnmi_tls_free(tls);
+            return 1;
+        }
     } else {
         printf("mgrd: netlink adapter unavailable — no programming\n");
     }
@@ -275,8 +299,8 @@ int main(int argc, char **argv)
             danos_gnmi_tls_free(tls);
             return 1;
         }
-        printf("mgrd: programming pipeline active (netlink %s)\n",
-               danos_netlink_is_real() ? "real kernel" : "mock");
+        printf("mgrd: programming pipeline active (%s%s)\n", backend,
+               program_vpp ? "" : (danos_netlink_is_real() ? " real kernel" : " mock"));
     }
     danos_prom_set("danos_objects_interface",
                    (double)danos_object_count(g_default_store,
