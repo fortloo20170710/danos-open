@@ -2,6 +2,20 @@
 
 更新时间：2026-10-13
 
+## R2 → R3 post-restart endpoint regression — 2026-10-13
+
+After the R3 VPP service restart/replay checkpoint, the identity-guarded R2
+serial probe verified R2 MAC `00:1f:7a:69:f5:ec`, stable VPP PID 2097 and a
+1 Gbps P1 link. Through R2→R3, all four remote loopback endpoints
+`30.30.30.2`–`.5` passed 100/100 ICMP each, zero loss, reply TTL 63.
+This confirms endpoint reachability after R3 recovery, not traffic continuity
+during the restart, ECMP bucket distribution, FRR/ZAPI route changes or a
+performance result. Per-endpoint logs and result digest are indexed in
+`iso-installation-acceptance.md`.
+
+Result: `build/r2-r9-to-r3-r14-postrestart-ecmp-20261013/result.json`,
+SHA256 `7340eba9e88a44803209382c1e37a9cff22cdb87967e5857ae2b2e0991dbbafa`.
+
 ## R3 r14 post-install checkpoint — 2026-10-12
 
 R3 identity `00:1f:7a:69:f7:4c`, installed r14 build/binary, SATA/ext4 root,

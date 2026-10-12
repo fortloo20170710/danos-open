@@ -205,6 +205,22 @@ The evidence parser unit tests cover two-path state, single-path state, and
 the stale-path-list case where the forwarding DPO is still unresolved ARP.
 Full CTest now passes 69/69.
 
+### R2 endpoint reachability after R3 recovery — 2026-10-13
+
+After the R3 VPP restart/replay checkpoint, the identity-guarded R2 probe
+verified stable VPP PID 2097 and a 1 Gbps P1, then reached `.2`–`.5` in
+`30.30.30.0/24` with 100/100 replies, zero loss and TTL 63 per destination.
+This confirms reachability after recovery only, not uninterrupted traffic
+during restart or ECMP bucket distribution. R2 remains on r9.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-r9-to-r3-r14-postrestart-ecmp-20261013/result.json` | `7340eba9e88a44803209382c1e37a9cff22cdb87967e5857ae2b2e0991dbbafa` |
+| `.2` ping log | `c7c97e3d2e4914765a129c4c56f3a99c6361da36bb1a8aa0ea581d5d7c9d54f8` |
+| `.3` ping log | `dda949022a04d0c78ac6362e766d7e136b749219b2117b6055bcfb3d04fb7f64` |
+| `.4` ping log | `56743665179b2e769f3289a26eb2bfe14df4ae6db0f17d311592c852f70a9e82` |
+| `.5` ping log | `ebc80c5b13959537683e47868d3b6a0dbf1f42da83959c975d2e6a1c58f3b4c8` |
+
 ## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)

@@ -28,6 +28,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] R3 VPP service restart with lab post-start replay: PID 741→1576,
   dual resolved ECMP paths restored and both direct peer probes 100/100.
   Transit during restart and mgrd WAL replay remain open.
+- [x] After R3 recovery, identity-guarded R2→R3 probes to all four remote
+  loopbacks passed 100/100, zero loss, TTL 63. This verifies post-recovery
+  reachability only; it does not measure continuity during restart or bucket
+  distribution. Result/hash indexed in `iso-installation-acceptance.md`.
 - [x] R3 installed PCI/DPDK preflight: four I211 functions on
   `uio_pci_generic`, 28×2 MiB hugepages, VPP DPDK plugin and API socket PASS.
 - [x] R3 physical P2/R1 next-hop withdrawal and restore: verified actual

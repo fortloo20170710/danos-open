@@ -52,6 +52,11 @@ restored, both ECMP next hops resolved, and 100/100 direct peer probes to R1
 and R4. Post-restart UART Robot 3/3 PASS. This is the VPP lab-hook path;
 FRR/ZAPI or mgrd WAL replay and transit continuity during the restart were
 not exercised. Evidence hashes are indexed in `iso-installation-acceptance.md`.
+Subsequently, R2→R3→four remote loopback endpoints each passed 100/100 with
+zero loss and TTL 63, confirming endpoint reachability after R3 recovery;
+this does not establish traffic continuity through the restart or ECMP bucket
+distribution. Result SHA256:
+`7340eba9e88a44803209382c1e37a9cff22cdb87967e5857ae2b2e0991dbbafa`.
 R3's P2/R1 path has since passed a controlled physical withdrawal/restore:
 the forwarding DPO changed 2→1→2, the surviving and restored direct peer paths
 each passed 5/5, and the final VPP PID was unchanged. ARP re-learning required
