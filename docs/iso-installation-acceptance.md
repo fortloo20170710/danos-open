@@ -1,8 +1,53 @@
 # ISO delivery and installation acceptance
 
-更新时间：2026-10-09
+更新时间：2026-10-12
 
-## Latest delivery: r12 BIOS installable lab ISO
+## Latest delivery: r13 BIOS installable lab ISO
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r13.iso`
+- Size: 569704448 bytes; SHA256
+  `ebb996269e5ca59b9cb38255cac5e429022704e9c7d291b165aae8095df2783d`.
+- Application compiled on Debian trixie from `74d5f05`; installer builder
+  `ac405da`, clean. LIVE and installed mgrd SHA256 both
+  `d6f16a35889757ea7a9bba00755d59dfdc1d311a656e30d8599ef53e3fdf30bc`.
+  Manifest records these distinct identities, not a guessed newest binary.
+- Generic DPDK profile uses supported PCI detection/binding, not fixed I211
+  addresses. Root payload is a 3 GiB Debian template installed onto a fresh
+  disposable 5 GiB QEMU virtio disk. Full target-size provisioning is not
+  claimed. Legacy BIOS only; UEFI/Secure Boot remain unqualified.
+- Exact read-only ISO was booted as QEMU USB media; `install-serial` selected
+  through BIOS/ISOLINUX keyboard input. Only `/dev/vda` was selected, with
+  exact `ERASE /dev/vda`; full disk readback digest and installer rc=0 passed.
+- With ISO absent, installed root `/dev/vda1` ext4, matching binary digest,
+  clean build metadata, FRR/VPP active and API/stat sockets passed. A fresh
+  kernel boot after reboot and random marker persistence also passed, using
+  a copy-on-write child of the proven installed disk. Source disk unchanged.
+- mgrd remains disabled until mTLS/PKI configuration; no insecure service
+  was enabled. Root autologin is laboratory-only. Physical R3 installation,
+  secure management runtime and real DPDK performance are separate gates.
+
+Evidence bundle: `build/install-r13-20261012/qualification.json`,
+`installation-readback.serial.log` SHA256
+`4ff5c11ab3d6f25a7bb48d6c7d2129a9c5d0b8fc2ffd4a1fb49de50c0a169d50`,
+`coldboot-real-reboot.serial.log` SHA256
+`8dbf629029ce4928332ca2bd88065ad151ec4a3ad490b6cdcaac13fd0df0a917`.
+The latter includes two actual Linux kernel starts with the persistence
+check after the second. Verifier source SHA256 for this run is
+`1ade56fac45afdcba2d6514d694851b754cfdde275c041cd4f442385cbeb3e7c`.
+The installer verifier creates only its own disposable disk; optional reuse
+requires matching installation evidence and a new COW
+child, not raw rewriting an existing user disk.
+
+Earlier attempts remain archived: `mgrd --help` correctly refused missing
+mTLS (verifier replaced that assumption with loader checks); a prompt-only
+reboot verdict was retracted and fixed with fresh-kernel evidence; temporary
+per-user storage quota caused a failed installation. Two failed temporary
+disks from this task were removed after stopping their QEMU instances, while
+logs were kept. Storage-related CTest failures were rerun after freeing space;
+current deterministic suite is 68/68 PASS. None of those failures is promoted
+to an independent success verdict.
+
+## Previous delivery: r12 BIOS installable lab ISO
 
 - Artifact: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261009-r12.iso`
 - Size: 520421376 bytes; source `486146445835c2047c37f39cfdd4f9ad057960f9`, clean.

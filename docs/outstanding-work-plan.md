@@ -52,6 +52,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   exposed by CLI and read-only gNMI leaf, with backend-switch/deletion/
   forget and TLS denial tests. It is not hardware attestation or dynamic
   migration. Next deployment/PKI qualification on an updated image.
+  Updated r13 installable ISO now has QEMU installation readback,
+  ISO-detached coldboot and fresh-kernel reboot/persistence PASS, with
+  LIVE/installed binary digests tied to the Debian-trixie build. Current
+  CTest 68/68 PASS. Physical install/PKI and hardware performance are next;
+  no USB or physical disk has been overwritten in this build step.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

@@ -137,6 +137,9 @@ set_tests_properties(physical_pg_pacing PROPERTIES TIMEOUT 30)
 add_test(NAME robot_vpp_readonly_adapter
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/danos-robot/test_vpp_readonly.py)
 set_tests_properties(robot_vpp_readonly_adapter PROPERTIES TIMEOUT 30)
+add_test(NAME installer_qemu_reboot_evidence
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/installer/test_verify_installable_qemu.py)
+set_tests_properties(installer_qemu_reboot_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME physical_lab_replay
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/installer/test_replay_physical_lab.py)
 set_tests_properties(physical_lab_replay PROPERTIES TIMEOUT 30)

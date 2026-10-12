@@ -1,9 +1,9 @@
 # DANOS Open Project Status
 
-## Current v0.16 qualification verdict — 2026-10-11
+## Current v0.16 qualification verdict — 2026-10-12
 
 Route/NH/NHGroup contract remains frozen; deterministic contract gate and
-Current CTest 67/67 PASS (the historical release-gate run below had its
+Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
@@ -78,6 +78,11 @@ image deployment, ownership and hardware readback are still unqualified.
 Recorded programming backend attribution is now implemented in the private
 ledger and CLI/gNMI state leaf, without guessing from the active backend.
 Physical image deployment/PKI and hardware ownership readback remain open.
+New r13 installable candidate now passes exact-ISO QEMU BIOS installation
+readback, ISO-detached cold boot and fresh-kernel reboot persistence. It
+contains Debian-trixie compiled `74d5f05` mgrd, not the older LIVE binary.
+Installed management remains disabled pending PKI; physical R3 deployment
+and PCI performance remain open. See `iso-installation-acceptance.md`.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.
