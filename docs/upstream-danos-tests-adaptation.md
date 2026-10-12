@@ -200,6 +200,17 @@ and unchanged mock backend call counts during queries. Full build,
 CTest 67/67 and DPA Robot 5/5 PASS. Per-object backend ownership,
 authenticated remote transport and deployment remain open.
 
+### Read-only gNMI transport — 2026-10-12
+
+Native targeted Get `/dataplane/object[type=N][id=K]/state` now exposes
+the sampled object/dependency/retry state over the existing gNMI listener.
+Real TLS 1.2/1.3 tests verify admin/operator/viewer reads and denial of
+update/replace/delete on this operational path. Strict two-key numeric
+validation and CONFIG exclusion are tested. This does not introduce a
+new plaintext listener or production credentials. Full formal YANG binding,
+STREAM notifications, backend ownership and physical image deployment
+remain separate work; see `management-mtls.md` for field semantics.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML

@@ -89,6 +89,36 @@ deployment feature; no new NETCONF network listener is introduced here.
 
 ## Repeatable acceptance
 
+### Native read-only dataplane status (2026-10-12)
+
+gNMI Get supports `/dataplane/object[type=N][id=K]/state`, with numeric
+DPA type (1..DANOS_OBJ_MAX-1) and uint64 object ID. Both keys are required;
+either key order is accepted. This is a native operational extension in
+the path registry, not a claim of new OpenConfig/YANG schema coverage.
+Use the existing verified mTLS session and a mapped viewer certificate;
+no additional listener, credential bypass or plaintext startup is added.
+The explicit laboratory h2c switch still has its existing scope.
+
+JSON fields: `desired`, `recorded`, `matches`, and nested `retry` containing
+`recorded`, `matches`, `attempts`, `error`, `backoff`, `after_ms`, `flapping`,
+`exhausted`. Fields reflect independently sampled desired/dependency,
+ledger and retry metadata, not a hardware readback or atomic snapshot.
+An absent object returns false presence flags; `retry.error` is meaningful
+only when retry metadata is recorded, and may belong to an older candidate
+when `retry.matches=false`. Backend ownership is not supplied.
+
+Only targeted Get is qualified here. CONFIG Get omits operational state;
+update/replace/delete fail for admin/operator and are permission-denied
+for viewer. No STREAM/ON_CHANGE notification guarantees are added.
+The query requires the active global desired store used by programming;
+an unrelated alternate desired store is rejected, not silently mixed with
+the global ledger. Output capacity errors fail rather than truncate JSON.
+
+Actual TLS 1.2/1.3 tests query this path with all mapped roles and verify
+all three Set operation forms are rejected. Invalid key/type/ID and CONFIG
+filtering are tested at the gNMI handler boundary. Deployment to the older
+R3 physical image remains pending; no real production PKI was provisioned.
+
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j4

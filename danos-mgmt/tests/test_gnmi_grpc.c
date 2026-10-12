@@ -879,6 +879,42 @@ static int test_get_not_found_status(void)
     return 0;
 }
 
+static int test_dataplane_operational_path(void)
+{
+    gnmi_path_t path;
+    gnmi_model_binding_t binding;
+    danos_obj_type_t type;
+    uint64_t id;
+    assert(gnmi_path_from_str(&path, "/dataplane/object[type=4][id=18446744073709551615]/state"));
+    assert(gnmi_model_resolve(&path, &binding) == DANOS_OK);
+    assert(binding.kind == GNMI_MODEL_DATAPLANE_STATE && binding.obj_type == DANOS_OBJ_INVALID);
+    assert(gnmi_model_dataplane_key(&path, &type, &id) == DANOS_OK);
+    assert(type == DANOS_OBJ_ROUTE && id == UINT64_MAX);
+    assert(gnmi_path_from_str(&path, "/dataplane/object[id=99][type=4]/state"));
+    assert(gnmi_model_dataplane_key(&path, &type, &id) == DANOS_OK && id == 99);
+    uint8_t req[512], resp[4096];
+    gnmi_pb_t writer;
+    gnmi_pb_init(&writer, req, sizeof(req));
+    gnmi_encode_path(&writer, 2, &path);
+    int state_size = gnmi_handle_get(NULL, req, writer.len, resp, sizeof(resp));
+    assert(state_size > 0);
+    gnmi_pb_put_enum(&writer, 3, 1); /* CONFIG must exclude operational state */
+    int config_size = gnmi_handle_get(NULL, req, writer.len, resp, sizeof(resp));
+    assert(config_size > 0 && config_size < state_size);
+    const char *bad[] = {"/dataplane/object[type=0][id=99]/state",
+                        "/dataplane/object[type=4][id=-1]/state",
+                        "/dataplane/object[type=4][id=18446744073709551616]/state",
+                        "/dataplane/object[type=4][id=99]/config",
+                        "/dataplane/object[type=4][bogus=99]/state",
+                        "/dataplane/object[type=4][id=99]/state/extra"};
+    for (unsigned i = 0; i < sizeof(bad)/sizeof(bad[0]); i++) {
+        assert(gnmi_path_from_str(&path, bad[i]));
+        assert(gnmi_model_resolve(&path, &binding) != DANOS_OK);
+    }
+    printf("[PASS] test_dataplane_operational_path\n");
+    return 0;
+}
+
 /* The STREAM change detector must notice every field, not just a couple.
  *
  * It used to hash only interface mtu and ifindex, so a change to an interface
@@ -1012,6 +1048,7 @@ int main(void)
      * which would disturb the seeded state the tests above rely on. */
     if (test_set_max_operations() != 0) failed++;
     if (test_get_not_found_status() != 0) failed++;
+    if (test_dataplane_operational_path() != 0) failed++;
     if (test_stream_detector_sees_all_fields() != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);

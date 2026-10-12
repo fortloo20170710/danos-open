@@ -15,6 +15,8 @@
 #include <danos/dpa.h>
 #include <danos/core/object_registry.h>
 #include <danos/core/transaction.h>
+#include <danos/core/backend_ops.h>
+#include <inttypes.h>
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
@@ -1028,6 +1030,31 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
              (!strcmp(lookup.elems[0].name, "routes") && !strcmp(lookup.elems[1].name, "route"))))
             lookup.elem_count = 1;
         if (gnmi_model_resolve(&lookup, &mb) != DANOS_OK) return -(int)DANOS_ERR_NOT_FOUND;
+        if (mb.kind == GNMI_MODEL_DATAPLANE_STATE) {
+            if (src != g_default_store) return -(int)DANOS_ERR_INVALID_ARG;
+            if (gr.data_type == 1) continue; /* CONFIG excludes operational state */
+            danos_obj_type_t type;
+            uint64_t id;
+            st = gnmi_model_dataplane_key(p, &type, &id);
+            if (st != DANOS_OK) return -(int)st;
+            danos_programming_object_status_t status;
+            st = danos_programming_object_status(type, id, &status);
+            if (st != DANOS_OK) return -(int)st;
+            gnmi_typed_value_t value = { .kind = GNMI_VAL_JSON_IETF };
+            int count = snprintf(value.s, sizeof(value.s),
+                "{\"desired\":%s,\"recorded\":%s,\"matches\":%s,\"retry\":{\"recorded\":%s,\"matches\":%s,"
+                "\"attempts\":%u,\"error\":%d,\"backoff\":%s,\"after_ms\":%" PRIu64 ",\"flapping\":%s,\"exhausted\":%s}}",
+                status.desired ? "true" : "false", status.recorded ? "true" : "false",
+                status.ledger_matches_sampled_desired ? "true" : "false", status.retry_recorded ? "true" : "false",
+                status.retry_matches_sampled_desired ? "true" : "false", status.attempts, status.last_error,
+                status.backoff ? "true" : "false", status.retry_after_ms, status.flapping ? "true" : "false",
+                status.exhausted ? "true" : "false");
+            if (count < 0 || (size_t)count >= sizeof(value.s)) return -(int)DANOS_ERR_NO_MEMORY;
+            size_t us = gnmi_pb_begin_nested(&w, 4);
+            gnmi_encode_path(&w, 1, p); gnmi_encode_typed_value(&w, 3, &value);
+            gnmi_pb_end_nested(&w, us);
+            continue;
+        }
         if (p->elem_count > 1 && p->elems[1].has_key &&
             ((mb.obj_type == DANOS_OBJ_IFACE && (strcmp(p->elems[1].key_name, "name") || p->elems[1].has_extra_key)) ||
              (mb.obj_type == DANOS_OBJ_VRF && (strcmp(p->elems[1].key_name, "id") || p->elems[1].has_extra_key)) ||

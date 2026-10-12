@@ -76,7 +76,7 @@ def exact(s, n):
     return out
 
 
-def rpc(s, method, stream=1, authorization=None, responses=None):
+def rpc(s, method, stream=1, authorization=None, responses=None, request_override=None):
     headers = b"\x83\x87" + literal(":path", "/gnmi.gNMI/" + method)
     headers += literal("content-type", "application/grpc")
     if authorization:
@@ -89,6 +89,8 @@ def rpc(s, method, stream=1, authorization=None, responses=None):
         key = blob(1, b"name") + blob(2, b"mtls0")
         path = blob(3, blob(1, b"interfaces")) + blob(3, blob(1, b"interface") + blob(2, key))
         request = blob(4, blob(1, path) + blob(3, blob(11, b'{"mtu":1500}')))
+    if request_override is not None:
+        request = request_override
     s.sendall(frame(1, 4, stream, headers) +
               frame(0, 1, stream, b"\0" + len(request).to_bytes(4, "big") + request))
     while True:
@@ -204,6 +206,21 @@ def main(root):
                     response = []
                     assert rpc(s, "Get", 11, responses=response) == "0"
                     assert b'"mtu":1500' in b"".join(response)
+                    object_keys = (blob(2, blob(1, b"type") + blob(2, b"4")) +
+                                   blob(2, blob(1, b"id") + blob(2, b"99")))
+                    state_path = (blob(3, blob(1, b"dataplane")) +
+                                  blob(3, blob(1, b"object") + object_keys) +
+                                  blob(3, blob(1, b"state")))
+                    response = []
+                    assert rpc(s, "Get", 13, responses=response,
+                               request_override=blob(2, state_path)) == "0"
+                    assert b'"retry"' in b"".join(response)
+                    assert b'"desired":false' in b"".join(response)
+                    for stream, operation in ((15, 4), (17, 3), (19, 2)):
+                        change = (blob(operation, state_path) if operation == 2 else
+                                  blob(operation, blob(1, state_path) + blob(3, blob(11, b'{}'))))
+                        assert rpc(s, "Set", stream, request_override=change) == (
+                            "7" if role == "viewer" else "3")
         def concurrent_client(_):
             with connect(root, p, "viewer") as s:
                 s.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))

@@ -8,6 +8,36 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <ctype.h>
+
+danos_status_t gnmi_model_dataplane_key(const gnmi_path_t *p,
+                                       danos_obj_type_t *type, uint64_t *id)
+{
+    if (!p || !type || !id || p->elem_count != 3 ||
+        strcmp(p->elems[0].name, "dataplane") || p->elems[0].has_key ||
+        strcmp(p->elems[1].name, "object") || !p->elems[1].has_key || !p->elems[1].has_extra_key ||
+        strcmp(p->elems[2].name, "state") || p->elems[2].has_key)
+        return DANOS_ERR_NOT_FOUND;
+    const gnmi_path_elem_t *e = &p->elems[1];
+    const char *t, *key;
+    if (!strcmp(e->key_name, "type") && !strcmp(e->extra_key_name, "id")) {
+        t = e->key_value; key = e->extra_key_value;
+    } else if (!strcmp(e->key_name, "id") && !strcmp(e->extra_key_name, "type")) {
+        t = e->extra_key_value; key = e->key_value;
+    } else return DANOS_ERR_INVALID_ARG;
+    if (!isdigit((unsigned char)*t) || !isdigit((unsigned char)*key)) return DANOS_ERR_INVALID_ARG;
+    char *end;
+    errno = 0;
+    unsigned long long value = strtoull(t, &end, 10);
+    if (errno || *end || value == 0 || value >= DANOS_OBJ_MAX) return DANOS_ERR_INVALID_ARG;
+    *type = (danos_obj_type_t)value;
+    errno = 0;
+    value = strtoull(key, &end, 10);
+    if (errno || *end) return DANOS_ERR_INVALID_ARG;
+    *id = value;
+    return DANOS_OK;
+}
 
 /* Coerce JSON_IETF/JSON/ASCII scalar encodings into typed values so
  * that clients sending text (gnmic --encoding json_ietf) work with
@@ -59,6 +89,15 @@ danos_status_t gnmi_model_resolve(const gnmi_path_t *path,
 {
     if (!path || path->elem_count == 0) return DANOS_ERR_NOT_FOUND;
     memset(b, 0, sizeof(*b));
+    if (!strcmp(path->elems[0].name, "dataplane")) {
+        danos_obj_type_t type;
+        uint64_t id;
+        danos_status_t st = gnmi_model_dataplane_key(path, &type, &id);
+        if (st != DANOS_OK) return st;
+        b->kind = GNMI_MODEL_DATAPLANE_STATE;
+        b->obj_type = DANOS_OBJ_INVALID; /* never dispatch CRUD to this path */
+        return DANOS_OK;
+    }
     if (gnmi_model_gen_resolve(path, b) == DANOS_OK) return DANOS_OK;
     const char *top = path->elems[0].name;
     const char *second = path->elem_count > 1 ? path->elems[1].name : NULL;

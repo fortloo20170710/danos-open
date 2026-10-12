@@ -44,6 +44,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   are now implemented and tested. Full build/CTest 67/67, Robot 5/5 PASS.
   Next authenticated read-only remote query and per-object backend identity;
   do not claim hardware readback or mutate R3's old installed image.
+  Targeted read-only gNMI Get now uses the existing mTLS/authorization chain;
+  TLS 1.2/1.3 role tests cover reads and denial of all three Set forms.
+  Physical deployment/PKI, per-object backend attribution and formal YANG
+  schema/notification coverage remain open. No R3 service was enabled.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

@@ -71,6 +71,10 @@ Targeted single-key desired/ledger presence query is also implemented and
 tested. Sampled dependency/ledger match and recorded programming retry/error
 details are now available locally. It is not a full hardware programming
 verdict: backend ownership, remote transport and hardware readback remain gaps.
+Targeted gNMI status Get is now implemented through the existing secure
+management transport, tested with real TLS 1.2/1.3 roles and rejected
+state writes. Local full build/CTest 67/67 and Robot 5/5 pass; physical
+image deployment, ownership and hardware readback are still unqualified.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.

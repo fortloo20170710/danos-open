@@ -15,6 +15,7 @@
  *   /interfaces/interface[name=X]/state/...       -> same leaves, oper
  *   /vrfs, /vrfs/vrf[id=N]                        -> LIST/ENTRY
  *   /routes                                       -> LIST
+ *   /dataplane/object[type=N][id=K]/state          -> native read-only status
  *
  * Unresolvable paths return DANOS_ERR_NOT_FOUND so gNMI answers with
  * gRPC error instead of silently ignoring the path.
@@ -34,6 +35,7 @@ typedef enum {
     GNMI_MODEL_LIST = 1,    /* whole list: emit one update per object */
     GNMI_MODEL_ENTRY,       /* one object (key present) */
     GNMI_MODEL_LEAF,        /* one field of one object */
+    GNMI_MODEL_DATAPLANE_STATE, /* bounded read-only native operational extension */
 } gnmi_model_kind_t;
 
 typedef enum {
@@ -57,6 +59,8 @@ typedef struct {
  * DANOS_ERR_NOT_FOUND for paths outside the model. */
 danos_status_t gnmi_model_resolve(const gnmi_path_t *path,
                                   gnmi_model_binding_t *b);
+danos_status_t gnmi_model_dataplane_key(const gnmi_path_t *path,
+                                       danos_obj_type_t *type, uint64_t *id);
 
 /* Supported model list (capabilities source of truth, v0.13) */
 
