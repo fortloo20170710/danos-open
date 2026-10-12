@@ -7,7 +7,7 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
-### Current delivery checkpoint — 2026-10-12 r14
+### Current delivery checkpoint — 2026-10-13 r14
 
 - [x] Rebuild Debian trixie mgrd from clean `28b4a9e`, including explicit
   VPP programming backend selection, and include it in LIVE/installed payloads.
