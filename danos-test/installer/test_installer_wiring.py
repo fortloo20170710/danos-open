@@ -60,6 +60,10 @@ assert "-boot_image any replay" in generic_iso_builder
 assert "/installer/danos-i211-installed.raw.gz" in generic_iso_builder
 assert "DANOS_INSTALLER_PAYLOAD_SHA256" in generic_iso_builder
 assert 'DANOS_INSTALLER_LIBZ' in generic_iso_builder
+assert 'DANOS_INSTALLER_MGRD_SOURCE_COMMIT' in generic_iso_builder
+assert 'updated mgrd requires matching Debian TLS libraries' in generic_iso_builder
+assert 'DANOS_INSTALLER_MGRD_SHA256' in generic_iso_builder
+assert 'initramfs-check/lib/x86_64-linux-gnu/libssl.so.3' in generic_iso_builder
 assert "/isolinux/isolinux.cfg" in generic_iso_builder
 
 print("Install ISO boot-path wiring PASS")
