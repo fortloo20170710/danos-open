@@ -114,6 +114,11 @@ The preceding inventory before profile replay is under
 `r3-r14-installed-20261012-recheck1/`; the first parser-mismatch Robot result
 is retained under `robot-r3-r14-readonly-20261012/`.
 
+R3's installed PCI/DPDK preflight also passes: four I211 functions are bound
+to `uio_pci_generic`, 28×2 MiB hugepages are configured, and the VPP DPDK
+plugin and API socket are active. Result SHA256 is indexed in
+`docs/v0.16-pci-runner-contract.md`; performance remains open.
+
 ### R2 r9 → R3 r14 physical transit and ECMP — 2026-10-13
 
 R2 remains on r9 (`3f1691c`, ISO `...20261009-r9.iso`) and was used as the

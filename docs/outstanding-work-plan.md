@@ -28,6 +28,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] R3 VPP service restart with lab post-start replay: PID 741→1576,
   dual resolved ECMP paths restored and both direct peer probes 100/100.
   Transit during restart and mgrd WAL replay remain open.
+- [x] R3 installed PCI/DPDK preflight: four I211 functions on
+  `uio_pci_generic`, 28×2 MiB hugepages, VPP DPDK plugin and API socket PASS.
+- [ ] Capture measured 64-byte DPDK performance with independent receive
+  counts, loss, latency, CPU and per-flow/bucket distribution.
 - [ ] Live reconnect with mgrd remaining active during VPP restart; actual
   current-release packet ECMP distribution, R2/R4 r14 rollout and production PKI.
   Synthetic adjacency and restarted-daemon recovery do not close these gates.

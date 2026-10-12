@@ -53,6 +53,12 @@ FRR/ZAPI or mgrd WAL replay and transit continuity during the restart were
 not exercised. Evidence hashes are indexed in `iso-installation-acceptance.md`.
 Full CTest at the current source tree passes 68/68.
 
+R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
+`0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
+hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
+runner environment only. A measured 64-byte result and independent receiver
+counts remain OPEN.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
