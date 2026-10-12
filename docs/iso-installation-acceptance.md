@@ -1,6 +1,6 @@
 # ISO delivery and installation acceptance
 
-更新时间：2026-10-12
+更新时间：2026-10-13
 
 ## Latest delivery: r14 BIOS installable lab ISO
 
@@ -118,6 +118,24 @@ R3's installed PCI/DPDK preflight also passes: four I211 functions are bound
 to `uio_pci_generic`, 28×2 MiB hugepages are configured, and the VPP DPDK
 plugin and API socket are active. Result SHA256 is indexed in
 `docs/v0.16-pci-runner-contract.md`; performance remains open.
+
+### R3 r14 live inventory recheck — 2026-10-13
+
+UART was attached to R3 and the fixed read-only installed inventory was
+captured again after the VPP restart test. The installed root is `/dev/sda1`
+ext4; source commit and `danos-mgrd` digest still match r14; all four I211
+functions remain on `uio_pci_generic`; VPP and FRR are active with API/stat/CLI
+sockets present. `danos-mgrd` remains disabled pending production mTLS. The
+inventory records existing interface drop counters and does not reset or
+reinterpret them. This is an identity/runtime recheck, not a new traffic or
+performance result.
+
+Evidence: `build/r3-r14-inventory-current-20261013/inventory.json`, SHA256
+`cf69ca0433203a647aa82463656789d68b8ce99c7bc6499482da2fa1b651938c`.
+The repeated DPDK preflight result is unchanged and remains PASS; Robot could
+not be rerun from this development environment because its Python module is
+not installed. The prior post-restart physical Robot result remains the
+3/3 PASS indexed below.
 
 ### R2 r9 → R3 r14 physical transit and ECMP — 2026-10-13
 
