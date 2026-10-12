@@ -71,11 +71,11 @@ install -m 0755 "$ROOT/danos-test/installer/install_disk.sh" \
     "$TMP/initramfs/bin/danos-install"
 install -m 0755 "$ROOT/danos-test/live/init" "$TMP/initramfs/init"
 if test -n "$MGRD"; then
-    install -m 0755 "$MGRD" "$TMP/initramfs/usr/bin/danos-mgrd"
+    install -m 0755 "$MGRD" "$TMP/initramfs/bin/mgrd"
     install -m 0644 "$LIBSSL" "$TMP/initramfs/lib/x86_64-linux-gnu/libssl.so.3"
     install -m 0644 "$LIBCRYPTO" "$TMP/initramfs/lib/x86_64-linux-gnu/libcrypto.so.3"
 fi
-MGRD_SHA=$(sha256sum "$TMP/initramfs/usr/bin/danos-mgrd" | awk '{print $1}')
+MGRD_SHA=$(sha256sum "$TMP/initramfs/bin/mgrd" | awk '{print $1}')
 # Old base images may omit the zlib SONAME required by mgrd. Never silently
 # publish such a LIVE runtime or mix in a library from the build host.
 if test -n "$LIBZ"; then
@@ -179,7 +179,7 @@ gzip -dc "$TMP/embedded.initramfs.cpio.gz" | \
     (cd "$TMP/initramfs-check" && cpio -idmu --quiet)
 cmp -s "$TMP/initramfs-check/bin/danos-install" "$ROOT/danos-test/installer/install_disk.sh"
 cmp -s "$TMP/initramfs-check/init" "$ROOT/danos-test/live/init"
-test "$(sha256sum "$TMP/initramfs-check/usr/bin/danos-mgrd" | awk '{print $1}')" = "$MGRD_SHA"
+test "$(sha256sum "$TMP/initramfs-check/bin/mgrd" | awk '{print $1}')" = "$MGRD_SHA"
 if test -n "$MGRD"; then
     cmp -s "$TMP/initramfs-check/lib/x86_64-linux-gnu/libssl.so.3" "$LIBSSL"
     cmp -s "$TMP/initramfs-check/lib/x86_64-linux-gnu/libcrypto.so.3" "$LIBCRYPTO"
