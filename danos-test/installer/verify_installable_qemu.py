@@ -37,6 +37,8 @@ def main():
                    help="test a separate candidate from the read-only seed, without replacing installed mgrd")
     p.add_argument("--management-vpp-route-lifecycle", action="store_true",
                    help="mutate only the disposable guest: authenticated route add/withdraw and independent FIB")
+    p.add_argument("--management-vpp-ecmp-recovery", action="store_true",
+                   help="disposable guest only: resolved ECMP path changes and fresh-daemon WAL replay")
     a = p.parse_args()
     if a.management_vpp_readonly and not a.management_smoke_script:
         p.error("--management-vpp-readonly requires --management-smoke-script")
@@ -44,6 +46,8 @@ def main():
         p.error("candidate testing requires --management-vpp-readonly")
     if a.management_vpp_route_lifecycle and not a.management_candidate_mgrd:
         p.error("route lifecycle requires explicit candidate binary")
+    if a.management_vpp_ecmp_recovery and (not a.management_candidate_mgrd or a.management_vpp_route_lifecycle):
+        p.error("ECMP recovery requires candidate binary and is separate from route lifecycle mode")
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
     if out.exists() or len(a.mgrd_sha256) != 64 or any(c not in "0123456789abcdef" for c in a.mgrd_sha256):
@@ -119,12 +123,14 @@ def main():
             reader.start()
             return monitor
 
-        def wait(text, timeout=120, offset=0):
+        def wait(text, timeout=120, offset=0, failure_marker=None):
             deadline = time.monotonic() + timeout
             while time.monotonic() < deadline:
                 raw = log.read_text(errors="replace") if log.exists() else ""
                 if text in raw[offset:]:
                     return
+                if failure_marker and failure_marker in raw[offset:]:
+                    raise RuntimeError("guest management smoke failed; " + raw[-4000:])
                 if proc.poll() is not None:
                     raise RuntimeError("QEMU exited; " + raw[-2000:])
                 time.sleep(.2)
@@ -182,11 +188,12 @@ def main():
                                 "timeout 180 python3 /mnt/management-smoke/test_mtls.py "
                                 + ("/mnt/management-smoke/candidate-mgrd " if a.management_candidate_mgrd else "/usr/bin/danos-mgrd ")
                                 + "/usr/bin/openssl "
-                                + ("--vpp-route-lifecycle " if a.management_vpp_route_lifecycle else ("--vpp-programming-readonly " if a.management_candidate_mgrd else ("--vpp-readonly " if a.management_vpp_readonly else ""))) +
+                                + ("--vpp-ecmp-recovery " if a.management_vpp_ecmp_recovery else ("--vpp-route-lifecycle " if a.management_vpp_route_lifecycle else ("--vpp-programming-readonly " if a.management_candidate_mgrd else ("--vpp-readonly " if a.management_vpp_readonly else "")))) +
                                 ">/tmp/management-smoke.log 2>&1; smoke_rc=$?; cat /tmp/management-smoke.log; "
                                 "if test $smoke_rc -eq 0 && ! systemctl is-active --quiet danos-mgrd; then "
-                                f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; fi\n").encode())
-            wait(f"\nMANAGEMENT_SMOKE_{token}_PASS\n", 210, smoke_offset)
+                                f"printf '\\nMANAGEMENT_SMOKE_{token}_PASS\\n'; else printf '\\nMANAGEMENT_SMOKE_{token}_FAIL\\n'; fi\n").encode())
+            wait(f"\nMANAGEMENT_SMOKE_{token}_PASS\n", 210, smoke_offset,
+                 failure_marker=f"\nMANAGEMENT_SMOKE_{token}_FAIL\n")
             result.update(management_mtls="PASS", management_scope="guest-loopback --no-vpp; ephemeral PKI; lab opt-in tested separately; no physical backend qualification",
                           management_script_sha256=hashlib.file_digest(script.open("rb"), "sha256").hexdigest())
             if a.management_vpp_readonly:
@@ -197,6 +204,9 @@ def main():
             if a.management_vpp_route_lifecycle:
                 result.update(management_scope="separate candidate in disposable guest: authenticated route add/withdraw, ledger attribution and independent VPP FIB; no physical or packet/performance qualification",
                               management_route_lifecycle="PASS")
+            if a.management_vpp_ecmp_recovery:
+                result.update(management_scope="candidate in disposable guest: synthetic neighbors, resolved ECMP FIB path changes; VPP restart while mgrd stopped; fresh-daemon WAL replay/no resurrection; no live reconnect or packet/performance qualification",
+                              management_ecmp_recovery="PASS")
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")
         wait("Linux version ", 180, offset)

@@ -135,6 +135,101 @@ def route_state_converged(payload, installed):
     return state.get("desired") is False and state.get("recorded") is False
 
 
+def ecmp_recovery(root, config):
+    """Disposable guest only; synthetic adjacencies qualify FIB, not traffic."""
+    def cli(*args):
+        output = subprocess.check_output(["/usr/bin/vppctl", "-s", "/run/vpp/cli.sock", *args],
+                                         stderr=subprocess.STDOUT, timeout=10).decode()
+        assert not any(marker in output.lower() for marker in ("unknown input", "failed", "error")), output
+        return output
+    prefix = "198.18.254.0/24"
+    assert prefix not in cli("show", "ip", "fib")
+    name = cli("create", "loopback", "interface").strip()
+    assert re.fullmatch(r"loop\d+", name), name
+    interfaces = cli("show", "interface")
+    match = re.search(r"^" + re.escape(name) + r"\s+(\d+)\s", interfaces, re.M)
+    assert match, interfaces
+    oif = int(match[1])
+    cli("set", "interface", "state", name, "up")
+    cli("set", "interface", "ip", "address", name, "198.18.0.1/24")
+    for suffix in (2, 3):
+        cli("set", "ip", "neighbor", name, f"198.18.0.{suffix}", f"02:00:00:00:00:0{suffix}")
+    key = blob(1, b"prefix") + blob(2, prefix.encode())
+    path = blob(3, blob(1, b"routes")) + blob(3, blob(1, b"route") + blob(2, key))
+    ident = 14695981039346656037
+    for value in (0, 198, 18, 254, 0, *([0] * 12), 24, 2):
+        ident = ((ident ^ value) * 1099511628211) & ((1 << 64) - 1)
+    keys = blob(2, blob(1, b"type") + blob(2, b"4")) + blob(2, blob(1, b"id") + blob(2, str(ident).encode()))
+    state = blob(3, blob(1, b"dataplane")) + blob(3, blob(1, b"object") + keys) + blob(3, blob(1, b"state"))
+    wal = root / "ecmp-recovery.wal"
+    for stage in ("INITIAL", "REPLAY", "DELETED-RESTART"):
+        with daemon(root, config, real_vpp=True, program_vpp=True, wal=wal) as p:
+            with connect(root, p, "admin") as s:
+                s.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+                stream = 1
+                def call(method, request, response=None):
+                    nonlocal stream
+                    status = rpc(s, method, stream, responses=response, request_override=request)
+                    stream += 2
+                    assert status == "0", (method, status)
+                def verify(phase, count):
+                    deadline = time.monotonic() + 15
+                    while True:
+                        response = []
+                        call("Get", blob(2, state), response)
+                        payload = b"".join(response)
+                        output = cli("show", "ip", "fib")
+                        block = re.search(r"^198\.18\.254\.0/24\s*\n(.*?)(?=^\d+\.\d+\.\d+\.\d+/\d+\s*$|\Z)", output, re.M | re.S)
+                        correct = block is None if count == 0 else (
+                            block is not None and f"buckets:{count}" in block[1] and
+                            "198.18.0.2" in block[1] and
+                            ("198.18.0.3" in block[1]) == (count == 2) and "dpo-drop" not in block[1])
+                        if correct and route_state_converged(payload, count != 0):
+                            print("ECMP RECOVERY", stage, phase, "buckets", count, "object", ident)
+                            print("STATE", payload.hex())
+                            print("INDEPENDENT FIB", output)
+                            return
+                        assert time.monotonic() < deadline, (phase, payload, output)
+                        time.sleep(.2)
+                if stage == "INITIAL":
+                    for phase, gateways in (("ADD", ["198.18.0.2", "198.18.0.3"]),
+                                             ("PATH-REMOVE", ["198.18.0.2"]),
+                                             ("PATH-RESTORE", ["198.18.0.2", "198.18.0.3"])):
+                        value = json.dumps({"gateways": gateways, "oif": oif}, separators=(",", ":")).encode()
+                        call("Set", blob(3, blob(1, path) + blob(3, blob(11, value))))
+                        verify(phase, len(gateways))
+                elif stage == "REPLAY":
+                    verify("WAL-REPLAY", 2)
+                    call("Set", blob(2, path))
+                    verify("WITHDRAW", 0)
+                else:
+                    verify("NO-RESURRECTION", 0)
+        if stage == "INITIAL":
+            assert wal.stat().st_size > 0
+            # A prefix-only CLI delete did not clear this API-created route.
+            # Restart the disposable runtime to prove no retained API FIB.
+            old_pid = subprocess.check_output(["systemctl", "show", "-p", "MainPID", "--value", "vpp"], timeout=10).strip()
+            assert old_pid not in (b"", b"0")
+            subprocess.run(["systemctl", "restart", "vpp"], check=True, timeout=30)
+            new_pid = subprocess.check_output(["systemctl", "show", "-p", "MainPID", "--value", "vpp"], timeout=10).strip()
+            assert new_pid not in (b"", b"0", old_pid)
+            deadline = time.monotonic() + 15
+            while not Path("/run/vpp/cli.sock").exists():
+                assert time.monotonic() < deadline
+                time.sleep(.2)
+            assert prefix not in cli("show", "ip", "fib")
+            rebuilt = cli("create", "loopback", "interface").strip()
+            assert rebuilt == name
+            assert re.search(r"^" + re.escape(name) + r"\s+" + str(oif) + r"\s", cli("show", "interface"), re.M)
+            cli("set", "interface", "state", name, "up")
+            cli("set", "interface", "ip", "address", name, "198.18.0.1/24")
+            for suffix in (2, 3):
+                cli("set", "ip", "neighbor", name, f"198.18.0.{suffix}", f"02:00:00:00:00:0{suffix}")
+            assert prefix not in cli("show", "ip", "fib")
+            print("REPLAY PRECONDITION: mgrd stopped; VPP PID", old_pid.decode(), "->", new_pid.decode(), "; test route absent")
+    print("mTLS ECMP RECOVERY PASS: 2/1/2 resolved buckets, WAL replay into fresh VPP and no resurrection; synthetic neighbors, no packet/performance claim")
+
+
 def exact(s, n):
     out = b""
     while len(out) < n:
@@ -178,7 +273,7 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 
 
 @contextlib.contextmanager
-def daemon(root, config, real_vpp=False, program_vpp=False):
+def daemon(root, config, real_vpp=False, program_vpp=False, wal=None):
     p = port()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
@@ -186,7 +281,7 @@ def daemon(root, config, real_vpp=False, program_vpp=False):
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
     with tempfile.TemporaryFile() as log:
         proc = subprocess.Popen([BINARY, *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p), "--metrics-port", str(port()),
-                                 "--wal", str(root / (str(p) + ".wal"))], env=env,
+                                 "--wal", str(wal or root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
             for _ in range(150):
@@ -273,6 +368,9 @@ def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
     config = {"DANOS_TLS_CERT": str(root / "server.pem"), "DANOS_TLS_KEY": str(root / "server.key"),
               "DANOS_TLS_CLIENT_CA": str(root / "ca.pem"), "DANOS_TLS_ROLE_FILE": str(roles),
               "DANOS_AUTHZ_REQUIRE_AUTH": "1"}
+    if "--vpp-ecmp-recovery" in sys.argv[3:]:
+        ecmp_recovery(root, config)
+        return
     with daemon(root, config, real_vpp=real_vpp_readonly, program_vpp=program_vpp) as p:
         if routes:
             route_lifecycle(root, p)

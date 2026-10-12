@@ -74,6 +74,13 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   First substring-based verdict retracted; only strict JSON rerun qualifies.
   Next ECMP and persisted-route replay across daemon/VPP restart, followed
   by a rebuilt installation-qualified image; physical performance stays OPEN.
+  Candidate ECMP/FIB recovery now PASS: resolved 2/1/2 buckets, VPP actual
+  process replacement while mgrd stopped, absent-prefix precondition,
+  fresh mgrd WAL route replay, then withdrawal and no resurrection on another
+  daemon restart. Synthetic neighbor/interface fixture is recreated by the
+  harness, not by WAL. No packet distribution, live reconnect, FRR or physical
+  performance claim. Next rebuilt installation-qualified delivery and
+  separate live-runtime recovery/packet qualification; r13 is still unchanged.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

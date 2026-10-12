@@ -25,6 +25,13 @@ retracted; only the strict rerun is accepted. This does not add ECMP, route
 restart replay, packet transit or physical performance qualification, and
 does not change the r13 ISO's binary identity.
 
+Candidate ECMP/recovery is now qualified in the disposable guest: resolved
+FIB buckets 2/1/2, VPP replacement while mgrd is stopped, fresh-daemon WAL
+replay into an absent test route, and no resurrection after withdrawal plus
+another daemon restart. Synthetic neighbor/interface fixtures are recreated
+by the harness. This is not packet ECMP distribution or live reconnect;
+the existing r13 delivery and physical machines remain unchanged.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

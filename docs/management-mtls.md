@@ -119,6 +119,37 @@ deployment feature; no new NETCONF network listener is introduced here.
 
 ## Repeatable acceptance
 
+### Candidate resolved ECMP and persisted-route recovery
+
+2026-10-12: `--management-vpp-ecmp-recovery` now qualifies the separate
+candidate in a disposable QEMU child. Admin-mTLS replace drives
+`198.18.254.0/24` through two gateways, one gateway, and two gateways again.
+Independent exact-prefix FIB blocks require resolved 2/1/2 buckets, the
+expected gateway set and no drop DPO, alongside parsed main ledger match
+and backend `vpp`. A guest-only loopback with synthetic static neighbors
+provides resolution; this is not a packet distribution test.
+
+With mgrd stopped, VPP is restarted (PID 660 -> 839 in this run) and exact
+test-route absence is checked. The same-index loopback/neighbor fixture is
+recreated by the test, **not recovered by mgrd**. A fresh mgrd with the same
+WAL recreates the ECMP route and ledger. After authenticated withdrawal,
+another fresh mgrd keeps the route absent. Coldboot and a genuine guest
+reboot/persistence check also PASS. This is not live reconnect while mgrd
+stays running, interface/neighbor recovery, FRR restart or physical performance.
+
+Evidence: `build/install-r13-20261012/candidate-ecmp-recovery-result.json`
+and `candidate-ecmp-recovery.serial.log` (SHA256
+`97987fb0df83a68fc0d944808c877ed589ea5e479550a042a762a8af0a9c65ac`).
+Executed script SHA256:
+`8759d6130e72e32c2a378762f73f43446bfd125440c79f63ef2134b99e2b96df`;
+candidate remains `bca8c8fcd70d8210b2fe349058b28f385764b2607145b5f39cf4b7157630c6e0`.
+The first attempt failed its precondition because prefix-only CLI deletion
+did not clear the API-created route; it is not an accepted recovery run.
+The revised test uses actual VPP process replacement and verifies absence
+before restart replay, preventing retained FIB from masquerading as recovery.
+Guest smoke failures now produce explicit FAIL markers for immediate
+verifier failure rather than waiting for the success-marker timeout.
+
 ### Authenticated route lifecycle on the explicit VPP candidate
 
 2026-10-12: isolated QEMU COW qualification now includes two actual admin-mTLS
