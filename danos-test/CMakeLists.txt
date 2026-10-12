@@ -122,6 +122,9 @@ set_tests_properties(physical_ping_log_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME physical_lab_profile
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_physical_lab_profile.py)
 set_tests_properties(physical_lab_profile PROPERTIES TIMEOUT 30)
+add_test(NAME r3_ecmp_failover_serial_evidence
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_probe_r3_ecmp_failover_serial.py)
+set_tests_properties(r3_ecmp_failover_serial_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME vpp_cpu_sampler
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_collect_vpp_cpu.py)
 set_tests_properties(vpp_cpu_sampler PROPERTIES TIMEOUT 30)

@@ -30,6 +30,10 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   Transit during restart and mgrd WAL replay remain open.
 - [x] R3 installed PCI/DPDK preflight: four I211 functions on
   `uio_pci_generic`, 28×2 MiB hugepages, VPP DPDK plugin and API socket PASS.
+- [x] R3 physical P2/R1 next-hop withdrawal and restore: verified actual
+  forwarding DPO transitions 2→1→2, direct probes on the surviving/restored
+  peers, and no restore errors. ARP warm-up was observable and not lossless;
+  this is not FRR/ZAPI withdrawal or R2 transit across the transition.
 - [ ] Capture measured 64-byte DPDK performance with independent receive
   counts, loss, latency, CPU and per-flow/bucket distribution.
 - [ ] Live reconnect with mgrd remaining active during VPP restart; actual

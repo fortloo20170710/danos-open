@@ -35,8 +35,9 @@ R3 has now completed the same r14 installed-runtime inventory: exact build and
 binary identity, four I211 DPDK bindings, VPP/FRR and sockets PASS. Its lab
 startup replay is installed; UART read-only Robot 3/3 PASS, including the two
 resolved ECMP paths on ports 1 and 2. Ports 1/2/4 have 1 Gbps carrier. The
-other nodes are still on older images. R3 packet forwarding/distribution was
-not exercised in this check; its current evidence is runtime plus FIB only.
+other nodes are still on older images. That inventory checkpoint did not
+exercise packets; subsequent scoped physical path-withdrawal evidence is
+recorded below and does not qualify transit or ECMP distribution.
 
 On 2026-10-13, mixed-version physical transit from R2 r9 through R3 r14 to
 the R1/R4 loopback destinations passed: four targets each 100/100, zero loss,
@@ -51,7 +52,11 @@ restored, both ECMP next hops resolved, and 100/100 direct peer probes to R1
 and R4. Post-restart UART Robot 3/3 PASS. This is the VPP lab-hook path;
 FRR/ZAPI or mgrd WAL replay and transit continuity during the restart were
 not exercised. Evidence hashes are indexed in `iso-installation-acceptance.md`.
-Full CTest at the current source tree passes 68/68.
+R3's P2/R1 path has since passed a controlled physical withdrawal/restore:
+the forwarding DPO changed 2→1→2, the surviving and restored direct peer paths
+each passed 5/5, and the final VPP PID was unchanged. ARP re-learning required
+bounded retries; this is not FRR/ZAPI withdrawal or R2 transit evidence.
+Full CTest at the current source tree passes 69/69.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
@@ -59,7 +64,7 @@ hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
 runner environment only. A measured 64-byte result and independent receiver
 counts remain OPEN.
 
-Current CTest 68/68 PASS (the historical release-gate run below had its
+Current CTest 69/69 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived

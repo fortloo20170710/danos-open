@@ -46,7 +46,7 @@ Application package: `build/danos-open_0.16.0~rc1-1_28b4a9e_amd64.deb`, SHA256
 
 Verifier SHA256: `f14ac6c7d1509552e0f557c92ab3c2c7d121d3b760ca4a998395a55231eff3d8`.
 Management test SHA256: `a1e902ebcfb34ba4ac9e7afc9b7414a9417d191928375337533ec99df5f5fa15`.
-Current CTest: 68/68 PASS.
+Current CTest: 69/69 PASS, including the R3 physical FIB/DPO evidence parser.
 
 ### R1 physical installed-runtime qualification — 2026-10-12
 
@@ -177,6 +177,33 @@ lossless recovery or restart downtime measurement.
 | --- | --- |
 | `r3-r14-vpp-restart-20261013/result.json` | `285359f67a10d7d3c5f6d3c73be8b765e7da2b8e266a9bced613d8fffe7d2bce` |
 | `robot-r3-r14-after-vpp-restart-20261013/output.xml` | `ea6ac321f73a7a4f27ec2b45e89f50490efbe960df2a2cc188f0c8637c975a5e` |
+
+### R3 r14 physical next-hop withdrawal/restore — 2026-10-13
+
+An identity-guarded UART probe shut P2 (R1) down, removed only its R1 next hop,
+and verified the R3 route's forwarding DPO had one usable R4 adjacency. The
+remaining R4 direct probe passed 5/5. P2 and its route were restored; after
+bounded ARP warm-up, the forwarding DPO had two usable IPv4 adjacencies and
+direct probes to R4 and R1 each passed 5/5. VPP stayed at PID 1576, P2 ended
+with 1 Gbps carrier, and no restore errors were reported.
+
+This does not claim FRR/ZAPI withdrawal, remote-prefix transit, continuity
+during transition or performance. Several ARP warm-up groups initially had no
+reply; successful restoration required neighbor learning and was not
+instantaneous. R3-originated remote-loopback probes were excluded because the
+peer return routes target R2's source address, not R3's link addresses. The
+initial failed parser/reachability attempts remain under
+`r3-r14-ecmp-failover-20261013/`, `r3-r14-ecmp-failover-retry-20261013/`,
+and `r3-r14-ecmp-failover-final-20261013/`.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-r14-ecmp-failover-final3-20261013/result.json` | `b321c93f32dce7d2ede733fc2f5194e4bf472a2576f668a7b3ccdc95b6a4f052` |
+| `danos-test/integration/probe_r3_ecmp_failover_serial.py` | `8c451cef589c0d6dd28969eb99bbda37e1b0fb167986ba7f4c02e1e7808bc46e` |
+
+The evidence parser unit tests cover two-path state, single-path state, and
+the stale-path-list case where the forwarding DPO is still unresolved ARP.
+Full CTest now passes 69/69.
 
 ## Previous delivery: r13 BIOS installable lab ISO
 

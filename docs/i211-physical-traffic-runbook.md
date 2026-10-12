@@ -1,6 +1,6 @@
 # I211 physical LIVE traffic qualification runbook
 
-更新时间：2026-10-12
+更新时间：2026-10-13
 
 ## R3 r14 post-install checkpoint — 2026-10-12
 
@@ -47,6 +47,34 @@ plus direct adjacency recovery. No packet stream was left running across the
 restart, so it does not test transit continuity, loss window or downtime;
 FRR/ZAPI and mgrd WAL were not used. Result and ping hashes are indexed in
 `iso-installation-acceptance.md`.
+
+## R3 r14 physical ECMP next-hop withdrawal/restore — 2026-10-13
+
+The identity-guarded UART probe temporarily administratively disabled R3 P2
+(R1 path), removed only `10.30.0.2` from `30.30.30.0/24`, and verified the
+actual forwarding DPO—not only path-list flags—contained one resolved bucket
+via R4 P1. R3→R4 direct ping passed 5/5. The probe then brought P2 up,
+restored the next hop, retried bounded ARP warm-up, verified both forwarding
+adjacencies were IPv4 next-hop DPOs, and passed direct R4 and R1 probes 5/5.
+VPP PID stayed 1576; final P2 carrier was 1 Gbps and cleanup reported no
+errors. The first seven R1 warm-up groups saw no/full partial replies; the
+eighth passed 5/5, so restoration is not described as instant or lossless.
+
+This is a scoped physical VPP FIB/DPO path withdrawal and restore, with
+direct-peer reachability. It does not verify FRR/ZAPI route withdrawal,
+physical link-loss detection, R2-originated transit across the transition,
+remote loopback reachability from R3, loss budget, convergence time, or
+performance. Remote peer return routes are specific to R2's `10.10.0.2`, so
+R3-originated loopback probes were intentionally excluded. Initial attempts
+exposed both an unresolved ARP DPO despite a resolved path-list flag and this
+return-route asymmetry; their FAIL artifacts remain preserved separately.
+
+Final result: `build/r3-r14-ecmp-failover-final3-20261013/result.json`,
+SHA256 `b321c93f32dce7d2ede733fc2f5194e4bf472a2576f668a7b3ccdc95b6a4f052`.
+Probe source SHA256:
+`8c451cef589c0d6dd28969eb99bbda37e1b0fb167986ba7f4c02e1e7808bc46e`.
+The local FIB-evidence unit test is registered as
+`r3_ecmp_failover_serial_evidence`.
 
 ## R1 r14 installed-runtime checkpoint — 2026-10-12
 
