@@ -75,6 +75,22 @@ danos_status_t danos_programming_object_presence(danos_obj_type_t type,
                                                 danos_obj_id_t id,
                                                 bool *desired, bool *recorded);
 
+typedef struct {
+    bool desired, recorded, ledger_matches_sampled_desired;
+    bool retry_recorded, retry_matches_sampled_desired;
+    bool backoff, flapping, exhausted;
+    uint32_t attempts;
+    uint64_t retry_after_ms;
+    danos_status_t last_error;
+} danos_programming_object_status_t;
+
+/* Sample one object, its dependency digest, ledger and retry metadata.
+ * Same non-atomic/readback limitations as presence; stale retry metadata
+ * is explicitly marked rather than attributed to a changed desired object. */
+danos_status_t danos_programming_object_status(danos_obj_type_t type,
+                                              danos_obj_id_t id,
+                                              danos_programming_object_status_t *out);
+
 /* Mark desired state dirty (e.g. on store mutation): the next
  * reconciler pass runs immediately instead of waiting for the period. */
 void danos_programming_mark_dirty(void);

@@ -104,6 +104,17 @@ int cli_cmd_show_dataplane(danos_cli_ctx_t *ctx, const char *args)
             printf("Object presence only: independently sampled; not dependency sync or hardware readback\n");
             printf("TYPE ID DESIRED LEDGER_RECORDED\n%lu %llu %s %s\n", type, id,
                    desired ? "yes" : "no", recorded ? "yes" : "no");
+            danos_programming_object_status_t status;
+            if (danos_programming_object_status((danos_obj_type_t)type,
+                                                (danos_obj_id_t)id, &status) != DANOS_OK)
+                return -1;
+            printf("Separate status sample: ledger_matches_sampled_desired=%s\n",
+                   status.ledger_matches_sampled_desired ? "yes" : "no");
+            printf("Retry: recorded=%s matches_sampled_desired=%s attempts=%u "
+                   "last_error=%d backoff=%s retry_after_ms=%" PRIu64 " flapping=%s exhausted=%s\n",
+                   status.retry_recorded ? "yes" : "no", status.retry_matches_sampled_desired ? "yes" : "no",
+                   status.attempts, status.last_error, status.backoff ? "yes" : "no", status.retry_after_ms,
+                   status.flapping ? "yes" : "no", status.exhausted ? "yes" : "no");
             return 0;
         }
         printf("Usage: show dataplane\n");

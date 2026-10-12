@@ -39,6 +39,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
   are tested, but dependency sync, retry/error reasons and per-object
   backend ownership are not yet provided. Remote authentication and
   deployment remain separate unfinished steps.
+  Sampled desired/dependency versus ledger match, retry attempts/last
+  programming error/backoff/flapping/exhaustion and stale-candidate marking
+  are now implemented and tested. Full build/CTest 67/67, Robot 5/5 PASS.
+  Next authenticated read-only remote query and per-object backend identity;
+  do not claim hardware readback or mutate R3's old installed image.
 
 ### 2026-10-11 physical receiver and CPU qualification checkpoint
 

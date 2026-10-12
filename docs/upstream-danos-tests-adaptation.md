@@ -174,6 +174,32 @@ occur during queries; test setup explicitly programs/deletes its mock route
 to construct the latter states. These fixture mutations are not CLI query
 behavior. Physical deployment and authenticated remote API remain pending.
 
+### Sampled dependency and retry details — 2026-10-12
+
+The targeted CLI query now also uses `danos_programming_object_status()`
+to compare copied desired bytes and the current sampled dependency digest
+with the ledger. `ledger_matches_sampled_desired=yes` means only this
+in-process sample matches, not hardware readback. Registry mutations can
+occur between independent reads; presence and detailed status are explicitly
+separate samples. Programming/retry locks follow programming→retry order.
+The query is for management callers, not callbacks already holding the
+programming mutex.
+
+Retry metadata now retains the programming-pass error code and exposes
+attempts, remaining backoff milliseconds, flapping and exhaustion. It also
+reports whether the retry record's desired/dependency digests match the
+sampled candidate. A stale historical error must not be reported as the
+current candidate's failure; no retry record is not proof of success.
+The last error covers recorded programming failure, not every sweep/delete
+failure. Policy flags are observed metadata, not commands to retry or reset.
+
+Tests cover initial unprogrammed state, a matching ledger, changed desired
+bytes, next-hop-only changes invalidating a route dependency digest, recorded
+RETRY/backoff/exhaustion, stale retry metadata after mutation and deletion,
+and unchanged mock backend call counts during queries. Full build,
+CTest 67/67 and DPA Robot 5/5 PASS. Per-object backend ownership,
+authenticated remote transport and deployment remain open.
+
 ## Next sequence
 
 1. Deploy this read-only suite to a qualified runner; retain Robot XML/HTML

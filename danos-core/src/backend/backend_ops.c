@@ -229,6 +229,7 @@ typedef struct {
     bool            flapping;
     uint64_t        desired_digest;
     uint64_t        dependency_digest;
+    danos_status_t  last_error;
 } retry_slot_t;
 
 static retry_slot_t g_retry[RETRY_SLOTS];
@@ -339,12 +340,14 @@ static void retry_clear(danos_obj_type_t type, danos_obj_id_t id,
 }
 
 static void retry_record_failure(danos_obj_type_t type, danos_obj_id_t id,
-                                 uint64_t now, uint64_t desired, uint64_t dependency)
+                                 uint64_t now, uint64_t desired, uint64_t dependency,
+                                 danos_status_t error)
 {
     pthread_mutex_lock(&g_retry_lock);
     retry_slot_t *s = retry_slot_for(type, id);
     s->desired_digest = desired;
     s->dependency_digest = dependency;
+    s->last_error = error;
     s->attempts++;
     uint64_t delay = (uint64_t)g_backoff_initial_ms * 1000000ULL;
     for (uint32_t i = 1; i < s->attempts && delay < g_backoff_max_ms; i++)
@@ -449,7 +452,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     danos_status_t st = program_one(e->type, e->id, e->data, e->data_size);
     if (st != DANOS_OK) {
         c->failed++;
-        retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep);
+        retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep, st);
         /* v0.11: a previously-programmed route whose next hop became
          * unusable must be WITHDRAWN, not left forwarding via a stale
          * gateway. */
@@ -519,6 +522,57 @@ danos_status_t danos_programming_object_presence(danos_obj_type_t type,
     st = g_programmed ? danos_object_read(g_programmed, type, id, data, &size) : DANOS_ERR_NOT_FOUND;
     if (st == DANOS_OK) *recorded = true;
     if (st == DANOS_ERR_NOT_FOUND) st = DANOS_OK;
+done:
+    pthread_mutex_unlock(&g_prog_lock);
+    return st;
+}
+
+danos_status_t danos_programming_object_status(danos_obj_type_t type,
+                                              danos_obj_id_t id,
+                                              danos_programming_object_status_t *out)
+{
+    if (!out || type <= DANOS_OBJ_INVALID || type >= DANOS_OBJ_MAX)
+        return DANOS_ERR_INVALID_ARG;
+    memset(out, 0, sizeof(*out));
+    _Alignas(danos_route_t) uint8_t desired[DANOS_MAX_OBJECT_BYTES];
+    uint8_t rec[LEDGER_REC_MAX];
+    size_t size = sizeof(desired), rec_size = sizeof(rec);
+    uint64_t dep = 0, digest = 0;
+    pthread_mutex_lock(&g_prog_lock);
+    danos_status_t st = g_default_store ?
+        danos_object_read(g_default_store, type, id, desired, &size) : DANOS_ERR_NOT_FOUND;
+    if (st == DANOS_OK) {
+        out->desired = true;
+        dep = dep_digest(type, desired, size);
+        digest = hash_bytes(desired, size);
+    } else if (st != DANOS_ERR_NOT_FOUND) goto done;
+    st = g_programmed ? danos_object_read(g_programmed, type, id, rec, &rec_size) : DANOS_ERR_NOT_FOUND;
+    if (st == DANOS_OK) {
+        out->recorded = true;
+        if (out->desired && rec_size == size + 8) {
+            uint64_t recorded_dep;
+            memcpy(&recorded_dep, rec, 8);
+            out->ledger_matches_sampled_desired = recorded_dep == dep &&
+                memcmp(rec + 8, desired, size) == 0;
+        }
+    } else if (st != DANOS_ERR_NOT_FOUND) goto done;
+    pthread_mutex_lock(&g_retry_lock);
+    retry_slot_t *retry = retry_find(type, id);
+    if (retry) {
+        uint64_t now = mono_ns();
+        out->retry_recorded = true;
+        out->retry_matches_sampled_desired = out->desired &&
+            retry->desired_digest == digest && retry->dependency_digest == dep;
+        out->attempts = retry->attempts;
+        out->last_error = retry->last_error;
+        out->flapping = retry->flapping;
+        out->exhausted = g_max_retries && retry->attempts >= g_max_retries;
+        out->backoff = now < retry->next_attempt_ns;
+        out->retry_after_ms = out->backoff ?
+            (retry->next_attempt_ns - now) / 1000000ULL : 0;
+    }
+    pthread_mutex_unlock(&g_retry_lock);
+    st = DANOS_OK;
 done:
     pthread_mutex_unlock(&g_prog_lock);
     return st;

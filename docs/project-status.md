@@ -68,8 +68,9 @@ desired/programmed-count summary. Full build and CTest 67/67 PASS. It is
 not an atomic snapshot, hardware FIB readback, per-object status API, or
 deployment to the older physical ISO; remote authenticated query remains open.
 Targeted single-key desired/ledger presence query is also implemented and
-tested. It is not a full object programming verdict: dependency equality,
-retry reasons, backend ownership and hardware readback remain distinct gaps.
+tested. Sampled dependency/ledger match and recorded programming retry/error
+details are now available locally. It is not a full hardware programming
+verdict: backend ownership, remote transport and hardware readback remain gaps.
 Precise throughput/latency, qualified artifact identity, whole-machine reboot
 and physical FRR/DPA-owned replay remain unfinished. Cross-host clocks are
 not synchronized. No v0.16 final-release or PCI performance PASS is claimed.
