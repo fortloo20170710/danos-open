@@ -5,6 +5,12 @@ requires all four configuration variables below. Missing or invalid TLS
 configuration is fatal; it never falls back to plaintext, including when the
 laboratory switch is present.
 
+Current delivery: r14 now contains the explicit VPP programming backend
+option described below. Its installed binary passes the full TLS/RBAC suite
+and ECMP FIB/WAL recovery in QEMU. See `iso-installation-acceptance.md` for
+exact artifact identities. References to an unshipped source candidate or
+r13 below describe the earlier qualification stages.
+
 | Variable | Required value |
 | --- | --- |
 | `DANOS_TLS_CERT` | PEM server certificate and intermediate chain |

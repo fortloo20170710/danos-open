@@ -3,34 +3,24 @@
 ## Current v0.16 qualification verdict — 2026-10-12
 
 Route/NH/NHGroup contract remains frozen; deterministic contract gate PASS.
-Installed r13 guest management transport now PASS: TLS 1.2/1.3, certificate
-RBAC, DPA state Get/write rejection and genuine reboot, using ephemeral PKI
-with --no-vpp. This is not physical backend/performance qualification;
-production PKI deployment remains OPEN. A subsequent installed-guest test
-also requires real VPP API connectivity and passes authenticated operational
-Get/state-write rejection; no route programming/FIB readback is qualified
-by that run. See `iso-installation-acceptance.md`.
+Latest installable delivery is **r14**, built on Debian trixie from clean
+`28b4a9e`; it includes explicit mgrd `--backend vpp` and fails startup if that
+requested backend cannot connect. Exact-ISO QEMU installation/readback,
+ISO-detached hard-disk boot and genuine reboot/persistence PASS.
 
-New source candidate adds explicit mgrd `--backend vpp`: no netlink overwrite
-and no silent fallback when VPP is unavailable. Independent guest activation,
-mTLS operational reads and failure-mode tests PASS; CTest remains 68/68.
-The delivered r13 binary is unchanged and does not contain this option.
-Authenticated route add/withdraw plus independent FIB readback remain next;
-see `management-mtls.md` for separate candidate and installed-image identities.
+The installed binary passes admin-mTLS ECMP FIB path changes (2/1/2), VPP
+replacement while mgrd is stopped, fresh mgrd WAL replay into an absent
+route, and no resurrection after withdrawal plus another daemon restart.
+Full TLS 1.2/1.3 certificate/RBAC and fail-closed configuration tests also
+PASS on the installed binary. See `iso-installation-acceptance.md` for the
+ISO, binary, source and evidence hashes; `management-mtls.md` preserves
+earlier candidate test details and the retracted substring-based verdict.
 
-Candidate admin-mTLS route add/withdraw now PASS: two isolated guest cycles
-with exact-prefix independent VPP FIB readback and parsed top-level ledger
-convergence/backend attribution. The first loose substring verdict is
-retracted; only the strict rerun is accepted. This does not add ECMP, route
-restart replay, packet transit or physical performance qualification, and
-does not change the r13 ISO's binary identity.
-
-Candidate ECMP/recovery is now qualified in the disposable guest: resolved
-FIB buckets 2/1/2, VPP replacement while mgrd is stopped, fresh-daemon WAL
-replay into an absent test route, and no resurrection after withdrawal plus
-another daemon restart. Synthetic neighbor/interface fixtures are recreated
-by the harness. This is not packet ECMP distribution or live reconnect;
-the existing r13 delivery and physical machines remain unchanged.
+Qualification uses synthetic neighbors and a loopback recreated by the test
+harness. Live reconnect, packet ECMP distribution, physical deployment/PKI
+and hardware throughput remain separate open gates. r14 is a BIOS lab image
+with console autologin; its production management service stays disabled
+until configured. UEFI/Secure Boot remain unqualified.
 
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves

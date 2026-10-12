@@ -44,10 +44,10 @@ def main():
         p.error("--management-vpp-readonly requires --management-smoke-script")
     if a.management_candidate_mgrd and not a.management_vpp_readonly:
         p.error("candidate testing requires --management-vpp-readonly")
-    if a.management_vpp_route_lifecycle and not a.management_candidate_mgrd:
-        p.error("route lifecycle requires explicit candidate binary")
-    if a.management_vpp_ecmp_recovery and (not a.management_candidate_mgrd or a.management_vpp_route_lifecycle):
-        p.error("ECMP recovery requires candidate binary and is separate from route lifecycle mode")
+    if a.management_vpp_route_lifecycle and not a.management_vpp_readonly:
+        p.error("route lifecycle requires explicit guest VPP testing")
+    if a.management_vpp_ecmp_recovery and (not a.management_vpp_readonly or a.management_vpp_route_lifecycle):
+        p.error("ECMP recovery requires explicit guest VPP testing and is separate from route lifecycle mode")
     iso = a.iso.resolve(strict=True)
     out = a.out.resolve()
     if out.exists() or len(a.mgrd_sha256) != 64 or any(c not in "0123456789abcdef" for c in a.mgrd_sha256):
@@ -195,6 +195,7 @@ def main():
             wait(f"\nMANAGEMENT_SMOKE_{token}_PASS\n", 210, smoke_offset,
                  failure_marker=f"\nMANAGEMENT_SMOKE_{token}_FAIL\n")
             result.update(management_mtls="PASS", management_scope="guest-loopback --no-vpp; ephemeral PKI; lab opt-in tested separately; no physical backend qualification",
+                          management_binary="candidate-on-seed" if a.management_candidate_mgrd else "installed-/usr/bin/danos-mgrd",
                           management_script_sha256=hashlib.file_digest(script.open("rb"), "sha256").hexdigest())
             if a.management_vpp_readonly:
                 result["management_scope"] = "guest-loopback real VPP API connection; ephemeral PKI; operational Get and rejected state writes only; no route/FIB or physical qualification"
@@ -202,10 +203,10 @@ def main():
                 result.update(management_candidate_sha256=hashlib.file_digest(candidate.open("rb"), "sha256").hexdigest(),
                               management_scope="separate candidate on read-only seed; explicit VPP programming backend activation and mTLS operational reads only; installed binary unchanged; no route/FIB or physical qualification")
             if a.management_vpp_route_lifecycle:
-                result.update(management_scope="separate candidate in disposable guest: authenticated route add/withdraw, ledger attribution and independent VPP FIB; no physical or packet/performance qualification",
+                result.update(management_scope="disposable guest: authenticated route add/withdraw, ledger attribution and independent VPP FIB; no physical or packet/performance qualification",
                               management_route_lifecycle="PASS")
             if a.management_vpp_ecmp_recovery:
-                result.update(management_scope="candidate in disposable guest: synthetic neighbors, resolved ECMP FIB path changes; VPP restart while mgrd stopped; fresh-daemon WAL replay/no resurrection; no live reconnect or packet/performance qualification",
+                result.update(management_scope="disposable guest: synthetic neighbors, resolved ECMP FIB path changes; VPP restart while mgrd stopped; fresh-daemon WAL replay/no resurrection; no live reconnect or packet/performance qualification",
                               management_ecmp_recovery="PASS")
         offset = len(log.read_text(errors="replace"))
         connection.sendall(b"reboot\n")

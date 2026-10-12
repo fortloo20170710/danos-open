@@ -7,6 +7,22 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
+### Current delivery checkpoint — 2026-10-12 r14
+
+- [x] Rebuild Debian trixie mgrd from clean `28b4a9e`, including explicit
+  VPP programming backend selection, and include it in LIVE/installed payloads.
+- [x] Build r14 installable ISO and qualify exact-ISO installation/readback,
+  ISO-detached disk boot and genuine reboot/persistence on a fresh QEMU disk.
+- [x] Run installed-binary mTLS/RBAC checks and resolved ECMP 2/1/2 FIB,
+  fresh-runtime WAL route replay, withdrawal and no-resurrection checks.
+  CTest 68/68 PASS; hashes/evidence indexed in `iso-installation-acceptance.md`.
+- [ ] Live reconnect with mgrd remaining active during VPP restart; actual
+  packet ECMP distribution and physical r14 deployment/production PKI.
+  Synthetic adjacency and restarted-daemon recovery do not close these gates.
+
+The chronological notes below describe earlier checkpoints; r14 above is
+the current delivery and supersedes their pending-image statements.
+
 ### Upstream DANOS test adaptation — 2026-10-11
 
 - [x] Review i-danos/tests pinned commit 1c731e0 and document transport,

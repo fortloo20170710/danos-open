@@ -2,7 +2,53 @@
 
 更新时间：2026-10-12
 
-## Latest delivery: r13 BIOS installable lab ISO
+## Latest delivery: r14 BIOS installable lab ISO
+
+- ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r14.iso`
+- Size: 571801600 bytes; SHA256
+  `43efd75fa2217395fc1741ede0be2d23cebd2d3b8d56500eef82cdbcaaee0523`.
+- Application and builder source: clean `28b4a9e6269c1c302a81130f6a487fb2d13714bd`.
+  Debian trixie build container:
+  `sha256:7c74d058d38512da3cf904738d54c0033d4d78dae306395c368245e388d83c49`.
+- LIVE and installed mgrd SHA256:
+  `17ddee1d830fb61ec918212f3e7af93e59c34b9a2c0ee85ea8c5ecf2640bf215`.
+  The image now includes explicit `--backend vpp` with fail-closed startup.
+  Default backend remains netlink; production service stays disabled until
+  actual mTLS configuration and backend selection are deployed.
+- Generic supported-PCI DPDK discovery/binding retained. Boot `install` for
+  VGA or `install-serial` for serial installation. The selected whole disk
+  requires the exact uppercase `ERASE /dev/...` confirmation.
+- Exact ISO USB boot in QEMU, fresh 5 GiB virtio target, full image write and
+  readback digest PASS. With ISO detached, `/dev/vda1` ext4 root, exact mgrd
+  digest, clean build metadata, VPP/FRR services and API/stat sockets PASS.
+  A genuine kernel reboot with random marker persistence also PASS.
+- **Installed `/usr/bin/danos-mgrd`** passes ECMP FIB 2/1/2 path changes,
+  fresh VPP process (PID 691 -> 871) with absent-route precondition, fresh
+  mgrd WAL replay, withdrawal and no resurrection after another mgrd restart.
+  A separate child of that installed disk passes full TLS 1.2/1.3, certificate
+  RBAC, negative credentials/ALPN and fail-closed startup checks.
+  Test PKI/WAL remain in disposable guests; no test keys are in the ISO.
+- Scope: Legacy BIOS, 3 GiB root disk template, lab console autologin.
+  UEFI/Secure Boot, target-capacity expansion, physical deployment, packet
+  throughput and live reconnect remain unqualified. ECMP resolution uses
+  synthetic loopback/neighbors recreated by the harness.
+
+Local evidence index: `build/install-r14-20261012/qualification.json`,
+`install-ecmp-result.json`, `management-mtls-result.json`, `disk-payload.manifest`.
+Application package: `build/danos-open_0.16.0~rc1-1_28b4a9e_amd64.deb`, SHA256
+`f896c6c7a1bc1b20f0c2bed3a335333e88bc40158f1da8815c0d1659ea42d4f0`.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `installation-readback.serial.log` | `f6d30e3baa8baccb3229f924fbf9d3ceb962574a2c1e190174346c0756513a74` |
+| `installed-ecmp-reboot.serial.log` | `c61bbc5a5419a448b66a19b6bf1b31ede44ce4a22314c440bf68b75071fef401` |
+| `management-mtls.serial.log` | `b0e4439509ab54186fae04fb793ee4f29d7b13dbc556ab78f0c9f74207d48989` |
+
+Verifier SHA256: `f14ac6c7d1509552e0f557c92ab3c2c7d121d3b760ca4a998395a55231eff3d8`.
+Management test SHA256: `a1e902ebcfb34ba4ac9e7afc9b7414a9417d191928375337533ec99df5f5fa15`.
+Current CTest: 68/68 PASS.
+
+## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)
 
