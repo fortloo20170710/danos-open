@@ -38,6 +38,14 @@ resolved ECMP paths on ports 1 and 2. Ports 1/2/4 have 1 Gbps carrier. The
 other nodes are still on older images. R3 packet forwarding/distribution was
 not exercised in this check; its current evidence is runtime plus FIB only.
 
+On 2026-10-13, mixed-version physical transit from R2 r9 through R3 r14 to
+the R1/R4 loopback destinations passed: four targets each 100/100, zero loss,
+TTL 63. R3's ECMP counter reached 430 packets, split across P1/P2 as 110/320;
+both egresses carried traffic. This four-destination sample proves functional
+use of both paths, not balanced ECMP performance. Evidence and hashes are in
+`iso-installation-acceptance.md`; R2/R4 rollout and homogeneous four-node
+r14 qualification remain open.
+
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

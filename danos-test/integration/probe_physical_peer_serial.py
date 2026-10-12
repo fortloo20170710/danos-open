@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded ICMP checks for the explicitly identified R1/R4 lab peer."""
+"""Bounded ICMP checks for an explicitly identified physical lab peer."""
 import argparse
 import base64
 import hashlib
@@ -20,7 +20,7 @@ from serial_readonly import _exchange
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True)
-    parser.add_argument("--role", required=True, choices=("R1", "R4"))
+    parser.add_argument("--role", required=True, choices=("R1", "R2", "R4"))
     parser.add_argument("--expected-mac", required=True)
     parser.add_argument("--restart-vpp", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
@@ -28,7 +28,11 @@ def main():
     if not re.fullmatch(r"(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}", args.expected_mac):
         parser.error("exact MAC required")
     args.output.mkdir(parents=True, exist_ok=False)
-    targets = ["10.30.0.1" if args.role == "R1" else "10.20.0.1", "10.10.0.2"]
+    targets = ({"R1": ["10.30.0.1", "10.10.0.2"],
+                "R2": [f"30.30.30.{host}" for host in range(2, 6)],
+                "R4": ["10.20.0.1", "10.10.0.2"]}[args.role])
+    expected_ttls = ([63] * 4 if args.role == "R2" else
+                     [64, 63])
     profile_sha = hashlib.sha256(render(args.role).encode()).hexdigest()
     marker = "DANOS_PEER_PROBE_" + uuid.uuid4().hex + ":"
     script = f'''
@@ -93,7 +97,9 @@ print({marker!r}+base64.b64encode(json.dumps(result).encode()).decode())
     except (OSError, ValueError, TimeoutError) as error:
         result = dict(status="UNKNOWN", failure_reason=str(error), probes=[])
     result.update(role=args.role, expected_mac=args.expected_mac,
-                  scope="bounded peer ICMP and optional lab CLI service replay; not ECMP distribution, mgrd WAL or performance")
+                  scope=("four-endpoint routed ICMP from R2; ECMP path distribution requires R3 counter deltas"
+                         if args.role == "R2" else
+                         "bounded peer ICMP and optional lab CLI service replay; not ECMP distribution, mgrd WAL or performance"))
     # Preserve every completed warmup/warm log, including failed captures.
     for probe in result.get("probes", []):
         raw = probe["output"].encode()
@@ -104,8 +110,8 @@ print({marker!r}+base64.b64encode(json.dumps(result).encode()).decode())
         try:
             warm = [p for p in result["probes"] if p["phase"] == "warm"]
             assert [p["target"] for p in warm] == targets
-            result["verified_warm"] = [verify(p["output"].encode(), p["target"], 100,
-                                                    64 if p["target"] == targets[0] else 63) for p in warm]
+            result["verified_warm"] = [verify(p["output"].encode(), p["target"], 100, ttl)
+                                       for p, ttl in zip(warm, expected_ttls, strict=True)]
             result["status"] = "PASS"
         except (ValueError, AssertionError) as error:
             result.update(status="FAIL", failure_reason=str(error))

@@ -114,6 +114,32 @@ The preceding inventory before profile replay is under
 `r3-r14-installed-20261012-recheck1/`; the first parser-mismatch Robot result
 is retained under `robot-r3-r14-readonly-20261012/`.
 
+### R2 r9 → R3 r14 physical transit and ECMP — 2026-10-13
+
+R2 remains on r9 (`3f1691c`, ISO `...20261009-r9.iso`) and was used as the
+traffic source; R3 and R1 are on r14. R2's P1 identity is
+`00:1f:7a:69:f5:ec`, link 1 Gbps, with resolved route
+`30.30.30.0/24 via 10.10.0.1`. Four VPP ping destinations `.2`–`.5` each
+returned 100/100 with 0% loss and TTL 63. The four-flow ECMP DPO counter on
+R3 reached 430 packets (including 30 neighbor/readiness warm-up probes).
+R3 P1 (R4 path) counted 110 RX/TX and P2 (R1 path) 320 RX/TX, confirming
+both physical egress paths carried traffic. The observed 110/320 split is
+the result of four destination flows and is not a statistical balance or
+throughput result. R2's own P1 delta was RX +428 and TX +431; historical
+drop/error totals were not reset.
+
+This is a mixed-image functional forwarding check with R2 on r9 and R3/R1
+on r14. R4 was not version-qualified in this run. It does not qualify
+homogeneous four-node r14, lossless convergence, FRR/DPA route programming,
+large-flow ECMP balance or performance. The R3 Robot suite after the traffic
+passed 3/3.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-r9-runtime-20261013/inventory.json` | `15ebab3b9ffce80efb3a75b742127b68dcc92b54398d26bf20a3cc972d8f5789` |
+| `r2-r9-to-r3-r14-ecmp-20261013/result.json` | `b194863111690e512e02178495bb6d9bb32088dcdb5719c21bfb508f26aefa92` |
+| `robot-r3-r14-after-r2-ecmp-20261013/output.xml` | `334cbd72fa4dba903e688bddbfe1fc28058d642268dd341f3b72c7b664233b40` |
+
 ## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)

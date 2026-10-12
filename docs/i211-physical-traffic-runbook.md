@@ -16,6 +16,26 @@ is preserved. No packet traffic was generated during this checkpoint, so
 forwarding/distribution is still open. Hashes and result locations are in
 `iso-installation-acceptance.md`.
 
+## R2 r9 to R3 r14 four-destination transit — 2026-10-13
+
+R2 identity `00:1f:7a:69:f5:ec`, build `3f1691c` / r9, P1 1 Gbps and
+resolved route `30.30.30.0/24 via 10.10.0.1`. R2 sent bounded readiness
+probes and then 100 packets each to `30.30.30.2`–`.5`; all four completed
+100/100 with 0% loss and TTL 63. R2's P1 counter delta was RX +428, TX +431.
+
+R3's post-run FIB retained two resolved equal-weight next hops. ECMP DPO
+counter was 430 packets; P1 toward R4 recorded 110 RX/TX, P2 toward R1
+recorded 320 RX/TX. The sum matches the request frames, including readiness
+probes. This verifies actual use of both physical egresses for this four-flow
+sample; the 25.6/74.4 split is not a large-sample balance or performance
+claim. R3's P4 toward R2 recorded RX 431/TX 428. Historical interface
+drop/error totals were not reset, and no zero-drop transition claim is made.
+
+R2 remains r9 while R3/R1 are r14; R4 version is unverified. This does not
+qualify an all-r14 topology or FRR/DPA-driven route changes. Original JSON,
+ping logs, post-run Robot XML and hashes are indexed in
+`iso-installation-acceptance.md`.
+
 ## R1 r14 installed-runtime checkpoint — 2026-10-12
 
 R1 identity `00:1f:7a:40:28:20`, SATA ext4 root and exact r14 binary digest
