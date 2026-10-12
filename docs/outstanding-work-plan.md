@@ -16,8 +16,11 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 - [x] Run installed-binary mTLS/RBAC checks and resolved ECMP 2/1/2 FIB,
   fresh-runtime WAL route replay, withdrawal and no-resurrection checks.
   CTest 68/68 PASS; hashes/evidence indexed in `iso-installation-acceptance.md`.
+- [x] R1 r14 physical installed-disk runtime, four I211 bindings, read-only
+  Robot 2/2 and warmed direct/transit ICMP 100/100 after VPP lab CLI replay.
+  Cold/restart losses retained; installed-disk UEFI observed on R1 only.
 - [ ] Live reconnect with mgrd remaining active during VPP restart; actual
-  packet ECMP distribution and physical r14 deployment/production PKI.
+  current-release packet ECMP distribution, remaining-node r14 rollout and production PKI.
   Synthetic adjacency and restarted-daemon recovery do not close these gates.
 
 The chronological notes below describe earlier checkpoints; r14 above is

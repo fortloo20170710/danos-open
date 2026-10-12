@@ -1,6 +1,31 @@
 # I211 physical LIVE traffic qualification runbook
 
-更新时间：2026-10-10
+更新时间：2026-10-12
+
+## R1 r14 installed-runtime checkpoint — 2026-10-12
+
+R1 identity `00:1f:7a:40:28:20`, SATA ext4 root and exact r14 binary digest
+PASS; all four I211 devices use `uio_pci_generic`. P1 connects R3 P2 at
+1 Gbps full duplex, R1 `10.30.0.2/24`, R3 `10.30.0.1`; route
+`10.10.0.2/32` returns via R3. Loop0 owns `30.30.30.2`–`.5` /32.
+
+`restore_physical_lab_serial.py` deployed the missing project replay helper,
+`/etc/danos/physical-lab.cli`, and additive VPP post-start drop-in
+`/etc/systemd/system/vpp.service.d/30-danos-lab-replay.conf` after identity
+and binary checks. This is a post-install lab overlay, not mgrd WAL replay.
+The helper SHA256 is
+`518ec5844b43f9e43e526c112857daf7c8c2a62700b62c70d10a69026113c241`;
+R1 profile SHA256 is
+`68e0beac8a64a0736db0c5249c96727a0a08070bdeeacb033d44c68331ff0b89`.
+
+VPP PID 1717 → 1891 restores this profile. Bounded carrier polling took
+3.38 seconds after restart returned; readiness was 4/5 then 5/5. Warm
+R3 and transit R2 ICMP each passed 100/100 (TTL 64/63). Earlier immediate
+and carrier-only probes failed and remain archived. Do not count this as
+lossless restart, ECMP distribution or throughput. Read-only Robot 2/2 PASS.
+See `iso-installation-acceptance.md` for result paths and immutable hashes.
+Next router-side validation requires UART on R3; do not address R3 while
+the UART still identifies R1.
 
 ## Recovery checkpoint and preparation history
 

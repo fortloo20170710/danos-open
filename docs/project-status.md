@@ -17,10 +17,19 @@ ISO, binary, source and evidence hashes; `management-mtls.md` preserves
 earlier candidate test details and the retracted substring-based verdict.
 
 Qualification uses synthetic neighbors and a loopback recreated by the test
-harness. Live reconnect, packet ECMP distribution, physical deployment/PKI
+harness. Live reconnect, current-release packet ECMP distribution, fleet deployment/PKI
 and hardware throughput remain separate open gates. r14 is a BIOS lab image
 with console autologin; its production management service stays disabled
-until configured. UEFI/Secure Boot remain unqualified.
+until configured. ISO-installer UEFI/Secure Boot remain unqualified.
+
+R1 r14 physical installed-disk runtime now PASS: SATA ext4 root, exact binary
+digest, four I211 DPDK bindings, VPP/FRR sockets/services. Installed-disk UEFI
+boot was observed on R1, independently of the BIOS ISO-installer gate.
+Separately deployed lab CLI replay survives VPP PID 1717 → 1891; after
+carrier/neighbor readiness, direct R3 and transit R2 probes each pass 100/100.
+Cold/restart losses remain archived: no lossless restart or physical mgrd
+WAL/production mTLS claim. UART read-only Robot 2/2 PASS. Evidence is indexed
+in `iso-installation-acceptance.md`; hardware throughput remains OPEN.
 
 Current CTest 68/68 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves

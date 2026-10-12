@@ -135,6 +135,18 @@ Next design a bounded read-only capability/ledger query with authenticated
 management transport and explicit ownership, then integrate fresh isolated
 route lifecycle orchestration. Do not enable plaintext mgrd on R3 for this.
 
+### R1 r14 physical read-only adapter — 2026-10-12
+
+Actual R1 UART execution of `VPP_READONLY.robot`, excluding `r3-only`,
+passes 2/2 with MAC guard `00:1f:7a:40:28:20`. Evidence:
+`build/robot-r1-r14-readonly-20261012/output.xml`; digest indexed in
+`iso-installation-acceptance.md`. The fixed-command serial adapter now also
+supports installed inventory (disk/source/binary identity, services, sockets,
+PCI bindings and firmware observation), rejecting non-character UART paths.
+Inventory does not imply traffic or production management qualification.
+Mutating lab restore and optional VPP-restart probes remain separate explicit
+integration tools; they are not part of the read-only Robot suite.
+
 ### Minimal in-process summary — 2026-10-12
 
 Implemented `show dataplane`: active programming backend, separately

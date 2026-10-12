@@ -1,4 +1,4 @@
-"""Bounded UART RPC for fixed VPP show commands; never a general shell API."""
+"""Bounded UART RPC for fixed VPP show commands and installed-system inventory."""
 import base64
 import fcntl
 import json
@@ -7,6 +7,7 @@ import re
 import select
 import shlex
 import subprocess
+import stat
 import termios
 import time
 import uuid
@@ -34,9 +35,43 @@ def read_command(device, command):
     script = ("import subprocess,json,base64; "
               f"r=subprocess.run({argv!r},capture_output=True,text=True,timeout=10); "
               f"print({marker!r}+base64.b64encode(json.dumps([r.returncode,r.stdout,r.stderr]).encode()).decode())")
+    rc, stdout, stderr = _exchange(device, script, marker)
+    return subprocess.CompletedProcess(argv, rc, stdout, stderr)
+
+
+def read_installed_inventory(device):
+    """Read fixed runtime identity/status paths; never read TLS keys or change services."""
+    marker = "DANOS_RO_RPC_" + uuid.uuid4().hex + ":"
+    commands = {
+        "root": ["findmnt", "-n", "-o", "SOURCE,FSTYPE", "/"],
+        "kernel": ["uname", "-r"],
+        "disks": ["lsblk", "-J", "-o", "NAME,TYPE,TRAN,SIZE,MODEL,MOUNTPOINTS"],
+        "pci": ["lspci", "-nnk"],
+        "services": ["systemctl", "show", "vpp", "frr", "danos-mgrd", "-p", "Id,ActiveState,SubState,MainPID,UnitFileState"],
+        "vpp_interfaces": ["/usr/bin/vppctl", "-s", "/run/vpp/cli.sock", "show", "interface"],
+        "vpp_version": ["/usr/bin/vppctl", "-s", "/run/vpp/cli.sock", "show", "version"],
+    }
+    paths = ["/etc/danos/build-info.env", "/etc/danos/runner-profile", "/proc/cmdline", "/proc/uptime"]
+    script = ("import subprocess,json,base64,hashlib; from pathlib import Path; "
+              f"commands={commands!r}; "
+              "results={k:dict(returncode=r.returncode,stdout=r.stdout,stderr=r.stderr) for k,a in commands.items() "
+              "for r in [subprocess.run(a,capture_output=True,text=True,timeout=10)]}; "
+              f"results['files']={{p:Path(p).read_text() if Path(p).is_file() else None for p in {paths!r}}}; "
+              "results['mgrd_sha256']=hashlib.sha256(Path('/usr/bin/danos-mgrd').read_bytes()).hexdigest(); "
+              "results['firmware']='UEFI' if Path('/sys/firmware/efi').exists() else 'BIOS'; "
+              "results['sockets']={p:Path(p).is_socket() for p in ['/run/vpp/api.sock','/run/vpp/stats.sock','/run/vpp/cli.sock']}; "
+              f"print({marker!r}+base64.b64encode(json.dumps(results).encode()).decode())")
+    return _exchange(device, script, marker)
+
+
+def _exchange(device, script, marker, reply_timeout=15):
+    if not 0 < reply_timeout <= 60:
+        raise ValueError("bounded UART reply timeout required")
     wire = "python3 -c " + shlex.quote(script) + "\r"
     fd = os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     try:
+        if not stat.S_ISCHR(os.fstat(fd).st_mode):
+            raise ValueError("UART device must be a character device")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         attrs = termios.tcgetattr(fd)
         attrs[0] = attrs[1] = attrs[3] = 0
@@ -47,7 +82,7 @@ def read_command(device, command):
         for byte in wire.encode():
             os.write(fd, bytes([byte]))
             time.sleep(.007)
-        deadline = time.monotonic() + 15
+        deadline = time.monotonic() + reply_timeout
         raw = b""
         while time.monotonic() < deadline:
             if select.select([fd], [], [], .2)[0]:
@@ -58,8 +93,7 @@ def read_command(device, command):
                 # multiple reads and padding is only present at its end.
                 reply = decode_reply(raw, marker)
                 if reply is not None:
-                    rc, stdout, stderr = reply
-                    return subprocess.CompletedProcess(argv, rc, stdout, stderr)
+                    return reply
         raise TimeoutError("UART read-only RPC deadline exceeded; tail=" + repr(raw[-800:]))
     finally:
         os.close(fd)

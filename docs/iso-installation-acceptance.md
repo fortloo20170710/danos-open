@@ -29,7 +29,7 @@
   RBAC, negative credentials/ALPN and fail-closed startup checks.
   Test PKI/WAL remain in disposable guests; no test keys are in the ISO.
 - Scope: Legacy BIOS, 3 GiB root disk template, lab console autologin.
-  UEFI/Secure Boot, target-capacity expansion, physical deployment, packet
+  ISO-installer UEFI/Secure Boot, target-capacity expansion, fleet deployment, packet
   throughput and live reconnect remain unqualified. ECMP resolution uses
   synthetic loopback/neighbors recreated by the harness.
 
@@ -47,6 +47,42 @@ Application package: `build/danos-open_0.16.0~rc1-1_28b4a9e_amd64.deb`, SHA256
 Verifier SHA256: `f14ac6c7d1509552e0f557c92ab3c2c7d121d3b760ca4a998395a55231eff3d8`.
 Management test SHA256: `a1e902ebcfb34ba4ac9e7afc9b7414a9417d191928375337533ec99df5f5fa15`.
 Current CTest: 68/68 PASS.
+
+### R1 physical installed-runtime qualification — 2026-10-12
+
+R1 (P1 MAC `00:1f:7a:40:28:20`) boots r14 from SATA `/dev/sda1`
+ext4 on TS16GMSA370. Clean source and installed mgrd digest match the r14
+values above. Four I211 `8086:1539` devices use `uio_pci_generic`; VPP
+exposes all four ports. VPP/FRR and API/stat/CLI sockets pass inventory;
+mgrd remains disabled pending production mTLS. Installed runtime exposes
+`/sys/firmware/efi`: **R1 installed-disk UEFI boot observed**, not an
+ISO-installer UEFI or Secure Boot qualification. Physical installation was
+reported by the user; its write/readback transcript was not captured.
+
+The existing R1 lab role was restored after installation: P1 `10.30.0.2/24`,
+return route to `10.10.0.2/32` via R3 `10.30.0.1`, loopback `.2`–`.5` in
+`30.30.30.0/24`. The missing lab replay helper and additive VPP systemd
+post-start hook were installed separately; they are not claimed baked into r14.
+VPP restart PID `1717 → 1891` restores the role. Carrier polling reached
+1 Gbps full duplex after 3.38 seconds; direct readiness probes were 4/5,
+then 5/5. Subsequent probes to R3 and through R3 to R2 each passed 100/100,
+TTL 64/63 respectively. These timings start after restart returns, not at
+the beginning of total downtime. Earlier no-carrier and unconverged-neighbor
+failures remain archived; this is not lossless restart, mgrd WAL replay,
+two-egress ECMP or throughput qualification. Read-only UART Robot: 2/2 PASS.
+
+Local evidence (under `build/`; hashes bind the archived results):
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r1-r14-installed-post-restart-20261012/inventory.json` | `8b6d4106d06a0fa4bf12d296524c764083ac5ce3037d5d0723b31c1683554acd` |
+| `r1-r14-peer-restart-converged-20261012/result.json` | `f31396a345978857451c3d96936b08b9bb4ca397a0c29da92ba8dc835fe648c5` |
+| `robot-r1-r14-readonly-20261012/output.xml` | `7d4ab1e3bc24902328a9398abdaf30fea8dc81901291ece3a5a3f5b4f32c43e0` |
+
+Failed attempts: `r1-r14-lab-restore-20261012` (missing helper),
+`r1-r14-peer-restart-20261012` (carrier not ready), and
+`r1-r14-peer-restart-linkready-20261012` (neighbor not ready).
+Successful helper deployment: `r1-r14-lab-restore-hook-20261012`.
 
 ## Previous delivery: r13 BIOS installable lab ISO
 
