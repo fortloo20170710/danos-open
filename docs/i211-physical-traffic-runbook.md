@@ -80,11 +80,17 @@ Evidence under `build/physical-udp64-window-20261013/`; SHA256:
 | `r4-after/result.json` | `534d8e1015c4897b428ca104274876d90efd621c402f410ae9d296ab62702a26` |
 | `receiver-window.json` | `6bcc2ee8051fd8752e0c51bdd7ce7de0c53ca18a0e1ee125e08bb47351799665` |
 
-The live result above used an inline UART RPC with these bounds. The reusable
-`danos-test/integration/run_physical_pg_serial.py` runner and offline schema/
-safety tests were added afterward; they have not yet been replayed on the
-physical R2. Use this committed runner for the next paired window before
-calling the scripted lane itself physically validated.
+The reusable `danos-test/integration/run_physical_pg_serial.py` runner was
+replayed on physical R2 after commit `4748e99`. It passed all three bounded
+phases (100/500/1000 requested pps per flow, four flows × 256 frames); VPP
+generated-frame count and R2 I211 hardware TX-good delta both equal 3072,
+TX drops remained 92175, VPP identity remained stable, and all streams were
+removed. Structured artifact:
+`build/physical-udp64-runner-smoke-20261013/result.json`, SHA256
+`8abdf44693c768dd76b7595d69e9937f554fd3d6b493217b53712e8e02c1a3d0`.
+This validates the scripted source-side lane on the physical runner. It is
+not a paired receiver-window replay and does not measure wire PPS, throughput,
+latency, CPU, or line rate; those qualifications remain open.
 
 ## Earlier R2 bounded source calibration — 2026-10-13
 
