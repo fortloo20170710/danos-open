@@ -2,6 +2,24 @@
 
 更新时间：2026-10-13
 
+## R2 bounded source calibration — 2026-10-13
+
+UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
+full duplex, and a resolved route to `30.30.30.0/24` via R3. A finite
+four-flow, 64-byte packet-generator calibration completed at 100/500/1000
+requested pps per flow, 256 frames per flow per phase (1024 per phase;
+3072 total). VPP PID remained 2097; the pre-existing TX-drop count stayed
+92175 through all phases; no packet-generator streams remained afterward.
+
+The first orchestration attempt completed only the 100-pps phase and stopped
+before creating the next phase due to a local rate-index bug. A read-only
+audit confirmed no residual streams; the corrected run then completed all
+three phases. The structured result is
+`build/r2-bounded-source-calibration-20261013/result.json`. This is a
+source-side calibration only: receiver counters and bracketed R3 ingress/
+egress deltas were not captured, so it is not wire-delivery, ECMP or
+performance qualification. Performance remains `ENVIRONMENT-OPEN`.
+
 ## R2 four-flow ECMP counter correlation — 2026-10-13
 
 Captured identity-bound, read-only R3 counter/FIB snapshots immediately before
