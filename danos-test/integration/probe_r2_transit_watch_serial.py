@@ -104,7 +104,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     marker, script = remote_script(args.action, args.token, args.duration)
     try:
-        result = _exchange(args.device, script, marker, reply_timeout=30)
+        result = _exchange(args.device, script, marker, reply_timeout=60)
     except (OSError, ValueError, TimeoutError) as error:
         result = {"status": "UNKNOWN", "failure_reason": str(error)}
     raw = json.dumps(result, indent=2) + "\n"
