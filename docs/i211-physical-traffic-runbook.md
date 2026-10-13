@@ -16,9 +16,18 @@ before creating the next phase due to a local rate-index bug. A read-only
 audit confirmed no residual streams; the corrected run then completed all
 three phases. The structured result is
 `build/r2-bounded-source-calibration-20261013/result.json`. This is a
-source-side calibration only: receiver counters and bracketed R3 ingress/
-egress deltas were not captured, so it is not wire-delivery, ECMP or
-performance qualification. Performance remains `ENVIRONMENT-OPEN`.
+source-side calibration, not a performance result. R3's before snapshot
+predated both the initial 1024-frame phase and corrected 3072-frame run;
+the after snapshot records FIB 0→4096 and egress TX deltas P1 +3072/P2
++1024, summing to 4096. This correlates all generated phases with real R3
+forwarding and confirms both ECMP buckets carried traffic. P1 drop count
+changed 11→12 and P2 stayed 4; do not claim zero loss. The identity-bound
+R3 after snapshot is `build/r3-after-r2-bounded-calibration-20261013/result.json`,
+SHA256 `68f0283daec4dbad7fe1bfd350d8744c008b02aee27cec23862518873a04c27f`.
+No R1/R4 independent receiver deltas or immediate per-run hardware source
+TX delta were captured, so receiver delivery and performance qualification
+remain `ENVIRONMENT-OPEN`. The structured source result SHA256 is
+`057216fd05a982969c4de2b83c9462fdfa3d7c7b1083d3232ab4daa08989065d`.
 
 ## R2 four-flow ECMP counter correlation — 2026-10-13
 
