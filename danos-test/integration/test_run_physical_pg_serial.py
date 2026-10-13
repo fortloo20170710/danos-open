@@ -26,6 +26,9 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
             "phases": [
                 {"requested_pps_per_flow": rate, "limit_per_flow": count,
                  "observation_seconds": 1.0,
+                 "hardware_tx_delta": 4 * count,
+                 "measured_tx_pps": 4 * count,
+                 "measured_mbps": 4 * count * 64 * 8 / 1_000_000,
                  "final_counts": {f"danos64_{rate}_{i}": count for i in range(4)}}
                 for rate in (100, 500, 1000)
             ],
@@ -80,6 +83,24 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
         result = self.valid_result()
         result["tx_drops_after"] += 1
         with self.assertRaisesRegex(ValueError, "TX-drop counter changed"):
+            validate_result(result)
+
+    def test_phase_rate_is_derived_from_hardware_delta_and_elapsed_time(self):
+        result = self.valid_result()
+        result["phases"][0]["measured_tx_pps"] = 500
+        with self.assertRaisesRegex(ValueError, "measured TX pps disagrees"):
+            validate_result(result)
+
+    def test_phase_hardware_delta_must_match_generated_frames(self):
+        result = self.valid_result()
+        result["phases"][0]["hardware_tx_delta"] -= 1
+        with self.assertRaisesRegex(ValueError, "phase hardware TX delta"):
+            validate_result(result)
+
+    def test_phase_mbps_must_match_measured_rate(self):
+        result = self.valid_result()
+        result["phases"][0]["measured_mbps"] = 1.0
+        with self.assertRaisesRegex(ValueError, "measured Mbps disagrees"):
             validate_result(result)
 
 

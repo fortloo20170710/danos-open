@@ -145,6 +145,36 @@ per-interface receive/transmit totals include reverse-direction/background
 packets; the ingress and aggregate egress counters exactly match the generated
 frame total.
 
+## Per-phase hardware-rate instrumentation replay — 2026-10-13
+
+The source runner now brackets each finite pacing phase with the R2 I211
+`tx_good_packets` counter and a monotonic observation interval. On physical
+R2, each phase's hardware delta matched its 4096 generated frames; aggregate
+TX delta matched 12,288, TX drops stayed at 92175, and all streams were
+cleaned. The resulting window-average TX rates were 398.55, 1904.98, and
+3716.90 pps for requested aggregate rates of 400, 2000, and 4000 pps. The
+corresponding 64-byte frame-bit rates were 0.2041, 0.9753, and 1.9031 Mbps.
+These rates divide the verified hardware frame count by the runner's observed
+phase interval, including stream enable/stop polling overhead; they are
+repeatable end-to-end window measurements, not isolated wire-rate or line-rate
+measurements. Mbps counts 64-byte frame bits and excludes physical-layer
+preamble/IFG overhead. Latency, CPU, and independent receiver counters were
+not collected in this replay.
+
+R3 VPP PID remained 3272 and both ECMP paths stayed resolved. R3 P4 RX
+increased 12,288; P1/P2 TX increased 9,216/3,072, and P1/P2/P4 drop counters
+were unchanged. Thus the source hardware rate observations are paired with
+functional forwarding through both egress paths, but do not qualify full
+receiver delivery or performance acceptance.
+
+Artifacts under `build/physical-udp64-measured-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-before/result.json` | `c4682e2824f93b1a31910de2d37684b37909cbdb6f40f7b3d07fd00ba0cb1c77` |
+| `r2-source/result.json` | `5207f885b9785a1351eb5957caf5d7dc8a4cde08c753f26b7919db7d1e40e5f4` |
+| `r3-after/result.json` | `9d6d69f1fde3c6dcfbf7631e6805996fd06f6c9fde30fc83fd18c653c3774b5b` |
+
 ## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps

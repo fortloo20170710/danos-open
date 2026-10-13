@@ -75,13 +75,17 @@ try:
  result['hardware_tx_before']=tx_good(hardware); result['tx_drops_before']=tx_drops(cli('show errors'))
  for rate_text,commands in definitions.items():
   rate=int(rate_text); names=[f'danos64_{{rate}}_{{i}}' for i in range(4)]
-  phase={{'requested_pps_per_flow':rate,'limit_per_flow':cap,'tx_drops_before':tx_drops(cli('show errors'))}}
+  phase={{'requested_pps_per_flow':rate,'limit_per_flow':cap,
+   'tx_drops_before':tx_drops(cli('show errors')),
+   'hardware_tx_before':tx_good(cli('show hardware-interfaces '+interface))}}
   result['phases'].append(phase)
   for command,name in zip(commands,names): owned.append(name); cli(command)
   initial=stream_rows(cli('show packet-generator'),names)
   if any(row['enabled'] or row['count']!=0 for row in initial.values()): raise RuntimeError('new stream did not start idle')
-  enabled={{name:time.monotonic() for name in names}}
-  for name in names: cli('packet-generator enable-stream '+name)
+  enabled={{}}
+  phase_start=time.monotonic()
+  for name in names:
+   enabled[name]=time.monotonic(); cli('packet-generator enable-stream '+name)
   deadline=time.monotonic()+cap/rate+5; samples=0; rows={{}}
   while time.monotonic()<deadline:
    now=time.monotonic(); rows=stream_rows(cli('show packet-generator'),names); samples+=1
@@ -91,8 +95,13 @@ try:
    if all(not row['enabled'] and row['count']==cap for row in rows.values()): break
    time.sleep(0.1)
   else: raise RuntimeError('finite stream phase exceeded deadline: '+rate_text)
-  phase['observation_seconds']=now-min(enabled.values()); phase['sample_count']=samples
+  phase_end=time.monotonic()
+  phase['observation_seconds']=phase_end-phase_start; phase['sample_count']=samples
   phase['final_counts']={{name:rows[name]['count'] for name in names}}
+  phase['hardware_tx_after']=tx_good(cli('show hardware-interfaces '+interface))
+  phase['hardware_tx_delta']=phase['hardware_tx_after']-phase['hardware_tx_before']
+  phase['measured_tx_pps']=phase['hardware_tx_delta']/phase['observation_seconds']
+  phase['measured_mbps']=phase['measured_tx_pps']*64*8/1000000
   phase['tx_drops_after']=tx_drops(cli('show errors'))
   if identity()!=result['identity_before']: raise RuntimeError('R2 VPP identity changed')
   for name in names: cli('packet-generator disable-stream '+name); cli('packet-generator delete '+name); owned.remove(name)
@@ -161,6 +170,18 @@ def validate_result(result: dict, count: int = 256) -> None:
         elapsed = phase.get("observation_seconds")
         if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed <= 0:
             raise ValueError("phase observation time is invalid")
+        phase_frames = len(names) * count
+        if phase.get("hardware_tx_delta") != phase_frames:
+            raise ValueError("phase hardware TX delta does not match generated frames")
+        measured_pps = phase.get("measured_tx_pps")
+        measured_mbps = phase.get("measured_mbps")
+        if (type(measured_pps) not in (int, float) or not math.isfinite(measured_pps) or
+                abs(measured_pps - phase_frames / elapsed) > max(0.01, measured_pps * 1e-6)):
+            raise ValueError("measured TX pps disagrees with hardware frames and duration")
+        expected_mbps = measured_pps * 64 * 8 / 1_000_000
+        if (type(measured_mbps) not in (int, float) or not math.isfinite(measured_mbps) or
+                abs(measured_mbps - expected_mbps) > max(0.000001, expected_mbps * 1e-6)):
+            raise ValueError("measured Mbps disagrees with measured TX pps")
 
 
 def main() -> int:
