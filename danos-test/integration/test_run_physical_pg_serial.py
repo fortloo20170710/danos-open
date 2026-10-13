@@ -26,6 +26,12 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
             "phases": [
                 {"requested_pps_per_flow": rate, "limit_per_flow": count,
                  "observation_seconds": 1.0,
+                 "vpp_cpu_before": {"pid": "1234", "start_ticks": "98765", "cpu_ticks": 100,
+                                    "clock_ticks_per_second": 100, "monotonic": 10.0},
+                 "vpp_cpu_after": {"pid": "1234", "start_ticks": "98765", "cpu_ticks": 110,
+                                   "clock_ticks_per_second": 100, "monotonic": 11.0},
+                 "vpp_cpu_elapsed_seconds": 1.0, "vpp_cpu_delta_ticks": 10,
+                 "vpp_cpu_clock_ticks_per_second": 100, "vpp_cpu_pct_one_core": 10.0,
                  "hardware_tx_delta": 4 * count,
                  "measured_tx_pps": 4 * count,
                  "measured_mbps": 4 * count * 64 * 8 / 1_000_000,
@@ -41,6 +47,7 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
         self.assertIn("size 64-64", script)
         self.assertIn("maximum_generated_frames", script)
         self.assertIn("start_ticks", script)
+        self.assertIn("vpp_cpu_pct_one_core", script)
         self.assertIn("packet-generator delete", script)
         self.assertIn("no streams currently defined", script)
         compile(script, "<test-physical-pg-rpc>", "exec")
@@ -102,6 +109,26 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
         result["phases"][0]["measured_mbps"] = 1.0
         with self.assertRaisesRegex(ValueError, "measured Mbps disagrees"):
             validate_result(result)
+
+    def test_vpp_cpu_percentage_may_exceed_one_hundred_for_multiple_threads(self):
+        result = self.valid_result()
+        phase = result["phases"][0]
+        phase["vpp_cpu_after"]["cpu_ticks"] = 310
+        phase["vpp_cpu_delta_ticks"] = 210
+        phase["vpp_cpu_pct_one_core"] = 210.0
+        validate_result(result)
+
+    def test_vpp_cpu_sample_tampering_is_rejected(self):
+        mutations = (
+            lambda p: p.update(vpp_cpu_pct_one_core=11.0),
+            lambda p: p["vpp_cpu_after"].update(pid="9999"),
+            lambda p: p.update(vpp_cpu_delta_ticks=-1),
+        )
+        for mutate in mutations:
+            result = self.valid_result()
+            mutate(result["phases"][0])
+            with self.subTest(mutate=mutate), self.assertRaises(ValueError):
+                validate_result(result)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,11 @@ def identity():
  if not pid.isdigit() or pid=='0': raise RuntimeError('VPP is inactive')
  proc='/proc/'+pid
  return {{'pid':pid,'exe':os.readlink(proc+'/exe'),'start_ticks':open(proc+'/stat').read().split()[21]}}
+def cpu_sample(pid):
+ fields=open('/proc/'+pid+'/stat').read().rsplit(') ',1)[1].split()
+ return {{'pid':pid,'start_ticks':fields[19],
+  'cpu_ticks':int(fields[11])+int(fields[12]),
+  'clock_ticks_per_second':os.sysconf('SC_CLK_TCK'),'monotonic':time.monotonic()}}
 def tx_drops(raw): return sum(int(v) for v in re.findall(r'(?m)^\\s*(\\d+)\\s+\\S+-tx\\s+Tx packet drops',raw))
 def tx_good(raw):
  m=re.search(r'(?m)^\\s*tx_good_packets\\s+(\\d+)\\s*$',raw)
@@ -82,6 +87,7 @@ try:
   for command,name in zip(commands,names): owned.append(name); cli(command)
   initial=stream_rows(cli('show packet-generator'),names)
   if any(row['enabled'] or row['count']!=0 for row in initial.values()): raise RuntimeError('new stream did not start idle')
+  phase['vpp_cpu_before']=cpu_sample(result['identity_before']['pid'])
   enabled={{}}
   phase_start=time.monotonic()
   for name in names:
@@ -97,6 +103,18 @@ try:
   else: raise RuntimeError('finite stream phase exceeded deadline: '+rate_text)
   phase_end=time.monotonic()
   phase['observation_seconds']=phase_end-phase_start; phase['sample_count']=samples
+  phase['vpp_cpu_after']=cpu_sample(result['identity_before']['pid'])
+  cpu_before=phase['vpp_cpu_before']; cpu_after=phase['vpp_cpu_after']
+  if cpu_before['start_ticks']!=result['identity_before']['start_ticks'] or cpu_after['start_ticks']!=cpu_before['start_ticks']:
+   raise RuntimeError('VPP CPU sample identity changed')
+  cpu_elapsed=cpu_after['monotonic']-cpu_before['monotonic']
+  cpu_ticks=cpu_after['cpu_ticks']-cpu_before['cpu_ticks']
+  if cpu_elapsed<=0 or cpu_ticks<0 or cpu_after['clock_ticks_per_second']!=cpu_before['clock_ticks_per_second']:
+   raise RuntimeError('invalid VPP CPU sample interval')
+  phase['vpp_cpu_elapsed_seconds']=cpu_elapsed
+  phase['vpp_cpu_delta_ticks']=cpu_ticks
+  phase['vpp_cpu_clock_ticks_per_second']=cpu_before['clock_ticks_per_second']
+  phase['vpp_cpu_pct_one_core']=cpu_ticks*100/(cpu_before['clock_ticks_per_second']*cpu_elapsed)
   phase['final_counts']={{name:rows[name]['count'] for name in names}}
   phase['hardware_tx_after']=tx_good(cli('show hardware-interfaces '+interface))
   phase['hardware_tx_delta']=phase['hardware_tx_after']-phase['hardware_tx_before']
@@ -170,6 +188,41 @@ def validate_result(result: dict, count: int = 256) -> None:
         elapsed = phase.get("observation_seconds")
         if type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed <= 0:
             raise ValueError("phase observation time is invalid")
+        cpu_before, cpu_after = phase.get("vpp_cpu_before"), phase.get("vpp_cpu_after")
+        cpu_fields = ("vpp_cpu_before", "vpp_cpu_after", "vpp_cpu_elapsed_seconds",
+                      "vpp_cpu_delta_ticks", "vpp_cpu_clock_ticks_per_second",
+                      "vpp_cpu_pct_one_core")
+        if any(key in phase for key in cpu_fields):
+            if not isinstance(cpu_before, dict) or not isinstance(cpu_after, dict):
+                raise ValueError("VPP CPU samples are incomplete")
+            if (str(cpu_before.get("pid")) != str(before["pid"]) or
+                str(cpu_after.get("pid")) != str(before["pid"]) or
+                not cpu_before.get("start_ticks") or
+                cpu_before.get("start_ticks") != before["start_ticks"] or
+                cpu_after.get("start_ticks") != cpu_before.get("start_ticks")):
+                raise ValueError("VPP CPU sample identity is invalid or changed")
+            for sample in (cpu_before, cpu_after):
+                ticks = sample.get("cpu_ticks")
+                hz = sample.get("clock_ticks_per_second")
+                monotonic = sample.get("monotonic")
+                if (type(ticks) is not int or ticks < 0 or type(hz) is not int or hz <= 0 or
+                        type(monotonic) not in (int, float) or not math.isfinite(monotonic)):
+                    raise ValueError("VPP CPU sample values are invalid")
+            cpu_elapsed = cpu_after["monotonic"] - cpu_before["monotonic"]
+            cpu_delta = cpu_after["cpu_ticks"] - cpu_before["cpu_ticks"]
+            hz = cpu_before["clock_ticks_per_second"]
+            cpu_pct = phase.get("vpp_cpu_pct_one_core")
+            expected_cpu_pct = cpu_delta * 100 / (hz * cpu_elapsed) if cpu_elapsed > 0 and cpu_delta >= 0 else -1
+            if (cpu_after["clock_ticks_per_second"] != hz or
+                    phase.get("vpp_cpu_delta_ticks") != cpu_delta or cpu_delta < 0 or
+                    type(phase.get("vpp_cpu_clock_ticks_per_second")) is not int or
+                    phase["vpp_cpu_clock_ticks_per_second"] != hz or
+                    type(phase.get("vpp_cpu_elapsed_seconds")) not in (int, float) or
+                    not math.isclose(phase["vpp_cpu_elapsed_seconds"], cpu_elapsed, rel_tol=1e-9, abs_tol=1e-9) or
+                    cpu_elapsed <= 0 or type(cpu_pct) not in (int, float) or
+                    not math.isfinite(cpu_pct) or cpu_pct < 0 or
+                    not math.isclose(cpu_pct, expected_cpu_pct, rel_tol=1e-9, abs_tol=1e-9)):
+                raise ValueError("VPP CPU measurement is inconsistent")
         phase_frames = len(names) * count
         if phase.get("hardware_tx_delta") != phase_frames:
             raise ValueError("phase hardware TX delta does not match generated frames")
