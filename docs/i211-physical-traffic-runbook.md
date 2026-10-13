@@ -80,6 +80,12 @@ Evidence under `build/physical-udp64-window-20261013/`; SHA256:
 | `r4-after/result.json` | `534d8e1015c4897b428ca104274876d90efd621c402f410ae9d296ab62702a26` |
 | `receiver-window.json` | `6bcc2ee8051fd8752e0c51bdd7ce7de0c53ca18a0e1ee125e08bb47351799665` |
 
+The live result above used an inline UART RPC with these bounds. The reusable
+`danos-test/integration/run_physical_pg_serial.py` runner and offline schema/
+safety tests were added afterward; they have not yet been replayed on the
+physical R2. Use this committed runner for the next paired window before
+calling the scripted lane itself physically validated.
+
 ## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
