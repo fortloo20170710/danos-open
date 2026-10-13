@@ -188,7 +188,10 @@ test-window averages and not line-rate measurements.
 R3 PID remained 3272 with both FIB paths resolved. P4 RX was +12,288; P1/P2
 TX were +9,216/+3,072, exactly 12,288 total, with no drop-counter increases.
 Independent receiver snapshots measured R4 RX +9,216 and R1 RX +3,072; the
-receiver-window verifier passed with aggregate RX exactly 12,288. Thus this
+receiver-window verifier passed with aggregate RX exactly 12,288. The new
+`verify_physical_udp64_window.py` joins the R2 source, R3 ingress/egress, FIB,
+and independent R1/R4 counters into one digest-indexed JSON result and passed
+on this evidence set. Thus this
 run closes the bounded end-to-end packet-delivery and two-bucket functional
 gate for this profile. It does not qualify latency, CPU, sustained throughput,
 or line rate; those remain open.
@@ -205,6 +208,7 @@ Artifacts under `build/physical-udp64-receiver-window-20261013/`; SHA256:
 | `r3-after/result.json` | `3d47aad82045e382b3b15560128692379ce28a7539ef88c1f94b99f3dc33ab3a` |
 | `r2-source/result.json` | `272636faa32ac2d3be806efe49c62de510f87d6100e85d2a1ee09d3b22c692f7` |
 | `receiver-window.json` | `471553b361065fa390f98d602b7aadbec9e35ed2cb9429abdabc918724d0c7db` |
+| `end-to-end-window.json` | `14e340804161d6ef517bc25be302b1c4df41fee191369c2dcae4d2e25fb35fa3` |
 
 ## Earlier R2 bounded source calibration — 2026-10-13
 

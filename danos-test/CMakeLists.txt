@@ -155,6 +155,9 @@ set_tests_properties(physical_pg_pacing PROPERTIES TIMEOUT 30)
 add_test(NAME physical_pg_serial_runner
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_run_physical_pg_serial.py)
 set_tests_properties(physical_pg_serial_runner PROPERTIES TIMEOUT 30)
+add_test(NAME physical_udp64_end_to_end_window
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_physical_udp64_window.py)
+set_tests_properties(physical_udp64_end_to_end_window PROPERTIES TIMEOUT 30)
 add_test(NAME robot_vpp_readonly_adapter
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/danos-robot/test_vpp_readonly.py)
 set_tests_properties(robot_vpp_readonly_adapter PROPERTIES TIMEOUT 30)
