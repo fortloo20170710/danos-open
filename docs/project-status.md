@@ -80,7 +80,7 @@ non-warmup losses in a 7.26-second cluster aligned after correcting the
 measured R3 clock lag (~591.6 s); all four destinations then returned to stable
 success. This is observed interrupted forwarding and recovery, not lossless
 restart. Evidence and hashes are indexed in `iso-installation-acceptance.md`.
-Full CTest at the current source tree passes 75/75, including identity-bound
+Full CTest at the current source tree passes 76/76, including identity-bound
 R1/R4 independent receiver snapshot and counter-window tools.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
@@ -101,7 +101,7 @@ the finite batch only. It does not establish wire PPS, throughput, latency,
 CPU, sustained load or balanced hashing; performance qualification remains
 OPEN. Evidence hashes are indexed in `iso-installation-acceptance.md`.
 
-Current CTest 75/75 PASS (the historical release-gate run below had its
+Current CTest 76/76 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
