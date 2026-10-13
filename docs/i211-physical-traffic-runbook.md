@@ -92,6 +92,32 @@ This validates the scripted source-side lane on the physical runner. It is
 not a paired receiver-window replay and does not measure wire PPS, throughput,
 latency, CPU, or line rate; those qualifications remain open.
 
+## Scripted physical UDP forwarding window — 2026-10-13
+
+The reusable runner was then bracketed with identity-bound R3 counter/FIB
+snapshots. R3 VPP PID remained 3272 and both ECMP adjacencies remained
+resolved. R2 generated 3072 frames; R3 P4 RX increased by 3072, and egress TX
+increased by 2304 on P1 plus 768 on P2, exactly matching the generated count.
+P1/P2/P4 drop counters did not increase. The two path buckets therefore both
+forwarded this bounded four-flow sample. Independent R1/R4 receiver snapshots
+were not taken for this runner replay; an earlier inline-runner window has
+separate receiver evidence above. This is functional forwarding evidence only,
+not measured wire PPS, throughput, latency, CPU, or line-rate qualification.
+
+Artifacts under `build/physical-udp64-scripted-window-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-before/result.json` | `37b318022466ec0ed5fed68745698d3c2b7b095ed499a5197b03f852773a971c` |
+| `r2-source/result.json` | `d5cdf84f1af371b08f9ad97b14df9325a1ee3eafb6ebf1a2b098ff385bf90cc4` |
+| `r3-after/result.json` | `05c7a06ec8afa613a8ab8519017ee5aa5b1e688341b384335959e7e69deb1fec` |
+
+Counter deltas were independently checked against the source runner artifact:
+R3 P1 RX/TX/drops `+2301/+2304/+0`, P2 `+768/+768/+0`, and P4
+`+3072/+3069/+0`. The small RX/TX differences on P1 and P4 reflect opposite-
+direction/background packets in interface totals; the forwarding assertion is
+the exact P4 ingress and aggregate P1/P2 egress match.
+
 ## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
