@@ -2,6 +2,20 @@
 
 更新时间：2026-10-13
 
+## R2 per-phase VPP CPU runner replay — 2026-10-13
+
+Post-commit `3bc9e10` physical R2 replay passed all bounded phases. The
+artifact records stable VPP identity, 3072 generated frames matching I211
+TX-good delta, unchanged TX-drop count (92175), and successful stream cleanup.
+Per-phase VPP process CPU was 99.65%, 99.26%, and 101.05% on a one-logical-CPU
+basis. This is a source-only diagnostic: no R3/receiver snapshots bracketed
+the run, and CLI/stream-control overhead is included in the observed TX rate.
+It does not qualify wire throughput, paired system CPU, latency, sustained
+load, or line rate.
+
+Artifact: `build/physical-udp64-cpu-window-20261013/r2-source/result.json`,
+SHA256 `144cb4f42b999cb78105ad1c16269d918e4b9ba77c2442ce46aa50fc21c0e74e`.
+
 ## Latest delivery: r14 BIOS installable lab ISO
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r14.iso`

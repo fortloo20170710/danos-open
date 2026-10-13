@@ -2,6 +2,25 @@
 
 更新时间：2026-10-13
 
+## R2 per-phase VPP CPU runner replay — 2026-10-13
+
+After commit `3bc9e10`, the bounded serial runner was replayed on physical R2.
+All three four-flow phases completed exactly 1024 frames each (3072 total);
+I211 TX-good increased by 3072, TX drops remained 92175, VPP PID/start ticks
+remained stable, and all packet-generator streams were removed. Per-phase VPP
+process CPU, normalized to one logical CPU, was 99.65%, 99.26%, and 101.05%
+at requested 100/500/1000 pps per flow. Values above 100% are valid for
+multi-threaded process accounting; this run indicates roughly one core of
+VPP polling load, not a throughput/capacity pass. The hardware-counter window
+rates (394.05, 1640.05, 2588.68 TX pps) include CLI and stream-control
+overhead and are diagnostics, not wire-rate claims. No R3 or independent
+receiver snapshots bracketed this replay, so this is source-side runner/CPU
+evidence only; latency, paired system CPU, sustained performance and line
+rate remain open.
+
+Artifact: `build/physical-udp64-cpu-window-20261013/r2-source/result.json`,
+SHA256 `144cb4f42b999cb78105ad1c16269d918e4b9ba77c2442ce46aa50fc21c0e74e`.
+
 ## Independent receiver counter capture procedure — 2026-10-13
 
 `capture_physical_receiver_serial.py` performs a read-only, MAC-guarded
