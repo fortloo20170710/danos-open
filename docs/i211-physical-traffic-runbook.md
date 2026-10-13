@@ -118,6 +118,33 @@ R3 P1 RX/TX/drops `+2301/+2304/+0`, P2 `+768/+768/+0`, and P4
 direction/background packets in interface totals; the forwarding assertion is
 the exact P4 ingress and aggregate P1/P2 egress match.
 
+## Scripted physical UDP extended window — 2026-10-13
+
+The same runner was exercised with 1024 frames per flow in each of its three
+requested pacing phases: 12,288 generated frames total. R2 hardware TX delta
+matched exactly and its TX-drop counter stayed at 92175; VPP identity was
+stable and packet-generator streams were removed. R3 VPP PID remained 3272,
+and both FIB adjacencies stayed resolved. R3 P4 RX increased by 12,288; P1
+and P2 TX increased by 9,216 and 3,072 respectively, summing exactly to
+12,288. P1/P2/P4 drops did not increase. This validates bounded longer-window
+forwarding and use of both ECMP egresses; it is not a wire-rate, PPS,
+throughput, latency, CPU, or long-duration soak qualification. Independent
+R1/R4 receiver snapshots were not captured for this run.
+
+Artifacts under `build/physical-udp64-soak-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-before/result.json` | `b3fd1313446132fa613c2ce0e59cb461399b4927a3430b32674365b920cb8010` |
+| `r2-source/result.json` | `4571c80298a501ade811ca28ebd355478399864a0a6affaf3a018db95943e7f1` |
+| `r3-after/result.json` | `8297123e38b08604735e1cbb7a54251e74e55d66596abee352406a7b70a72df3` |
+
+Counter deltas: R3 P1 RX/TX/drops `+9210/+9216/+0`, P2
+`+3069/+3072/+0`, and P4 `+12288/+12279/+0`. As in the smaller window,
+per-interface receive/transmit totals include reverse-direction/background
+packets; the ingress and aggregate egress counters exactly match the generated
+frame total.
+
 ## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
