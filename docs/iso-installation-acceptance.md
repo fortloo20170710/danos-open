@@ -244,6 +244,35 @@ during restart or ECMP bucket distribution. R2 remains on r9.
 | `.4` ping log | `56743665179b2e769f3289a26eb2bfe14df4ae6db0f17d311592c852f70a9e82` |
 | `.5` ping log | `ebc80c5b13959537683e47868d3b6a0dbf1f42da83959c975d2e6a1c58f3b4c8` |
 
+### R2 transit observation across R3 VPP restart — 2026-10-13
+
+A 600-second R2-originated watcher recorded 2,398 single-packet probes, round-
+robin to `30.30.30.2`–`.5`. Three initial misses were neighbor warm-up. A second
+cluster contained 29 misses across all four destinations, from watcher samples
+777 through 806 (with one transient success at 805); the first and last misses
+were 7.26 seconds apart. From sample 807 onward, all destinations responded,
+including a complete successful four-destination round by sample 810. The
+watcher observed 2,366 successes and 32 misses total. This is a functional
+restart interruption observation, not a lossless-restart or performance claim.
+
+R2's wall clock was within about one second of the development host. A follow-up
+clock check found R3's wall clock lagged R2 by 591.6 seconds (approximately
+1.3-second combined bracketing uncertainty). After correcting that offset, the
+R3 restart request maps to R2 time `1791852692.04 ± 1.3`; the first loss was at
+`1791852692.20`, the last at `1791852699.46`, and a complete successful
+four-target round completed by `1791852700.46`. Thus the clustered losses span
+the restart and recovery interval. R3 changed VPP PID `2611` to
+`2770` and its captured post-restart FIB had two resolved ECMP paths. The
+restart script nevertheless returned FAIL because `GigabitEthernet4/0/0` had
+no carrier. Thus transit interruption/recovery was observed, while the full
+R3 restart gate remains OPEN until the P4 physical-link condition is resolved.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-r3-vpp-restart-transit-600s-20261013/start.json` | `627d33aec2e6769f7c4d86440513088fb1c95ceff13688dfd2630f647e5ec730` |
+| `r2-r3-vpp-restart-transit-600s-20261013/collected.json` | `06e7c6e70a4398f68cd504ff0bdbbee4ee667422d01716d22d96df78d84bbed2` |
+| `r3-r14-vpp-restart-transit-600s-20261013/result.json` | `ec8b9f2732b53b5669404746e567d8b8dd52f4890d768ef90264f0dfbed99704` |
+
 ## Previous delivery: r13 BIOS installable lab ISO
 
 ### Installed-image management qualification (2026-10-12)
