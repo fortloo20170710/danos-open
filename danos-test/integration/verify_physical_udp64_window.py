@@ -64,11 +64,14 @@ def validate_fib(raw: str) -> None:
 
 
 def verify_window(paths: dict[str, Path]) -> dict:
-    required = ("source", "r3_before", "r3_after", "r1_before", "r1_after",
-                "r4_before", "r4_after")
+    required = ("source", "r3_before", "r3_after")
     missing = [key for key in required if key not in paths]
     if missing:
         raise WindowError("missing evidence paths: " + ",".join(missing))
+    receiver_keys = ("r1_before", "r1_after", "r4_before", "r4_after")
+    has_receiver_evidence = any(key in paths for key in receiver_keys)
+    if has_receiver_evidence and any(key not in paths for key in receiver_keys):
+        raise WindowError("receiver evidence must include R1/R4 before/after snapshots")
     source = read_json(paths["source"])
     try:
         count = source["frames_per_flow_per_phase"]
@@ -90,6 +93,30 @@ def verify_window(paths: dict[str, Path]) -> dict:
                 raise WindowError(f"R3 hardware identity mismatch on {interface}")
     if before["pid"] != after["pid"]:
         raise WindowError("R3 VPP process changed during traffic window")
+    r3_cpu_pct = None
+    cpu_before, cpu_after = before.get("vpp_cpu_sample"), after.get("vpp_cpu_sample")
+    if cpu_before is not None or cpu_after is not None:
+        if not isinstance(cpu_before, dict) or not isinstance(cpu_after, dict):
+            raise WindowError("R3 VPP CPU samples are incomplete")
+        for sample in (cpu_before, cpu_after):
+            if (str(sample.get("pid")) != str(before["pid"]) or
+                    not sample.get("start_ticks") or
+                    type(sample.get("cpu_ticks")) is not int or sample["cpu_ticks"] < 0 or
+                    type(sample.get("clock_ticks_per_second")) is not int or
+                    sample["clock_ticks_per_second"] <= 0 or
+                    type(sample.get("monotonic")) not in (int, float) or
+                    not math.isfinite(sample["monotonic"])):
+                raise WindowError("R3 VPP CPU sample is invalid")
+        elapsed = cpu_after["monotonic"] - cpu_before["monotonic"]
+        delta = cpu_after["cpu_ticks"] - cpu_before["cpu_ticks"]
+        hz = cpu_before["clock_ticks_per_second"]
+        if (cpu_before["start_ticks"] != cpu_after["start_ticks"] or elapsed <= 0 or
+                delta < 0 or cpu_after["clock_ticks_per_second"] != hz):
+            raise WindowError("R3 VPP CPU sample identity or interval changed")
+        r3_cpu_pct = delta * 100 / (hz * elapsed)
+        r3_cpu_elapsed = elapsed
+    else:
+        r3_cpu_elapsed = None
     for snapshot in (before, after):
         timestamp = snapshot.get("captured_unix_time")
         if type(timestamp) not in (int, float) or not math.isfinite(timestamp):
@@ -117,27 +144,31 @@ def verify_window(paths: dict[str, Path]) -> dict:
     if any(r3[port]["drops"] for port in R3_PORTS):
         raise WindowError("R3 drop counter increased during traffic window")
 
-    try:
-        receiver = verify_receivers({
-            "R1": (paths["r1_before"], paths["r1_after"]),
-            "R4": (paths["r4_before"], paths["r4_after"]),
-        }, expected_rx_total=generated)
-    except ValueError as error:
-        raise WindowError(str(error)) from None
-    receiver_deltas = {role: receiver["receivers"][role]["rx_delta"] for role in ("R1", "R4")}
-    # R3 P1 is physically connected to R4; P2 is physically connected to R1.
-    if receiver_deltas["R4"] != r3[p1]["tx packets"]:
-        raise WindowError("R4 independent RX does not match R3 P1 egress")
-    if receiver_deltas["R1"] != r3[p2]["tx packets"]:
-        raise WindowError("R1 independent RX does not match R3 P2 egress")
+    receiver = None
+    receiver_deltas = None
+    if has_receiver_evidence:
+        try:
+            receiver = verify_receivers({
+                "R1": (paths["r1_before"], paths["r1_after"]),
+                "R4": (paths["r4_before"], paths["r4_after"]),
+            }, expected_rx_total=generated)
+        except ValueError as error:
+            raise WindowError(str(error)) from None
+        receiver_deltas = {role: receiver["receivers"][role]["rx_delta"] for role in ("R1", "R4")}
+        # R3 P1 is physically connected to R4; P2 is physically connected to R1.
+        if receiver_deltas["R4"] != r3[p1]["tx packets"]:
+            raise WindowError("R4 independent RX does not match R3 P1 egress")
+        if receiver_deltas["R1"] != r3[p2]["tx packets"]:
+            raise WindowError("R1 independent RX does not match R3 P2 egress")
 
     evidence_hashes = {key: hashlib.sha256(path.read_bytes()).hexdigest()
                        for key, path in paths.items()}
     return {
         "schema_version": 1, "status": "PASS",
-        "scope": "bounded physical 64-byte UDP end-to-end functional window",
+        "scope": ("bounded physical 64-byte UDP end-to-end functional window" if has_receiver_evidence
+                  else "bounded physical 64-byte UDP R2-to-R3 forwarding window"),
         "performance_status": "ENVIRONMENT-OPEN",
-        "performance_limitations": ["latency not measured", "CPU not measured",
+        "performance_limitations": ["latency not measured", "R3 CPU snapshot interval is not phase-aligned",
                                     "window-average rate is not line-rate qualification"],
         "generated_frames": generated,
         "r2_hardware_tx_delta": source["hardware_tx_delta"],
@@ -145,23 +176,30 @@ def verify_window(paths: dict[str, Path]) -> dict:
         "r2_tx_drops_after": source["tx_drops_after"],
         "phase_rates": [{key: phase[key] for key in (
             "requested_pps_per_flow", "hardware_tx_delta", "observation_seconds",
-            "measured_tx_pps", "measured_mbps")} for phase in source["phases"]],
+            "measured_tx_pps", "measured_mbps", "vpp_cpu_pct_one_core")
+                        if key in phase} for phase in source["phases"]],
         "r3_pid": before["pid"], "r3_counter_deltas": r3,
+        "r3_vpp_cpu_pct_one_core": r3_cpu_pct,
+        "r3_cpu_sample_elapsed_seconds": r3_cpu_elapsed,
         "independent_receiver_rx_deltas": receiver_deltas,
-        "receiver_packets_rx": receiver["receiver_packets_rx"],
+        "receiver_packets_rx": receiver["receiver_packets_rx"] if receiver else None,
         "evidence_sha256": evidence_hashes,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("source", "r3-before", "r3-after", "r1-before", "r1-after", "r4-before", "r4-after"):
+    for name in ("source", "r3-before", "r3-after"):
         parser.add_argument("--" + name, type=Path, required=True)
+    for name in ("r1-before", "r1-after", "r4-before", "r4-after"):
+        parser.add_argument("--" + name, type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
-    paths = {"source": args.source, "r3_before": args.r3_before, "r3_after": args.r3_after,
-             "r1_before": args.r1_before, "r1_after": args.r1_after,
-             "r4_before": args.r4_before, "r4_after": args.r4_after}
+    paths = {"source": args.source, "r3_before": args.r3_before, "r3_after": args.r3_after}
+    for key in ("r1_before", "r1_after", "r4_before", "r4_after"):
+        value = getattr(args, key)
+        if value is not None:
+            paths[key] = value
     try:
         result = verify_window(paths)
     except (WindowError, OSError, ValueError, TypeError, KeyError) as error:

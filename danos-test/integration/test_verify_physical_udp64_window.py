@@ -25,6 +25,12 @@ def source_result():
         "cleanup_remaining": [], "streams_after": "no streams currently defined\n",
         "phases": [{
             "requested_pps_per_flow": rate, "limit_per_flow": count,
+            "vpp_cpu_before": {"pid": "200", "start_ticks": "900", "cpu_ticks": 0,
+                               "clock_ticks_per_second": 100, "monotonic": 1.0},
+            "vpp_cpu_after": {"pid": "200", "start_ticks": "900", "cpu_ticks": 10,
+                              "clock_ticks_per_second": 100, "monotonic": 2.0},
+            "vpp_cpu_elapsed_seconds": 1.0, "vpp_cpu_delta_ticks": 10,
+            "vpp_cpu_clock_ticks_per_second": 100, "vpp_cpu_pct_one_core": 10.0,
             "final_counts": {f"danos64_{rate}_{i}": count for i in range(4)},
             "observation_seconds": 1.0, "hardware_tx_delta": 1024,
             "measured_tx_pps": 1024.0, "measured_mbps": 0.524288,
@@ -52,6 +58,10 @@ def r3_snapshot(phase, counters):
         "status": "PASS", "phase": phase,
         "scope": "read-only R3 interface counters and FIB", "pid": "300",
         "captured_unix_time": 100 if phase == "before" else 200,
+        "vpp_cpu_sample": {"pid": "300", "start_ticks": "900",
+                           "cpu_ticks": 100 if phase == "before" else 200,
+                           "clock_ticks_per_second": 100,
+                           "monotonic": 10.0 if phase == "before" else 20.0},
         "fib": fib, "interfaces": "\n".join(lines),
         "hardware_p1": "Ethernet address 00:1f:7a:69:f7:4c",
         "hardware_p2": "Ethernet address 00:1f:7a:69:f7:4d",
@@ -102,7 +112,35 @@ class PhysicalUDPWindowTest(unittest.TestCase):
         self.assertEqual(result["receiver_packets_rx"], 3072)
         self.assertEqual(result["r3_counter_deltas"]["GigabitEthernet1/0/0"]["tx packets"], 1024)
         self.assertEqual(result["r3_counter_deltas"]["GigabitEthernet2/0/0"]["tx packets"], 2048)
+        self.assertEqual(result["phase_rates"][0]["vpp_cpu_pct_one_core"], 10.0)
         self.assertEqual(result["performance_status"], "ENVIRONMENT-OPEN")
+        self.assertEqual(result["r3_vpp_cpu_pct_one_core"], 10.0)
+
+    def test_r3_cpu_identity_change_is_rejected(self):
+        self.values["r3_after"]["vpp_cpu_sample"]["start_ticks"] = "changed"
+        self.paths["r3_after"].write_text(json.dumps(self.values["r3_after"]))
+        with self.assertRaisesRegex(WindowError, "CPU sample identity"):
+            verify_window(self.paths)
+
+    def test_r3_cpu_percentage_is_not_capped_at_one_hundred(self):
+        self.values["r3_after"]["vpp_cpu_sample"]["cpu_ticks"] = 1300
+        self.values["r3_after"]["vpp_cpu_sample"]["monotonic"] = 20.0
+        self.paths["r3_after"].write_text(json.dumps(self.values["r3_after"]))
+        result = verify_window(self.paths)
+        self.assertEqual(result["r3_vpp_cpu_pct_one_core"], 120.0)
+
+    def test_partial_r3_cpu_interval_is_rejected(self):
+        del self.values["r3_after"]["vpp_cpu_sample"]
+        self.paths["r3_after"].write_text(json.dumps(self.values["r3_after"]))
+        with self.assertRaisesRegex(WindowError, "CPU samples are incomplete"):
+            verify_window(self.paths)
+
+    def test_r2_r3_window_can_be_verified_without_claiming_receiver_delivery(self):
+        result = verify_window({key: self.paths[key]
+                                for key in ("source", "r3_before", "r3_after")})
+        self.assertEqual(result["status"], "PASS")
+        self.assertIsNone(result["receiver_packets_rx"])
+        self.assertIn("R2-to-R3", result["scope"])
 
     def test_receiver_mismatch_is_rejected(self):
         self.values["r1_after"]["rx_good_packets"] += 1

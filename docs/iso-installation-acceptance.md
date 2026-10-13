@@ -16,6 +16,14 @@ load, or line rate.
 Artifact: `build/physical-udp64-cpu-window-20261013/r2-source/result.json`,
 SHA256 `144cb4f42b999cb78105ad1c16269d918e4b9ba77c2442ce46aa50fc21c0e74e`.
 
+The following bounded R2→R3 batch has a separate route-only verifier because
+independent R1/R4 snapshots were not taken. R2 TX +3072 equals R3 P4 RX +3072;
+R3 P1/P2 TX +2304/+768 sum to ingress and all three drop deltas are zero.
+R3 VPP PID/start ticks stayed stable. R3 CPU snapshots span 691.49 seconds,
+so the derived 99.75% is not synchronized to the packet phases and is not a
+traffic CPU qualification. See `docs/i211-physical-traffic-runbook.md` for
+scope and artifact digests. Overall performance remains ENVIRONMENT-OPEN.
+
 ## Latest delivery: r14 BIOS installable lab ISO
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r14.iso`

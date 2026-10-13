@@ -21,6 +21,35 @@ rate remain open.
 Artifact: `build/physical-udp64-cpu-window-20261013/r2-source/result.json`,
 SHA256 `144cb4f42b999cb78105ad1c16269d918e4b9ba77c2442ce46aa50fc21c0e74e`.
 
+## R2→R3 bounded UDP forwarding and CPU snapshots — 2026-10-13
+
+The source runner and R3 before/after snapshots were correlated with the
+R2-to-R3-only verifier. R2 I211 TX-good and R3 P4 RX both increased by 3072;
+R3 P1/P2 TX increased by 2304/768, summing exactly to ingress, and P1/P2/P4
+drop deltas were zero. R3 VPP PID 3272 and start ticks 5373772 were unchanged.
+This proves bounded forwarding across both egresses during the snapshot
+interval, but does not claim independent receiver delivery (R1/R4 counters
+were not captured for this batch).
+
+The R3 CPU snapshots were 691.49 seconds apart, much wider than the few-second
+packet-generation phases. Their 99.75% one-core-normalized process CPU average
+is therefore explicitly not phase-aligned and is not a traffic CPU result.
+R2's per-phase CPU samples are concurrent with each source phase (99.54%,
+100.66%, 99.27%), but reflect the packet-generator source VPP, not R3's
+forwarding CPU. The observed NIC-counter phase rates include CLI/polling
+overhead and are diagnostic only. Latency, paired forwarding CPU, independent
+receiver totals, sustained performance and line-rate qualification remain
+open.
+
+Artifacts under `build/physical-udp64-r3cpu-window-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `d21ccb0555cd693449ab754d98de2004bb9dcb2f1f5ea4d69ed3956f23dc4218` |
+| `r3-before/result.json` | `1dbb280a8920b2c69a3c932c847e26c3cf5bc561a978dfd0026f5f65b9fa3faf` |
+| `r3-after/result.json` | `ae8bb8a3ad213f4daa7c0ca893fba202eb0c59fc1502f43a8162e8a2c355d155` |
+| `r2-r3-window.json` | `4d980036dc48d5ebb45866a10995b144138cd7375e2e79dad9722384ce56a0c1` |
+
 ## Independent receiver counter capture procedure — 2026-10-13
 
 `capture_physical_receiver_serial.py` performs a read-only, MAC-guarded

@@ -22,7 +22,7 @@ def main():
 
     marker = "DANOS_R3_COUNTER_SNAPSHOT_" + uuid.uuid4().hex + ":"
     script = f'''
-import subprocess,json,re,time
+import subprocess,json,re,time,os
 result={{"status":"FAIL","phase":{args.phase!r},"scope":"read-only R3 interface counters and FIB"}}
 vpp=["/usr/bin/vppctl","-s","/run/vpp/cli.sock"]
 def run(argv):
@@ -30,10 +30,17 @@ def run(argv):
     if p.returncode or re.search(r"unknown input|connection refused",p.stdout,re.I):
         raise RuntimeError("command failed: "+" ".join(argv)+" "+p.stdout+p.stderr)
     return p.stdout
+def cpu_sample(pid):
+    fields=open('/proc/'+pid+'/stat').read().rsplit(') ',1)[1].split()
+    return {{'pid':pid,'start_ticks':fields[19],
+            'cpu_ticks':int(fields[11])+int(fields[12]),
+            'clock_ticks_per_second':os.sysconf('SC_CLK_TCK'),
+            'monotonic':time.monotonic()}}
 try:
     result["captured_unix_time"] = time.time()
     result["pid"] = run(["systemctl","show","vpp","-p","MainPID","--value"]).strip()
     assert result["pid"] not in ("","0"),"VPP is not active"
+    result["vpp_cpu_sample"] = cpu_sample(result["pid"])
     for port,mac in ((1,"00:1f:7a:69:f7:4c"),(2,"00:1f:7a:69:f7:4d")):
         raw=run(vpp+["show","hardware-interfaces",f"GigabitEthernet{{port}}/0/0"])
         assert re.search(r"Ethernet address\\s+"+re.escape(mac)+r"\\b",raw,re.I),f"R3 P{{port}} MAC mismatch"
