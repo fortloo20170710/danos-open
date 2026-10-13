@@ -52,8 +52,11 @@ A second R2 four-destination batch was bracketed by R3 counter snapshots:
 egress P1/P2 TX +105/+315, with unchanged drop counters and unchanged two-path
 FIB. The exact ingress/egress/request total match confirms both physical ECMP
 paths carried this sample. The 25/75 split is not a statistical balance or
-performance claim. Snapshot and probe hashes are in
-`iso-installation-acceptance.md`.
+performance claim. A subsequent paired independent receiver window matched
+the same 420 packets: R1 RX +315 and R4 RX +105, with stable node MACs and VPP
+PIDs. This closes functional receiver-delivery accounting for this bounded
+ICMP batch, not 64-byte PPS/throughput/latency/CPU qualification. Snapshot and
+probe hashes are in `iso-installation-acceptance.md`.
 
 R3 VPP service restart recovery also passes: PID 741→1576, P1/P2/P4 profile
 restored, both ECMP next hops resolved, and 100/100 direct peer probes to R1
@@ -83,11 +86,11 @@ R1/R4 independent receiver snapshot and counter-window tools.
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
 hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
-runner environment only. A bounded R2 source calibration was correlated with
-R3 FIB +4096 and P1/P2 egress +3072/+1024; it confirms both buckets carried
-the sampled four flows, not performance. The R1 independent NIC baseline is
-captured; R4 baseline and paired post-test receiver deltas remain pending, so
-64-byte performance qualification remains OPEN.
+runner environment only. Bounded R2 batches have been correlated with R3's
+two ECMP buckets; the latest paired receiver window matched R3 ingress +420
+with independent R1/R4 RX +315/+105. This is functional delivery evidence,
+not performance. Qualified 64-byte PPS/throughput/latency/CPU measurement
+remains OPEN.
 
 Current CTest 74/74 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves

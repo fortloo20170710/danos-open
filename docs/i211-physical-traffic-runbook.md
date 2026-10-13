@@ -14,13 +14,37 @@ It emits `receiver_counter_source=external-nic` and the independently observed
 `receiver_packets_rx` for the common performance-result recorder. These tools
 do not themselves generate traffic or qualify PPS/latency/CPU.
 
-R1's staged baseline is PASS, MAC `00:1f:7a:40:28:20`,
-`GigabitEthernet1/0/0`, VPP PID 1891 and RX good-packets 5784. Artifact:
-`build/receiver-window-20261013/r1-before/result.json`, SHA256
-`d5d17c5101abb4fcc8fdf77fb80745566311a47d92a7a2ec87c5e621ea0a45ba`.
-R4 baseline and both post-test snapshots remain pending. Because the staged
-baseline was taken before the full window was prepared, recapture R1 and R4
-immediately before the next measured traffic run; no paired window is open.
+The staged baseline has since been superseded by a complete paired functional
+counter window (details below). Neither window measures qualified PPS,
+throughput, latency or CPU; 64-byte performance remains open.
+
+## Paired physical receiver and ECMP counter window — 2026-10-13
+
+Fresh identity-guarded snapshots bracketed one R2→R3 probe batch. R2 sent
+420 requests (four 5-packet readiness probes plus four measured 100-packet
+probes); each measured endpoint passed 100/100, zero loss, TTL 63. R2 VPP PID
+remained 2097. R3 PID remained 3272 with the same two resolved forwarding
+adjacencies. R3 P4 RX/TX increased +420/+420; P1 toward R4 increased +105 and
+P2 toward R1 +315. R3 drop deltas were zero on P1/P2/P4. Independent receiver
+NIC RX deltas were R4 +105 and R1 +315, totaling exactly 420. This verifies
+functional packet delivery and use of both physical ECMP paths for this
+four-destination sample. The 25/75 split is not statistical balance; ICMP
+counter correlation is not a 64-byte performance, line-rate, latency or CPU
+qualification.
+
+Artifacts are under `build/receiver-window-rerun-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-probe/result.json` | `f082301e0038c2563d57a77a64ea5ad97489891c557ed7a402185529e0a10e95` |
+| `r3-before/result.json` | `34c822455f13088d255114db0c0d547b5af28e7ce103b755e19e4ab5f26075e` |
+| `r3-after/result.json` | `7318f99a259f3ed5592aa0f04d8fb7a068306d13fb1ff33cdc9a144e93034d63` |
+| `r3-correlation.json` | `07392ea1a179420f6716a72fe37b08136d6c8a65b5683320e534e830fc4e0eef` |
+| `r1-before/result.json` | `ddce4f69f925b6001126a5425f7956bd3d3484212f2ddae1d67761bc30fb470e` |
+| `r1-after/result.json` | `8ff0a80c9ef1ac208e376260f4113fa69010aa98201275d223ad267569f53048` |
+| `r4-before/result.json` | `3f7e5d4879dc0430c9e3c5dc27fbc102a0d7d8987b31db13439bb8d49e07d480` |
+| `r4-after/result.json` | `9d5f74cb2d5dc0dbe8b0d3cc5bde60608044e3efb3db26a33496a71911fce0f4` |
+| `receiver-window.json` | `8f9fa59c813222b40a2893d09963453d6b8b684ea39440565288a111f9d1e9e8` |
 
 ## R2 bounded source calibration — 2026-10-13
 

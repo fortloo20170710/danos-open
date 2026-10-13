@@ -206,7 +206,34 @@ The evidence parser unit tests cover two-path state, single-path state, and
 the stale-path-list case where the forwarding DPO is still unresolved ARP.
 Full CTest now passes 70/70.
 
-### R2 four-flow ECMP counter correlation — 2026-10-13
+### Paired R1/R4 receiver window and R3 ECMP correlation — 2026-10-13
+
+Fresh, identity-guarded snapshots on R1/R4 bracketed a bounded R2 probe batch;
+R3 interface/FIB snapshots were captured immediately around the traffic. R2
+VPP PID 2097 and R3 PID 3272 were stable. Four remote loopback targets each
+passed 100/100 ICMP with TTL 63; four successful five-packet warmups make 420
+requests total. R3 retained the same two resolved FIB/DPO paths. R3 P4 RX/TX
+increased +420/+420, while P1 toward R4 increased +105 and P2 toward R1 +315;
+P1/P2/P4 drop deltas were zero. Independent receiver RX counters matched:
+R4 +105, R1 +315, aggregate +420. This closes the bounded functional
+receiver-accounting window and confirms both paths carried packets. The
+25/75 split is not a statistical balance, and this ICMP test is not a 64-byte
+PPS, throughput, latency or CPU qualification. R2 remains r9 while R1/R3/R4
+are r14; homogeneous-version validation remains open.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `build/receiver-window-rerun-20261013/r2-probe/result.json` | `f082301e0038c2563d57a77a64ea5ad97489891c557ed7a402185529e0a10e95` |
+| `build/receiver-window-rerun-20261013/r3-before/result.json` | `34c822455f13088d255114db0c0d547b5af28e7ce103b755e19e4ab5f26075e` |
+| `build/receiver-window-rerun-20261013/r3-after/result.json` | `7318f99a259f3ed5592aa0f04d8fb7a068306d13fb1ff33cdc9a144e93034d63` |
+| `build/receiver-window-rerun-20261013/r3-correlation.json` | `07392ea1a179420f6716a72fe37b08136d6c8a65b5683320e534e830fc4e0eef` |
+| `build/receiver-window-rerun-20261013/r1-before/result.json` | `ddce4f69f925b6001126a5425f7956bd3d3484212f2ddae1d67761bc30fb470e` |
+| `build/receiver-window-rerun-20261013/r1-after/result.json` | `8ff0a80c9ef1ac208e376260f4113fa69010aa98201275d223ad267569f53048` |
+| `build/receiver-window-rerun-20261013/r4-before/result.json` | `3f7e5d4879dc0430c9e3c5dc27fbc102a0d7d8987b31db13439bb8d49e07d480` |
+| `build/receiver-window-rerun-20261013/r4-after/result.json` | `9d5f74cb2d5dc0dbe8b0d3cc5bde60608044e3efb3db26a33496a71911fce0f4` |
+| `build/receiver-window-rerun-20261013/receiver-window.json` | `8f9fa59c813222b40a2893d09963453d6b8b684ea39440565288a111f9d1e9e8` |
+
+### Earlier R2 four-flow ECMP counter correlation — 2026-10-13
 
 Read-only R3 snapshots bracketed a fresh identity-checked R2 probe batch.
 The same two resolved FIB/DPO next hops and VPP PID 1576 were present before
