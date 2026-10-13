@@ -15,6 +15,8 @@ METRICS = (
     "mbps", "rtt_p50_us", "rtt_p99_us", "cpu_pct", "ecmp_bucket_0",
     "ecmp_bucket_1",
 )
+RECEIVER_FIELDS = ("receiver_id", "receiver_counter_source", "receiver_packets_rx")
+INDEPENDENT_RECEIVER_SOURCES = {"external-nic", "external-generator"}
 
 
 class ResultError(Exception):
@@ -76,12 +78,16 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
     if decimal(measured, "packet_size_bytes") != 64:
         raise ResultError("first qualification requires 64-byte packets")
     missing = [key for key in METRICS if not measured.get(key)]
+    missing.extend(key for key in RECEIVER_FIELDS if not measured.get(key))
     if missing:
         raise ResultError("measurement is missing: " + ",".join(missing))
+    if measured["receiver_counter_source"] not in INDEPENDENT_RECEIVER_SOURCES:
+        raise ResultError("receiver_counter_source must identify an independent receiver")
 
     flows = decimal(measured, "flows")
     tx = decimal(measured, "packets_tx")
     rx = decimal(measured, "packets_rx")
+    receiver_rx = decimal(measured, "receiver_packets_rx")
     loss = decimal(measured, "loss_pct")
     duration = decimal(measured, "duration_ms")
     pps = decimal(measured, "pps")
@@ -103,6 +109,8 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
         raise ResultError("mbps disagrees with pps and 64-byte packet size")
     if rx < 0 or rx > tx:
         raise ResultError("packets_rx must be between zero and packets_tx")
+    if receiver_rx != rx:
+        raise ResultError("packets_rx must match the independent receiver counter")
     if not 0 <= loss <= 100 or abs(loss - (tx - rx) * 100 / tx) > Decimal("0.2"):
         raise ResultError("loss_pct is outside range or disagrees with packet counters")
     if p50 < 0 or p99 < p50:
@@ -149,6 +157,9 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
     }
     result.update({key: measured[key] for key in METRICS})
     result.update({
+        "receiver_id": measured["receiver_id"],
+        "receiver_counter_source": measured["receiver_counter_source"],
+        "receiver_packets_rx": measured["receiver_packets_rx"],
         "restart_replay": measured.get("restart_replay", "SKIP"),
         "target_bdf": preflight["target_bdf"],
         "pci_vendor_id": preflight["pci_vendor_id"],

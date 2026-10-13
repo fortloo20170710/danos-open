@@ -42,6 +42,9 @@ rtt_p99_us=1200
 cpu_pct=22.5
 ecmp_bucket_0=5000
 ecmp_bucket_1=5000
+receiver_id=peer-i210-01
+receiver_counter_source=external-nic
+receiver_packets_rx=10000
 restart_replay=SKIP
 """
 
@@ -201,6 +204,40 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("at least two 5-tuple flows", output)
         self.assertIn("status=FAIL", output)
+
+    def test_independent_receiver_identity_and_counter_are_preserved(self):
+        proc, output = self.run_case()
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("receiver_id=peer-i210-01", output)
+        self.assertIn("receiver_counter_source=external-nic", output)
+        self.assertIn("receiver_packets_rx=10000", output)
+
+    def test_dut_or_generator_self_report_cannot_claim_receiver(self):
+        for source in ("dut", "traffic-generator"):
+            with self.subTest(source=source):
+                measurement = MEASUREMENT.replace(
+                    "receiver_counter_source=external-nic",
+                    f"receiver_counter_source={source}")
+                proc, output = self.run_case(measurement=measurement)
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn("receiver_counter_source must identify an independent receiver", output)
+
+    def test_receiver_counter_must_match_reported_rx(self):
+        measurement = MEASUREMENT.replace("receiver_packets_rx=10000", "receiver_packets_rx=9999")
+        proc, output = self.run_case(measurement=measurement)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("packets_rx must match the independent receiver counter", output)
+
+    def test_independent_receiver_fields_are_required(self):
+        for field in ("receiver_id", "receiver_counter_source", "receiver_packets_rx"):
+            with self.subTest(field=field):
+                measurement = "\n".join(
+                    line for line in MEASUREMENT.splitlines()
+                    if not line.startswith(field + "=")
+                ) + "\n"
+                proc, output = self.run_case(measurement=measurement)
+                self.assertEqual(proc.returncode, 1)
+                self.assertIn(field, output)
 
 
 if __name__ == "__main__":
