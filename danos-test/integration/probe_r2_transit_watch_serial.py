@@ -37,7 +37,8 @@ while time.monotonic()<deadline:
  seq=len(result["samples"]); dest=target[seq%len(target)]; t0=time.time()
  r=cmd(vpp+["ping",dest,"repeat","1","interval","0.05"])
  stats=re.search(r"Statistics: (\\d+) sent, (\\d+) received, (\\d+(?:\\.\\d+)?)% packet loss",r["out"])
- result["samples"].append({{"seq":seq,"target":dest,"unix":t0,"returncode":r["rc"],"output":r["out"],"stderr":r["err"],"sent":int(stats[1]) if stats else None,"received":int(stats[2]) if stats else None,"loss_pct":float(stats[3]) if stats else None}})
+ received=int(stats[2]) if stats else None
+ result["samples"].append({{"seq":seq,"target":dest,"unix":t0,"returncode":r["rc"],"sent":int(stats[1]) if stats else None,"received":received,"loss_pct":float(stats[3]) if stats else None,"error":(r["err"] or r["out"][-160:]) if received != 1 else None}})
  time.sleep(max(0,0.25-(time.time()-t0)))
 result["completed_unix"]=time.time()
 result["pid_after"]=cmd(["systemctl","show","vpp","-p","MainPID","--value"])["out"].strip()
@@ -96,8 +97,8 @@ def main():
     parser.add_argument("--duration", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    if not 30 <= args.duration <= 180:
-        parser.error("duration must be between 30 and 180 seconds")
+    if not 30 <= args.duration <= 900:
+        parser.error("duration must be between 30 and 900 seconds")
     if args.action == "collect" and not args.token:
         parser.error("--token from the start result is required for collect")
     args.output.mkdir(parents=True, exist_ok=True)
