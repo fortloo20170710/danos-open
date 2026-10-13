@@ -175,6 +175,37 @@ Artifacts under `build/physical-udp64-measured-20261013/`; SHA256:
 | `r2-source/result.json` | `5207f885b9785a1351eb5957caf5d7dc8a4cde08c753f26b7919db7d1e40e5f4` |
 | `r3-after/result.json` | `9d6d69f1fde3c6dcfbf7631e6805996fd06f6c9fde30fc83fd18c653c3774b5b` |
 
+## Full independent-receiver window with measured runner — 2026-10-13
+
+The instrumented runner was exercised again with R1/R4 NIC snapshots bracketing
+the same 12,288-frame profile. R2 transmitted 12,288 frames according to both
+the packet generator and I211 TX-good delta; its TX-drop count stayed at 92175.
+Window-average TX rates were 394.39/1919.27/3742.50 pps (64-byte frame-bit
+rates 0.2019/0.9827/1.9162 Mbps) for requested aggregate rates of
+400/2000/4000 pps. These include runner enable/stop polling overhead, so are
+test-window averages and not line-rate measurements.
+
+R3 PID remained 3272 with both FIB paths resolved. P4 RX was +12,288; P1/P2
+TX were +9,216/+3,072, exactly 12,288 total, with no drop-counter increases.
+Independent receiver snapshots measured R4 RX +9,216 and R1 RX +3,072; the
+receiver-window verifier passed with aggregate RX exactly 12,288. Thus this
+run closes the bounded end-to-end packet-delivery and two-bucket functional
+gate for this profile. It does not qualify latency, CPU, sustained throughput,
+or line rate; those remain open.
+
+Artifacts under `build/physical-udp64-receiver-window-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r1-before/result.json` | `6409937c57e327a60747429105a41afad56638b6c902ef07d98a403f685958fa` |
+| `r1-after/result.json` | `b8a726da6b1e41e21500da6cd17d1d56a230f3c4ea8d51b67ac35402b517ebdf` |
+| `r4-before/result.json` | `2f55dc8b804c7b4f46f16e3e993af0c8513a9b729f00ba49ac1dafc309c85c5f` |
+| `r4-after/result.json` | `07a263ac2a2e9ea3d37c7dd68937e16831e553d31c95fdbaaf1914de80d3b970` |
+| `r3-before/result.json` | `a293fe1c9a720e6c4c834ab0151c88dbca7d1ff666b928cbd7b0e69203601668` |
+| `r3-after/result.json` | `3d47aad82045e382b3b15560128692379ce28a7539ef88c1f94b99f3dc33ab3a` |
+| `r2-source/result.json` | `272636faa32ac2d3be806efe49c62de510f87d6100e85d2a1ee09d3b22c692f7` |
+| `receiver-window.json` | `471553b361065fa390f98d602b7aadbec9e35ed2cb9429abdabc918724d0c7db` |
+
 ## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
