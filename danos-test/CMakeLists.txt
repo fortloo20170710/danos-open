@@ -128,6 +128,12 @@ set_tests_properties(r3_ecmp_failover_serial_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME r3_ecmp_counter_window
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_r3_ecmp_counter_window.py)
 set_tests_properties(r3_ecmp_counter_window PROPERTIES TIMEOUT 30)
+add_test(NAME physical_receiver_counter_capture
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_capture_physical_receiver_serial.py)
+set_tests_properties(physical_receiver_counter_capture PROPERTIES TIMEOUT 30)
+add_test(NAME physical_receiver_counter_window
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_physical_receiver_window.py)
+set_tests_properties(physical_receiver_counter_window PROPERTIES TIMEOUT 30)
 add_test(NAME r2_transit_watch_serial
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_probe_r2_transit_watch_serial.py)
 set_tests_properties(r2_transit_watch_serial PROPERTIES TIMEOUT 30)

@@ -2,6 +2,26 @@
 
 更新时间：2026-10-13
 
+## Independent receiver counter capture procedure — 2026-10-13
+
+`capture_physical_receiver_serial.py` performs a read-only, MAC-guarded
+snapshot of R1 or R4's VPP hardware good-packet counters. Capture separate
+`before` and `after` snapshots around one bounded R2→R3 test; the serial cable
+must be moved to each receiver for its snapshot. Then run
+`verify_physical_receiver_window.py` to require stable per-node VPP PIDs,
+monotonic counters, and (when supplied) an exact expected aggregate RX total.
+It emits `receiver_counter_source=external-nic` and the independently observed
+`receiver_packets_rx` for the common performance-result recorder. These tools
+do not themselves generate traffic or qualify PPS/latency/CPU.
+
+R1's staged baseline is PASS, MAC `00:1f:7a:40:28:20`,
+`GigabitEthernet1/0/0`, VPP PID 1891 and RX good-packets 5784. Artifact:
+`build/receiver-window-20261013/r1-before/result.json`, SHA256
+`d5d17c5101abb4fcc8fdf77fb80745566311a47d92a7a2ec87c5e621ea0a45ba`.
+R4 baseline and both post-test snapshots remain pending. Because the staged
+baseline was taken before the full window was prepared, recapture R1 and R4
+immediately before the next measured traffic run; no paired window is open.
+
 ## R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps

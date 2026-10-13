@@ -77,15 +77,19 @@ non-warmup losses in a 7.26-second cluster aligned after correcting the
 measured R3 clock lag (~591.6 s); all four destinations then returned to stable
 success. This is observed interrupted forwarding and recovery, not lossless
 restart. Evidence and hashes are indexed in `iso-installation-acceptance.md`.
-Full CTest at the current source tree passes 72/72.
+Full CTest at the current source tree passes 74/74, including identity-bound
+R1/R4 independent receiver snapshot and counter-window tools.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
 hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
-runner environment only. A measured 64-byte result and independent receiver
-counts remain OPEN.
+runner environment only. A bounded R2 source calibration was correlated with
+R3 FIB +4096 and P1/P2 egress +3072/+1024; it confirms both buckets carried
+the sampled four flows, not performance. The R1 independent NIC baseline is
+captured; R4 baseline and paired post-test receiver deltas remain pending, so
+64-byte performance qualification remains OPEN.
 
-Current CTest 72/72 PASS (the historical release-gate run below had its
+Current CTest 74/74 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
