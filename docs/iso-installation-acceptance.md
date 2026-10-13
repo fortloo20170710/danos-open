@@ -24,6 +24,13 @@ so the derived 99.75% is not synchronized to the packet phases and is not a
 traffic CPU qualification. See `docs/i211-physical-traffic-runbook.md` for
 scope and artifact digests. Overall performance remains ENVIRONMENT-OPEN.
 
+The latest four-node replay matched R2 TX 3072, R3 P4 RX 3072, R3 P1/P2 TX
+2304/768, and independent R4/R1 RX 2304/768, with no R3 drop increment.
+However, each node's before/after counter window was about 9.5 hours, so the
+strengthened verifier correctly classifies it as `OBSERVED`, not a bounded
+same-batch PASS. Cross-node wall clocks differ and are not used for timing.
+Full artifact hashes are in `docs/i211-physical-traffic-runbook.md`.
+
 ## Latest delivery: r14 BIOS installable lab ISO
 
 - ISO: `build/danos-open-v0.16.0-rc1-generic-dpdk-installable-20261012-r14.iso`

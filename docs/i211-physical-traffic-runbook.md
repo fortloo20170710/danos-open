@@ -50,6 +50,39 @@ Artifacts under `build/physical-udp64-r3cpu-window-20261013/`; SHA256:
 | `r3-after/result.json` | `ae8bb8a3ad213f4daa7c0ca893fba202eb0c59fc1502f43a8162e8a2c355d155` |
 | `r2-r3-window.json` | `4d980036dc48d5ebb45866a10995b144138cd7375e2e79dad9722384ce56a0c1` |
 
+## Four-node physical UDP counter replay — 2026-10-13 (OBSERVED)
+
+R2 again transmitted 3072 finite 64-byte frames; its I211 TX-good delta was
+3072 and TX drops remained 92175. R3 P4 RX increased 3072, P1/P2 TX increased
+2304/768 (sum 3072), and P1/P2/P4 drop deltas were zero. Independent receiver
+RX deltas were R4 +2304 and R1 +768 (sum 3072). VPP identities remained stable.
+The counters are numerically consistent with the generated batch, but the
+per-node before/after snapshots span about 9.5 hours (R3 34296.82s, R1
+34506.95s, R4 34530.42s). They therefore do not prove a tightly bracketed
+same-batch end-to-end window. The verifier returns `OBSERVED`, not `PASS`, for
+any per-node interval above 1800 seconds. Cross-node wall clocks are also
+unsynchronized and were not compared.
+
+R2 source VPP process CPU was sampled during each short generator phase at
+99.67%, 99.19%, and 98.72% on a one-logical-CPU basis. The R3 CPU snapshots
+were 34296.83s apart and are not traffic-aligned; their 99.75% average is not
+used as forwarding CPU qualification. Measured NIC-counter phase rates
+394.11/1665.94/2662.08 pps include CLI/control overhead, not wire rate.
+Latency, sustained performance, and line rate remain open.
+
+Artifacts under `build/physical-udp64-fullwindow-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `83526061fb54858e5d5dd9a1aa03aec7805f7ab8ffeb7a34a1c2fb996bcb84f9` |
+| `r3-before/result.json` | `52bf879170246a54aca7163c7b3e801a630cc4507c2293793ae3729b515a31b8` |
+| `r3-after/result.json` | `5dba6a94d5986a509c11ab12fee603a59780d1af2306b22a64959a7020ec3839` |
+| `r1-before/result.json` | `7d554253db424ccee0eaf284177808d82152552d2b935a4acf4e3b73c160e021` |
+| `r1-after/result.json` | `7a51bd6475f434f49caa8802a30cbe5ffdc4cbda79c7765f0273a9a5b35aa457` |
+| `r4-before/result.json` | `5822fd98bd0c3f6b71d53894e04ff939c16c42b22bbb7eb85340da21f833b086` |
+| `r4-after/result.json` | `9c5ecd7099b1577c38545b2e1ae0fb6432f02703e67c15d9af7814bbb9e67e3c` |
+| `end-to-end-window.json` | `b46d38ad00fdcf7874f9a9b26a096a134e543442b3f305b34ed667a3c45246fe` |
+
 ## Independent receiver counter capture procedure — 2026-10-13
 
 `capture_physical_receiver_serial.py` performs a read-only, MAC-guarded

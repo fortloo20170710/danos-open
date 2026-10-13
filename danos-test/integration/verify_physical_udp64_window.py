@@ -16,6 +16,7 @@ R3_PORTS = ("GigabitEthernet1/0/0", "GigabitEthernet2/0/0",
             "GigabitEthernet4/0/0")
 R3_MACS = {"GigabitEthernet1/0/0": "00:1f:7a:69:f7:4c",
            "GigabitEthernet2/0/0": "00:1f:7a:69:f7:4d"}
+MAX_BRACKET_SECONDS = 1800
 
 
 class WindowError(ValueError):
@@ -123,6 +124,7 @@ def verify_window(paths: dict[str, Path]) -> dict:
             raise WindowError("R3 capture timestamp is invalid")
     if after["captured_unix_time"] <= before["captured_unix_time"]:
         raise WindowError("R3 after snapshot is not later than before snapshot")
+    snapshot_windows = {"R3": after["captured_unix_time"] - before["captured_unix_time"]}
     first, last = parse_interfaces(before.get("interfaces", "")), parse_interfaces(after.get("interfaces", ""))
     if any(port not in first or port not in last for port in R3_PORTS):
         raise WindowError("R3 interface counter snapshot is incomplete")
@@ -160,16 +162,35 @@ def verify_window(paths: dict[str, Path]) -> dict:
             raise WindowError("R4 independent RX does not match R3 P1 egress")
         if receiver_deltas["R1"] != r3[p2]["tx packets"]:
             raise WindowError("R1 independent RX does not match R3 P2 egress")
+        for role, before_key, after_key in (("R1", "r1_before", "r1_after"),
+                                            ("R4", "r4_before", "r4_after")):
+            peer_before, peer_after = read_json(paths[before_key]), read_json(paths[after_key])
+            snapshot_windows[role] = peer_after["captured_unix_time"] - peer_before["captured_unix_time"]
+
+    tightly_bracketed = all(0 < seconds <= MAX_BRACKET_SECONDS
+                            for seconds in snapshot_windows.values())
+    status = "PASS" if tightly_bracketed else "OBSERVED"
+    if tightly_bracketed:
+        scope = ("bounded physical 64-byte UDP end-to-end functional window" if has_receiver_evidence
+                 else "bounded physical 64-byte UDP R2-to-R3 forwarding window")
+        performance_limitations = ["latency not measured", "R3 CPU snapshot interval is not phase-aligned",
+                                   "window-average rate is not line-rate qualification"]
+    else:
+        scope = "counter-delta consistency over wide per-node snapshot intervals"
+        performance_limitations = [
+            "per-node snapshot interval exceeds 1800 seconds; exact deltas do not prove tight same-batch timing",
+            "latency not measured", "R3 CPU snapshot interval is not phase-aligned",
+            "window-average rate is not line-rate qualification"]
 
     evidence_hashes = {key: hashlib.sha256(path.read_bytes()).hexdigest()
                        for key, path in paths.items()}
     return {
-        "schema_version": 1, "status": "PASS",
-        "scope": ("bounded physical 64-byte UDP end-to-end functional window" if has_receiver_evidence
-                  else "bounded physical 64-byte UDP R2-to-R3 forwarding window"),
+        "schema_version": 1, "status": status,
+        "scope": scope,
+        "snapshot_windows_seconds": snapshot_windows,
+        "snapshot_window_limit_seconds": MAX_BRACKET_SECONDS,
         "performance_status": "ENVIRONMENT-OPEN",
-        "performance_limitations": ["latency not measured", "R3 CPU snapshot interval is not phase-aligned",
-                                    "window-average rate is not line-rate qualification"],
+        "performance_limitations": performance_limitations,
         "generated_frames": generated,
         "r2_hardware_tx_delta": source["hardware_tx_delta"],
         "r2_tx_drops_before": source["tx_drops_before"],
@@ -210,7 +231,7 @@ def main() -> int:
     print(json.dumps({"status": result["status"], "generated_frames": result.get("generated_frames"),
                       "receiver_packets_rx": result.get("receiver_packets_rx"),
                       "performance_status": result["performance_status"], "out": str(args.out)}))
-    return 0 if result["status"] == "PASS" else 1
+    return 0 if result["status"] in ("PASS", "OBSERVED") else 1
 
 
 if __name__ == "__main__":

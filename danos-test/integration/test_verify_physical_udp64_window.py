@@ -142,6 +142,15 @@ class PhysicalUDPWindowTest(unittest.TestCase):
         self.assertIsNone(result["receiver_packets_rx"])
         self.assertIn("R2-to-R3", result["scope"])
 
+    def test_wide_per_node_snapshot_windows_are_observed_not_pass(self):
+        for key in ("r1_after", "r4_after", "r3_after"):
+            self.values[key]["captured_unix_time"] += 3601
+            self.paths[key].write_text(json.dumps(self.values[key]))
+        result = verify_window(self.paths)
+        self.assertEqual(result["status"], "OBSERVED")
+        self.assertIn("wide per-node snapshot", result["scope"])
+        self.assertTrue(any("1800 seconds" in item for item in result["performance_limitations"]))
+
     def test_receiver_mismatch_is_rejected(self):
         self.values["r1_after"]["rx_good_packets"] += 1
         self.paths["r1_after"].write_text(json.dumps(self.values["r1_after"]))
