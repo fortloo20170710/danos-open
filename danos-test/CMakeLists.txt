@@ -131,6 +131,9 @@ set_tests_properties(r3_ecmp_counter_window PROPERTIES TIMEOUT 30)
 add_test(NAME r2_transit_watch_serial
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_probe_r2_transit_watch_serial.py)
 set_tests_properties(r2_transit_watch_serial PROPERTIES TIMEOUT 30)
+add_test(NAME r3_vpp_restart_link_gate
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_probe_r3_vpp_restart_serial.py)
+set_tests_properties(r3_vpp_restart_link_gate PROPERTIES TIMEOUT 30)
 add_test(NAME vpp_cpu_sampler
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_collect_vpp_cpu.py)
 set_tests_properties(vpp_cpu_sampler PROPERTIES TIMEOUT 30)

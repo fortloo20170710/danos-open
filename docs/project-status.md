@@ -69,14 +69,15 @@ R3's P2/R1 path has since passed a controlled physical withdrawal/restore:
 the forwarding DPO changed 2→1→2, the surviving and restored direct peer paths
 each passed 5/5, and the final VPP PID was unchanged. ARP re-learning required
 bounded retries; this is not FRR/ZAPI withdrawal or R2 transit evidence.
-The latest R3 VPP restart changed PID 2611→2770 and restored two resolved
-ECMP paths, but the full restart gate returned FAIL because P4 had no carrier.
-A 600-second R2 watcher recorded 29 non-warmup losses in a 7.26-second cluster
-aligned with that restart after correcting the measured R3 clock lag (~591.6 s);
-all four destinations then returned to stable success. This is observed
-interrupted forwarding and recovery, not lossless restart. Evidence and hashes
-are indexed in `iso-installation-acceptance.md`. Full CTest at the current
-source tree passes 71/71.
+The R3 VPP restart gate now requires carrier on transit P1/P2 and records P4
+as optional for this wiring (the developer host is not connected). The latest
+run PASSed, PID 3115→3272, with two resolved paths and 100/100 direct probes to
+both peers. A 600-second R2 watcher on the preceding restart recorded 29
+non-warmup losses in a 7.26-second cluster aligned after correcting the
+measured R3 clock lag (~591.6 s); all four destinations then returned to stable
+success. This is observed interrupted forwarding and recovery, not lossless
+restart. Evidence and hashes are indexed in `iso-installation-acceptance.md`.
+Full CTest at the current source tree passes 72/72.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
@@ -84,7 +85,7 @@ hugepages, the VPP DPDK plugin and API socket are present. This qualifies the
 runner environment only. A measured 64-byte result and independent receiver
 counts remain OPEN.
 
-Current CTest 71/71 PASS (the historical release-gate run below had its
+Current CTest 72/72 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived

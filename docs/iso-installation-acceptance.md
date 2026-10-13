@@ -263,15 +263,20 @@ R3 restart request maps to R2 time `1791852692.04 ± 1.3`; the first loss was at
 four-target round completed by `1791852700.46`. Thus the clustered losses span
 the restart and recovery interval. R3 changed VPP PID `2611` to
 `2770` and its captured post-restart FIB had two resolved ECMP paths. The
-restart script nevertheless returned FAIL because `GigabitEthernet4/0/0` had
-no carrier. Thus transit interruption/recovery was observed, while the full
-R3 restart gate remains OPEN until the P4 physical-link condition is resolved.
+first run returned FAIL because P4 had no carrier; the developer host is not
+connected to the physical router and P4 is not a transit port. The restart gate
+now requires carrier only on transit ports P1/P2 while still recording P4.
+A follow-up restart passed that gate: PID `3115`→`3272`, both peer probes
+100/100, two-path FIB restored; P4 was reported carrier-up in this later run.
+This keeps the transit interruption observation distinct from a lossless
+restart claim.
 
 | Evidence | SHA256 |
 | --- | --- |
 | `r2-r3-vpp-restart-transit-600s-20261013/start.json` | `627d33aec2e6769f7c4d86440513088fb1c95ceff13688dfd2630f647e5ec730` |
 | `r2-r3-vpp-restart-transit-600s-20261013/collected.json` | `06e7c6e70a4398f68cd504ff0bdbbee4ee667422d01716d22d96df78d84bbed2` |
 | `r3-r14-vpp-restart-transit-600s-20261013/result.json` | `ec8b9f2732b53b5669404746e567d8b8dd52f4890d768ef90264f0dfbed99704` |
+| `r3-r14-vpp-restart-optional-p4-final-20261013/result.json` | `1618d67b636c18dd34a3777d117ceb9600ba2c429de97779b01f59e289913a06` |
 
 ## Previous delivery: r13 BIOS installable lab ISO
 

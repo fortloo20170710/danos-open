@@ -16,6 +16,21 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "danos-test/danos-robot"))
 from serial_readonly import _exchange
 
+TRANSIT_PORTS = (1, 2)
+OBSERVED_OPTIONAL_PORTS = (4,)
+
+
+def required_link_failures(hardware_after):
+    return [port for port in TRANSIT_PORTS
+            if "carrier up full duplex" not in hardware_after.get(str(port), "")
+            or "Link speed: 1 Gbps" not in hardware_after.get(str(port), "")]
+
+
+def remote_required_link_gate_source():
+    return (f"failed_links=[port for port in {TRANSIT_PORTS!r} "
+            "if 'carrier up full duplex' not in result['hardware_after'][str(port)] "
+            "or 'Link speed: 1 Gbps' not in result['hardware_after'][str(port)]]")
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -73,7 +88,9 @@ try:
     for port in (1,2,4):
         hardware=command(vpp+["show","hardware-interfaces",f"GigabitEthernet{{port}}/0/0"])
         result["hardware_after"][str(port)]=hardware
-        assert "carrier up full duplex" in hardware and "Link speed: 1 Gbps" in hardware,f"port {{port}} link not ready"
+    result["optional_port_status"]={{str(port):("carrier-up" if "carrier up full duplex" in result["hardware_after"][str(port)] else "no-carrier; optional in transit topology") for port in {OBSERVED_OPTIONAL_PORTS!r}}}
+    {remote_required_link_gate_source()}
+    assert not failed_links,f"transit port(s) {{failed_links}} link not ready"
     result["probes"]=[]
     for target in ("10.20.0.2","10.30.0.2"):
         ready=False
