@@ -46,7 +46,41 @@ Artifacts are under `build/receiver-window-rerun-20261013/`; SHA256:
 | `r4-after/result.json` | `9d5f74cb2d5dc0dbe8b0d3cc5bde60608044e3efb3db26a33496a71911fce0f4` |
 | `receiver-window.json` | `8f9fa59c813222b40a2893d09963453d6b8b684ea39440565288a111f9d1e9e8` |
 
-## R2 bounded source calibration — 2026-10-13
+## Paired physical 64-byte UDP window — 2026-10-13
+
+R2 P1 identity was checked as MAC `00:1f:7a:69:f5:ec`, VPP PID 2097,
+1 Gbps/full duplex, with no pre-existing packet-generator streams. Three
+bounded phases used four 64-byte UDP destination flows to `30.30.30.2`–`.5`,
+256 frames per flow at requested 100/500/1000 pps per flow (3072 frames total).
+The generator stopped each stream at its exact frame limit, the R2 hardware
+TX-good-packet counter increased by 3072, source TX-drop count remained
+92175, VPP PID/start-time remained stable, and all owned streams were deleted.
+
+R3 PID 3272 and its two resolved FIB paths remained stable. R3 P4 RX increased
+by 3072; P1/P2 TX increased by 2304/768, summing to the ingress count, and
+their drop counters did not increase. Independent receiver NIC RX increased
+by R4 +2304 and R1 +768, totaling 3072. This is a bounded 64-byte packet
+delivery/ECMP path-use result, not a line-rate or qualified performance
+result. Requested pacing and phase observation durations are not measured
+wire PPS; the 75/25 four-flow bucket split is not a balance claim. R3 P4 TX
+increased by 3071 (one fewer than ingress); return traffic was not part of the
+pass criterion. Latency and synchronized CPU were not measured.
+
+Evidence under `build/physical-udp64-window-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source.json` | `0d3b048867a83da88ac00dd94d738739cbc3960c66251252ba30fc1be50d255a` |
+| `r3-before/result.json` | `b340916a2f2d5849e2375c99c7ff7c744e6cb4609b225b97e3798f98e223f0c1` |
+| `r3-after/result.json` | `8fea85e25f8759f9d2c3ccbccd63525b255a036aa2fb4d41d28570fbad7bf287` |
+| `r3-correlation.json` | `c27a937fb8f0acb6ad5591e3cf563303b3695f0ff49e7d8602551520d7655012` |
+| `r1-before/result.json` | `55da076ee0429bcaa9258edf3d2d22e07e77ccb6c3b7a91e9d0d35760e621a7f` |
+| `r1-after/result.json` | `24573d868aceca593a4ed949e52e775d8d065fbb0736cd1b30e84c294d39b3c1` |
+| `r4-before/result.json` | `a8c57a181114e5987a0eb17b9f1b75d527aeb6d1e6a8b4daac5039bbd936f44e` |
+| `r4-after/result.json` | `534d8e1015c4897b428ca104274876d90efd621c402f410ae9d296ab62702a26` |
+| `receiver-window.json` | `6bcc2ee8051fd8752e0c51bdd7ce7de0c53ca18a0e1ee125e08bb47351799665` |
+
+## Earlier R2 bounded source calibration — 2026-10-13
 
 UART identity `00:1f:7a:69:f5:ec` confirmed R2 VPP 26.10, P1 at 1 Gbps
 full duplex, and a resolved route to `30.30.30.0/24` via R3. A finite

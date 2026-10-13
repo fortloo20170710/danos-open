@@ -92,6 +92,15 @@ with independent R1/R4 RX +315/+105. This is functional delivery evidence,
 not performance. Qualified 64-byte PPS/throughput/latency/CPU measurement
 remains OPEN.
 
+A separate bounded physical 64-byte UDP batch now also correlates exactly:
+R2 hardware TX +3072, R3 P4 RX +3072, R3 P1/P2 TX +2304/+768, and independent
+R4/R1 RX +2304/+768. Source TX drops and R3 forwarding drop counters did not
+increase; the two resolved FIB paths and VPP process remained stable. This
+closes packet-size-specific functional delivery and two-bucket path-use for
+the finite batch only. It does not establish wire PPS, throughput, latency,
+CPU, sustained load or balanced hashing; performance qualification remains
+OPEN. Evidence hashes are indexed in `iso-installation-acceptance.md`.
+
 Current CTest 74/74 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,

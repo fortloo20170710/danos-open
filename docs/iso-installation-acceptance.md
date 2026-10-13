@@ -206,7 +206,35 @@ The evidence parser unit tests cover two-path state, single-path state, and
 the stale-path-list case where the forwarding DPO is still unresolved ARP.
 Full CTest now passes 70/70.
 
-### Paired R1/R4 receiver window and R3 ECMP correlation — 2026-10-13
+### Paired physical 64-byte UDP window — 2026-10-13
+
+R2 was identity-checked (P1 MAC `00:1f:7a:69:f5:ec`, VPP PID 2097, 1 Gbps
+full duplex, no existing generator streams). Four rendered 64-byte UDP flows
+to `.2`–`.5` each sent 256 frames in requested 100/500/1000 pps-per-flow
+phases, 3072 total. R2 NIC TX-good packets increased exactly 3072; TX-drop
+counter stayed 92175, VPP PID/start ticks stayed stable, and all created
+streams were removed. R3 PID 3272 retained the two resolved FIB paths. R3 P4
+RX +3072 matched R2 TX; R3 P1/P2 TX +2304/+768 summed to ingress. Independent
+receiver NIC RX deltas were R4 +2304 and R1 +768, exactly 3072 total. R3
+P1/P2/P4 drop counters did not increase. This is finite 64-byte functional
+delivery and ECMP path-use evidence; it does not qualify actual wire PPS,
+throughput, latency, CPU, sustained load or bucket balance. R3 P4 TX was
++3071, one below ingress; return traffic was not tested. R2 remains r9 while
+R1/R3/R4 are r14.
+
+| Evidence | SHA256 |
+| --- | --- |
+| `build/physical-udp64-window-20261013/r2-source.json` | `0d3b048867a83da88ac00dd94d738739cbc3960c66251252ba30fc1be50d255a` |
+| `build/physical-udp64-window-20261013/r3-before/result.json` | `b340916a2f2d5849e2375c99c7ff7c744e6cb4609b225b97e3798f98e223f0c1` |
+| `build/physical-udp64-window-20261013/r3-after/result.json` | `8fea85e25f8759f9d2c3ccbccd63525b255a036aa2fb4d41d28570fbad7bf287` |
+| `build/physical-udp64-window-20261013/r3-correlation.json` | `c27a937fb8f0acb6ad5591e3cf563303b3695f0ff49e7d8602551520d7655012` |
+| `build/physical-udp64-window-20261013/r1-before/result.json` | `55da076ee0429bcaa9258edf3d2d22e07e77ccb6c3b7a91e9d0d35760e621a7f` |
+| `build/physical-udp64-window-20261013/r1-after/result.json` | `24573d868aceca593a4ed949e52e775d8d065fbb0736cd1b30e84c294d39b3c1` |
+| `build/physical-udp64-window-20261013/r4-before/result.json` | `a8c57a181114e5987a0eb17b9f1b75d527aeb6d1e6a8b4daac5039bbd936f44e` |
+| `build/physical-udp64-window-20261013/r4-after/result.json` | `534d8e1015c4897b428ca104274876d90efd621c402f410ae9d296ab62702a26` |
+| `build/physical-udp64-window-20261013/receiver-window.json` | `6bcc2ee8051fd8752e0c51bdd7ce7de0c53ca18a0e1ee125e08bb47351799665` |
+
+### Earlier paired R1/R4 receiver window and R3 ECMP correlation — 2026-10-13
 
 Fresh, identity-guarded snapshots on R1/R4 bracketed a bounded R2 probe batch;
 R3 interface/FIB snapshots were captured immediately around the traffic. R2
