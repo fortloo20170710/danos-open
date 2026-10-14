@@ -1,6 +1,6 @@
 # DANOS Open Project Status
 
-## 2026-10-13 development checkpoint (source `423a81e`)
+## 2026-10-13 development checkpoint (source `b7bff99`)
 
 The multicore performance CLI now emits a machine-readable result when the
 real TRex integration is unavailable: `ENVIRONMENT-OPEN` with an explicit
@@ -14,6 +14,12 @@ sum exceeds source `packets_tx`, while still allowing a smaller sum when
 packets are lost. Its focused suite passes **20/20**, including impossible
 counter rejection and a valid loss-bearing observation; full CTest remains
 **77/77 PASS**. The result schema and runner contract document this invariant.
+
+Core desired/programmed diff now snapshots differing object keys under the
+store lock and invokes callbacks after unlocking. This allows a diff callback
+to safely mutate desired state; those changes are intentionally observed by
+the next pass. The reentrant-callback regression passes in normal and
+ASan/LSan builds, with full CTest **77/77 PASS**.
 
 Physical I211 functional forwarding remains independently demonstrated by the
 tightly bracketed 3072-frame run below. The later `tight3` replay is only
