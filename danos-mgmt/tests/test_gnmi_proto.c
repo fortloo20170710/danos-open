@@ -116,6 +116,26 @@ static int test_subscribe_request_decode(void)
     return 0;
 }
 
+static int test_subscribe_unsupported_options_decode(void)
+{
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    gnmi_pb_put_string(&w, 7, "openconfig-interfaces"); /* use_models */
+    size_t sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+
+    gnmi_subscribe_request_t decoded;
+    assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+    assert(decoded.subscribe.unsupported_options);
+    assert(decoded.subscribe.sub_count == 1);
+    printf("[PASS] test_subscribe_unsupported_options_decode\n");
+    return 0;
+}
+
 static int test_get_response_roundtrip(void)
 {
     gnmi_notification_t n;
@@ -262,6 +282,7 @@ int main(void)
     if (test_path_encoding() != 0) failed++;
     if (test_get_request_decode() != 0) failed++;
     if (test_subscribe_request_decode() != 0) failed++;
+    if (test_subscribe_unsupported_options_decode() != 0) failed++;
     if (test_get_response_roundtrip() != 0) failed++;
     if (test_set_request_decode() != 0) failed++;
     if (test_capabilities_encoding() != 0) failed++;

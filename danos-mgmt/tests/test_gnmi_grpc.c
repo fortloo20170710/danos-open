@@ -383,6 +383,26 @@ static int test_unknown_method(void)
     return 0;
 }
 
+static int test_subscribe_unsupported_options_rejected(void)
+{
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    gnmi_pb_put_bool(&w, 7, true); /* unsupported use_models */
+    size_t sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_pb_put_uint64(&w, 5, 1000000000); /* heartbeat_interval */
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+
+    /* Validation must reject unsupported semantics before touching the
+     * connection, and expose the status mapped to gRPC InvalidArgument. */
+    assert(gnmi_handle_subscribe(NULL, 1, req, w.len) ==
+           -(int)DANOS_ERR_INVALID_ARG);
+    printf("[PASS] test_subscribe_unsupported_options_rejected\n");
+    return 0;
+}
+
 /* ---- v0.4: subscribe ONCE + flow control --------------------------------- */
 
 static int test_subscribe_once(void)
@@ -1261,6 +1281,7 @@ int main(void)
     if (test_get() != 0) failed++;
     if (test_set() != 0) failed++;
     if (test_unknown_method() != 0) failed++;
+    if (test_subscribe_unsupported_options_rejected() != 0) failed++;
     if (test_subscribe_once() != 0) failed++;
     if (test_get_large_flow_control() != 0) failed++;
     if (test_concurrent_streams() != 0) failed++;

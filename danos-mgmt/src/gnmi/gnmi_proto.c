@@ -657,6 +657,19 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                     if (!gnmi_decode_path(sd, sn, &sub->path))
                                         return false;
                                 } else {
+                                    if (sf == 2) {
+                                        /* Only STREAM per-path mode is
+                                         * implemented; reject ON_CHANGE. */
+                                        if (gnmi_pbr_varint(&sr) != 0)
+                                            out->subscribe.unsupported_options = true;
+                                        continue;
+                                    }
+                                    /* These per-subscription controls are
+                                     * recognized but not implemented. Keep
+                                     * decoding the request so the RPC layer
+                                     * can return InvalidArgument explicitly. */
+                                    if (sf == 3 || sf == 4 || sf == 5)
+                                        out->subscribe.unsupported_options = true;
                                     gnmi_pbr_skip(&sr, sw);
                                 }
                             }
@@ -670,6 +683,10 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                         break;
                     case 9:
                         out->subscribe.updates_only = gnmi_pbr_varint(&lr) != 0;
+                        break;
+                    case 7: /* use_models: not implemented */
+                        out->subscribe.unsupported_options = true;
+                        gnmi_pbr_skip(&lr, lw);
                         break;
                     default:
                         gnmi_pbr_skip(&lr, lw);

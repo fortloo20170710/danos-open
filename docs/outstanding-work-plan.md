@@ -9,9 +9,8 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-14
 
-Source checkpoint: `e6f6cd9` plus an uncommitted gNMI STREAM fix; CTest 77/77
-and local external gnmic I1-I5/I9 PASS. CI/Coverage passed for `e6f6cd9`, but
-its Interop Gate failed at I5. The current physical and
+Source checkpoint: `8f618ed`; CTest 77/77, local external gnmic I1-I5/I9, and
+GitHub CI/Coverage/Interop Gate PASS. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
 
@@ -36,15 +35,19 @@ Execution priority, as confirmed on 2026-10-14:
    implementation now honors STREAM `updates_only`, emits the required
    initial `sync_response`, applies JSON versus JSON_IETF TypedValue selection,
    and removes an unconditional sleep after event/timed waits. Protocol tests
-   cover initial snapshot, updates-only and both encodings. The current change
-   consumes HTTP/2 RST_STREAM during a live STREAM; its test cancels the
+   cover initial snapshot, updates-only and both encodings. STREAM consumes
+   HTTP/2 RST_STREAM and only reads a frame after verifying the full frame is
+   available, preventing partial-frame stalls. Its test cancels the
    subscription and proves a subsequent Capabilities RPC succeeds on the same
-   connection. A follow-up fixed a blocking read of partial HTTP/2 frames in
-   the STREAM waiter; local external gnmic I1-I5/I9 and full CTest 77/77 pass.
-   Remaining:
-   define/implement `use_models`, sample interval, suppress-redundant and
-   heartbeat semantics or reject unsupported options explicitly; expand
-   cancellation/reset and subscription-lifecycle tests.
+   connection. CTest 77/77, external gnmic I1-I5/I9 and GitHub workflows pass.
+   Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
+   suppress-redundant and heartbeat options now produce gRPC
+   `InvalidArgument` instead of being silently ignored. Decoder and handler
+   regressions cover representative list- and subscription-level options.
+   Full CTest is 77/77 and external gnmic I1-I5/I9 passes. Remaining: broaden
+   cancellation/reset and subscription-lifecycle tests, then implement
+   supported sampling/heartbeat behavior only with a documented delivery
+   contract.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The

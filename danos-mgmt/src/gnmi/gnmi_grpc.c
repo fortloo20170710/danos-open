@@ -1006,10 +1006,12 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
     if (!gnmi_decode_subscribe_request(req, req_len, &sr)) return -1;
 
     const gnmi_subscribe_list_t *sl = &sr.subscribe;
+    if (sl->unsupported_options)
+        return -(int)DANOS_ERR_INVALID_ARG;
     if ((sl->encoding != GNMI_ENC_JSON &&
          sl->encoding != GNMI_ENC_JSON_IETF) ||
         (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM))
-        return -1;
+        return -(int)DANOS_ERR_INVALID_ARG;
 
     if (sl->mode == GNMI_SUB_MODE_ONCE) {
         poll_stream_drop(stream);

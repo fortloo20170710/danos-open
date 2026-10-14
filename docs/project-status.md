@@ -3,13 +3,13 @@
 ## 2026-10-14 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest pushed source change is `e6f6cd9` (gNMI HTTP/2 STREAM cancellation);
+The latest source change is `8f618ed` (nonblocking complete-frame handling in
+gNMI STREAM);
 `147b7b4` implements the initial-sync semantics, and `b7bff99` makes
-desired/programmed diff callbacks reentrant. Working-tree follow-up fixes a
-blocking partial-frame read in STREAM and passes local external gnmic I1-I5/I9
-plus CTest 77/77; this fix is not yet committed. On `e6f6cd9`, CI and Coverage
-passed but Interop Gate failed at I5. Status documentation was last pushed in
-`720f1b9`. See
+desired/programmed diff callbacks reentrant. Commit `8f618ed` is pushed to
+`origin/main`; CTest 77/77 and local external gnmic I1-I5/I9 pass, and GitHub
+CI, Coverage and Interop Gate all pass. The preceding `e6f6cd9` Interop I5
+failure was caused by blocking on partial HTTP/2 frames. See
 the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
@@ -18,9 +18,9 @@ Current release/qualification gaps:
 
 - Real PCI/DPDK sustained performance, latency, CPU and line-rate qualification
   is `ENVIRONMENT-OPEN`. R3 I211 preflight and finite correlated packet runs
-  pass only their stated functional scope; the newly reported switch
-  connection has not yet produced a verified runner-to-node management path
-  or a sustained-load measurement.
+  pass only their stated functional scope. Host↔R2 P3 management reachability
+  is now verified, but this provides neither a qualified traffic-generator
+  path nor a sustained-load measurement.
 - Physical rollout is incomplete: R1/R3 have r14 evidence, R2 remains r9 and
   R4 is unverified. Four-node homogeneous r14 acceptance is open.
 - Physical management is disabled; production PKI/mTLS deployment and live
@@ -41,14 +41,16 @@ actionable criteria are in [outstanding work](outstanding-work-plan.md).
 gNMI Subscribe progress at `e6f6cd9`/`4c48393`/`147b7b4`: STREAM now honors
 `updates_only`, sends initial `sync_response`, selects JSON/JSON_IETF
 TypedValue encoding, and relies on store-event wakeups with a bounded
-200 ms liveness fallback rather than adding an extra sleep. The pushed server
-consumes HTTP/2 RST_STREAM, but did so using a blocking frame read after a
-zero-time poll; this stalled external STREAM updates. The working-tree fix
-only consumes a complete frame already available. The same-connection
-cancel/Capabilities regression and full CTest pass; external gnmic I1-I5/I9
-also pass locally. `use_models`, per-subscription
-sample/suppress/heartbeat controls, and broader cancellation lifecycle cases
-remain open.
+200 ms liveness fallback rather than adding an extra sleep. The server
+consumes HTTP/2 RST_STREAM without blocking on a partial frame after a
+zero-time poll. A regression cancels a subscription and proves a subsequent
+Capabilities RPC succeeds on the same connection. Full CTest, external gnmic
+I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
+checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
+suppress-redundant and heartbeat options now return InvalidArgument rather
+than being silently ignored; local CTest remains 77/77 and external gnmic
+I1-I5/I9 passes. Broader cancellation lifecycle tests and implementation of
+supported sampling/heartbeat semantics remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
