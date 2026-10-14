@@ -7,14 +7,17 @@
 
 ## Current v0.16 status
 
-`v0.16.0-rc1` is the current release candidate. The scoped L3 NOS software
-closure is covered by CTest 34/34, topology-89 FRR/VPP lifecycle recovery,
-QEMU e1000 two-port forwarding, and VMware VMXNET3 polling-only packet
-baselines (about 100 pps, 0% loss). These virtualized results are functional
-and regression evidence, not line-rate DPDK performance. Real PCI DPDK remains
-`ENVIRONMENT-OPEN` until a dedicated VFIO/uio, HugePages, VPP-DPDK runner is
-available. BFD, VLAN, VXLAN, and EVPN remain deferred until the formal
-`v0.16.0` release.
+`v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
+release has not been qualified. The latest documented source checkpoint
+passes CTest 77/77 and the software/backend contract gates. QEMU, VMware and
+physical I211 evidence demonstrates scoped functional forwarding and recovery,
+but does not qualify sustained PCI throughput, latency, CPU cost or line rate.
+The R3 I211 runner preflight passes; measured PCI performance remains
+`ENVIRONMENT-OPEN` because a qualified sustained-load and independent
+measurement setup is unavailable.
+R2/R4 rollout, uniform four-node qualification, live VPP reconnect recovery,
+and production PKI/mTLS deployment also remain open. BFD, VLAN, VXLAN and EVPN
+remain deferred until the v0.16 release decision.
 
 Authoritative status: [v0.16 acceptance matrix](docs/v0.16-acceptance-matrix.md)
 and [project status](docs/project-status.md). The release-candidate gate is
