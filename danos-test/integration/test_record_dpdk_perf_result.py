@@ -199,6 +199,20 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("missing: ecmp_bucket_1", output)
 
+    def test_ecmp_bucket_deltas_cannot_exceed_sent_packets(self):
+        measurement = MEASUREMENT.replace("ecmp_bucket_0=5000", "ecmp_bucket_0=6001")
+        proc, output = self.run_case(measurement=measurement)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("ECMP bucket packet deltas cannot exceed packets_tx", output)
+
+    def test_ecmp_bucket_deltas_may_be_below_sent_packets_when_packets_drop(self):
+        measurement = MEASUREMENT.replace("packets_rx=10000", "packets_rx=9000")
+        measurement = measurement.replace("receiver_packets_rx=10000", "receiver_packets_rx=9000")
+        measurement = measurement.replace("loss_pct=0", "loss_pct=10")
+        proc, output = self.run_case(measurement=measurement)
+        self.assertEqual(proc.returncode, 2)
+        self.assertIn("status=ENVIRONMENT-OPEN", output)
+
     def test_single_flow_cannot_qualify_two_ecmp_buckets(self):
         proc, output = self.run_case(measurement=MEASUREMENT.replace("flows=2\n", "flows=1\n"))
         self.assertEqual(proc.returncode, 1)

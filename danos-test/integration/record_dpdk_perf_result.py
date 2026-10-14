@@ -121,6 +121,8 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
         raise ResultError("both ECMP buckets must carry traffic")
     if any(value != value.to_integral_value() for value in (flows, tx, rx, duration, bucket0, bucket1)):
         raise ResultError("flow, packet, duration, and bucket counters must be integers")
+    if bucket0 + bucket1 > tx:
+        raise ResultError("ECMP bucket packet deltas cannot exceed packets_tx")
 
     thresholds = (args.min_pps, args.max_loss_pct, args.max_cpu_pct)
     if any(value is not None for value in thresholds) and any(value is None for value in thresholds):
