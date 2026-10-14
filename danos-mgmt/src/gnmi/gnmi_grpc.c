@@ -766,19 +766,30 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
     if (send_stream_message(c, stream, sync, sync_writer.len) < 0) return -1;
 
     for (;;) {
-        /* check peer liveness + consume control frames */
-        uint8_t probe[16];
-        ssize_t n = -1;
-        if (c->ssl) {
-            struct pollfd pfd = { .fd = c->fd, .events = POLLIN };
-            if (SSL_pending(c->ssl) || poll(&pfd, 1, 0) > 0) {
-                n = SSL_peek(c->ssl, probe, sizeof(probe));
-                if (n <= 0) return 0;
+        /* Check peer liveness and consume HTTP/2 control frames. Merely
+         * peeking at socket bytes left RST_STREAM queued forever, so a
+         * cancelled STREAM kept its connection handler occupied until the
+         * TCP connection itself closed. recv_frame also handles SETTINGS,
+         * PING and WINDOW_UPDATE housekeeping consistently with RPC reads. */
+        struct pollfd pfd = { .fd = c->fd, .events = POLLIN };
+        int ready = c->ssl && SSL_pending(c->ssl)
+                  ? 1 : poll(&pfd, 1, 0);
+        if (ready < 0 && errno != EINTR) return 0;
+        if (ready > 0) {
+            uint8_t type, flags;
+            uint32_t sid, frame_len = H2_MAX_FRAME_LEN;
+            uint8_t frame[H2_MAX_FRAME_LEN];
+            int rr = recv_frame(c, &type, &flags, &sid, frame, &frame_len);
+            if (rr < 0) return 0;  /* EOF or transport error */
+            if (rr == 0) {
+                if (type == H2_F_RST && sid == stream) {
+                    stream_forget(c, stream);
+                    return 0;
+                }
+                if (sid != stream)
+                    pending_push(c, type, flags, sid, frame, frame_len);
             }
-        } else {
-            n = recv(c->fd, probe, sizeof(probe), MSG_PEEK | MSG_DONTWAIT);
         }
-        if (n == 0) return 0;   /* client closed */
 
         /* Change detector.
          *

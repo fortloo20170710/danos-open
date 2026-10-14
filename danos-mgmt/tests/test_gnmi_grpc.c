@@ -19,6 +19,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 
 #define TEST_PORT 59177
@@ -535,7 +536,8 @@ static void inspect_subscribe_response(const uint8_t *data, size_t len,
 }
 
 static int test_subscribe_stream_initial(bool updates_only,
-                                         gnmi_encoding_t encoding)
+                                         gnmi_encoding_t encoding,
+                                         bool reset_stream)
 {
     if (conn_fd >= 0) close(conn_fd);
     conn_fd = -1;
@@ -646,11 +648,60 @@ static int test_subscribe_stream_initial(bool updates_only,
         }
     }
     assert(updates > updates_before_change);
+
+    if (reset_stream) {
+        /* Cancel the long-lived RPC with HTTP/2 RST_STREAM(CANCEL), then
+         * prove the same TCP/HTTP2 connection can serve another RPC. */
+        const uint8_t cancel[4] = { 0, 0, 0, 8 };
+        assert(write_frame_c(conn_fd, 3, 0, 101, cancel, sizeof(cancel)) == 0);
+
+        uint8_t cap_headers[256];
+        size_t cap_len = 0;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":method", "POST");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":scheme", "http");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":path", "/gnmi.gNMI/Capabilities");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 "content-type", "application/grpc");
+        assert(k > 0); cap_len += (size_t)k;
+        assert(write_frame_c(conn_fd, 1, 0x5, 103,
+                             cap_headers, (uint32_t)cap_len) == 0);
+
+        struct timeval timeout = { .tv_sec = 3, .tv_usec = 0 };
+        assert(setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO,
+                          &timeout, sizeof(timeout)) == 0);
+        bool got_capabilities = false;
+        while (!got_capabilities) {
+            uint8_t fh[9];
+            assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
+            uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                                 ((uint32_t)fh[1] << 8) | fh[2];
+            uint32_t response_stream = ((uint32_t)(fh[5] & 0x7f) << 24) |
+                                       ((uint32_t)fh[6] << 16) |
+                                       ((uint32_t)fh[7] << 8) | fh[8];
+            assert(frame_len <= sizeof(frame));
+            assert(read_full_c(conn_fd, frame, frame_len) == 0);
+            if (fh[3] == 0 && response_stream == 103 && frame_len >= 5) {
+                got_capabilities = true;
+            }
+        }
+        assert(got_capabilities);
+    }
+
     shutdown(conn_fd, SHUT_RDWR);
     close(conn_fd);
     conn_fd = -1;
-    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d, event-update)\n",
-           updates_only, encoding);
+    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d, event-update, reset=%d)\n",
+           updates_only, encoding, reset_stream);
     return 0;
 }
 
@@ -1223,9 +1274,9 @@ int main(void)
     if (test_dataplane_operational_path() != 0) failed++;
     if (test_stream_detector_sees_all_fields() != 0) failed++;
 
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF) != 0) failed++;
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON) != 0) failed++;
-    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON, false) != 0) failed++;
+    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true) != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);
