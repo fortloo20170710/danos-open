@@ -3,12 +3,12 @@
 ## 2026-10-14 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source change is `147b7b4` (gNMI STREAM initial-sync semantics);
-the preceding core fix `b7bff99` makes desired/programmed diff callbacks
-reentrant. Prior status documentation push was `de5e6a3`. CTest is 77/77 PASS;
-GitHub CI, Coverage and Interop Gate passed on the prior docs checkpoint. The
-new source commit has passed local CTest; remote workflows have not yet been
-observed for it. See the [acceptance matrix](v0.16-acceptance-matrix.md)
+The latest source change is `4c48393` (gNMI STREAM event-update regression);
+`147b7b4` implements the initial-sync semantics, and `b7bff99` makes
+desired/programmed diff callbacks reentrant. Prior status documentation push
+was `b54dced`. CTest is 77/77 PASS; GitHub CI and Coverage passed for the
+current push, while Interop Gate was still running at the latest check. See
+the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
 
@@ -35,13 +35,13 @@ item that cannot be measured in the current environment; keep it
 `ENVIRONMENT-OPEN` while advancing the software items in this order. The
 actionable criteria are in [outstanding work](outstanding-work-plan.md).
 
-gNMI Subscribe progress at `147b7b4`: STREAM now honors
+gNMI Subscribe progress at `4c48393`/`147b7b4`: STREAM now honors
 `updates_only`, sends initial `sync_response`, selects JSON/JSON_IETF
 TypedValue encoding, and relies on store-event wakeups with a bounded
 200 ms liveness fallback rather than adding an extra sleep. New gRPC tests
 cover initial snapshot omission/presence and both encodings; full CTest remains
 77/77 PASS. `use_models`, per-subscription sample/suppress/heartbeat controls,
-and a change-delivery/cleanup lifecycle test remain open.
+and cancellation/reset lifecycle tests remain open.
 
 Physical connectivity update (user report, 2026-10-14): R1–R4 and the
 development host are now cabled to a switch. Host read-only inspection sees

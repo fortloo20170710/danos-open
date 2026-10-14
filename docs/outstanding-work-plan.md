@@ -9,7 +9,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-14
 
-Source checkpoint: `147b7b4`; prior status-doc push: `de5e6a3`; CTest 77/77 PASS;
+Source checkpoint: `4c48393`; prior status-doc push: `b54dced`; CTest 77/77 PASS;
 latest GitHub CI, Coverage and Interop Gate passed. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
@@ -33,7 +33,7 @@ Execution priority, as confirmed on 2026-10-14:
    cover initial snapshot, updates-only and both encodings; targeted tests and
    full CTest 77/77 pass. Remaining: define/implement `use_models`, sample
    interval, suppress-redundant and heartbeat semantics or reject unsupported
-   options explicitly; test actual update delivery and subscription cleanup.
+   options explicitly; add cancellation/reset and subscription-lifecycle tests.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The
