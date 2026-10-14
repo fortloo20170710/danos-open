@@ -4,6 +4,7 @@
 
 #include <danos/core/state_store.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 danos_state_store_t *danos_state_store_create(void)
@@ -78,9 +79,16 @@ uint64_t danos_state_diff_desired_programmed(danos_state_store_t *ss,
                                              void *user)
 {
     if (!ss || !cb) return 0;
-    uint64_t diffs = 0;
+    typedef struct {
+        danos_obj_type_t type;
+        danos_obj_id_t id;
+    } diff_key_t;
+    diff_key_t *diffs = NULL;
+    size_t diff_count = 0, diff_capacity = 0;
+    bool allocation_failed = false;
 
-    /* Walk desired store buckets */
+    /* Snapshot differing keys while locked, but never call user code under
+     * the store lock: callbacks may legitimately update desired state. */
     pthread_rwlock_rdlock(&ss->desired->lock);
     for (size_t i = 0; i < ss->desired->bucket_count; i++) {
         danos_object_entry_t *e = ss->desired->buckets[i];
@@ -115,12 +123,34 @@ uint64_t danos_state_diff_desired_programmed(danos_state_store_t *ss,
                 differs = true;
             }
             if (differs) {
-                diffs++;
-                cb(e->type, e->id, user);
+                if (diff_count == diff_capacity) {
+                    size_t next = diff_capacity ? diff_capacity * 2 : 16;
+                    if (next < diff_capacity || next > SIZE_MAX / sizeof(*diffs)) {
+                        allocation_failed = true;
+                        break;
+                    }
+                    diff_key_t *grown = realloc(diffs, next * sizeof(*diffs));
+                    if (!grown) {
+                        allocation_failed = true;
+                        break;
+                    }
+                    diffs = grown;
+                    diff_capacity = next;
+                }
+                diffs[diff_count++] = (diff_key_t){ .type = e->type, .id = e->id };
             }
             e = e->next;
         }
+        if (allocation_failed) break;
     }
     pthread_rwlock_unlock(&ss->desired->lock);
-    return diffs;
+    if (allocation_failed) {
+        free(diffs);
+        return 0;
+    }
+
+    for (size_t i = 0; i < diff_count; i++)
+        cb(diffs[i].type, diffs[i].id, user);
+    free(diffs);
+    return diff_count;
 }

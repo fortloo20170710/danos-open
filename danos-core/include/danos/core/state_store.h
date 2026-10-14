@@ -58,6 +58,9 @@ danos_status_t danos_state_delete(danos_state_store_t *ss,
 typedef int (*danos_state_diff_cb_t)(danos_obj_type_t type, danos_obj_id_t id,
                                      void *user);
 
+/* Snapshot desired/programmed differences, then invoke callbacks without
+ * holding either store lock. Callbacks may safely mutate desired state; such
+ * mutations are observed on the next diff pass, not the current snapshot. */
 uint64_t danos_state_diff_desired_programmed(danos_state_store_t *ss,
                                              danos_state_diff_cb_t cb,
                                              void *user);

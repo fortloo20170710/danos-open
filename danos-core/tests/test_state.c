@@ -5,11 +5,30 @@
 #include <assert.h>
 
 static int diff_count;
+typedef struct {
+    danos_state_store_t *store;
+    bool inserted;
+    unsigned callbacks;
+} mutating_diff_context_t;
 
 static int diff_cb(danos_obj_type_t type, danos_obj_id_t id, void *user)
 {
     (void)type; (void)id; (void)user;
     diff_count++;
+    return 0;
+}
+
+static int mutating_diff_cb(danos_obj_type_t type, danos_obj_id_t id, void *user)
+{
+    (void)type;
+    (void)id;
+    mutating_diff_context_t *ctx = user;
+    ctx->callbacks++;
+    if (!ctx->inserted) {
+        ctx->inserted = true;
+        assert(danos_state_set(ctx->store, DANOS_STATE_DESIRED,
+                               DANOS_OBJ_ROUTE, 99, "callback-route", 14) == DANOS_OK);
+    }
     return 0;
 }
 
@@ -41,7 +60,21 @@ int test_state(void)
     diffs = danos_state_diff_desired_programmed(ss, diff_cb, NULL);
     assert(diffs == 1);
 
+    /* User callbacks run after the store lock is released. A desired-state
+     * mutation from the callback must not self-deadlock or alter this pass's
+     * already captured diff set. */
+    assert(danos_state_set(ss, DANOS_STATE_DESIRED,
+                           DANOS_OBJ_ROUTE, 2, "route2", 7) == DANOS_OK);
+    assert(danos_state_set(ss, DANOS_STATE_DESIRED,
+                           DANOS_OBJ_ROUTE, 3, "route3", 7) == DANOS_OK);
+    mutating_diff_context_t ctx = { .store = ss };
+    diffs = danos_state_diff_desired_programmed(ss, mutating_diff_cb, &ctx);
+    assert(diffs == 3 && ctx.callbacks == 3);
+    ctx.callbacks = 0;
+    diffs = danos_state_diff_desired_programmed(ss, diff_cb, NULL);
+    assert(diffs == 4);
+
     danos_state_store_destroy(ss);
-    printf("[PASS] test_state: 4-state model + diff works\n");
+    printf("[PASS] test_state: diff snapshot callbacks are reentrant\n");
     return 0;
 }
