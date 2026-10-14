@@ -62,10 +62,13 @@ address `192.168.1.244/24` and administratively enabled; carrier is 1 Gbps,
 full duplex. Host→R2 ping passed 2/2 and R2→host passed 5/5, zero loss. R1 P3
 identity `00:1f:7a:40:28:22` was also confirmed at 1 Gbps/full duplex and
 assigned runtime-only `.245/24`; host↔R1 passed 5/5 in both directions. R1 is
-r14, FRR is active, and mgrd remains disabled. This confirms shared-L2
-management reachability only; R1/R2 addresses are not persisted, R3/R4 P3
-addresses remain unverified, and no routed-transit, ECMP, or performance
-claim follows. Keep the existing isolated L3 test links intact.
+r14, FRR is active, and mgrd remains disabled. R3 P3 identity
+`00:1f:7a:69:f7:4e` came up at 1 Gbps/full duplex, received runtime-only
+`.246/24`, and host↔R3 passed 5/5 in each direction. R1/R3 are r14, FRR is
+active, and mgrd remains disabled. This confirms shared-L2 management
+reachability only; R1/R2/R3 addresses are not persisted, R4 P3 remains
+unverified, and no routed-transit, ECMP, or performance claim follows. Keep
+the existing isolated L3 test links intact.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 
