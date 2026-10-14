@@ -1,6 +1,6 @@
 # DANOS Open Project Status
 
-## 2026-10-13 development checkpoint (source `8bcce4d`)
+## 2026-10-13 development checkpoint (source `423a81e`)
 
 The multicore performance CLI now emits a machine-readable result when the
 real TRex integration is unavailable: `ENVIRONMENT-OPEN` with an explicit
@@ -8,6 +8,12 @@ reason. `--simulate` is marked `SIMULATED`/`accepted=false`, and simulated
 scaling output no longer prints `PASS`. The new CLI tests cover those three
 behaviors; current CTest is **77/77 PASS**. The change is pushed to
 `origin/main`; GitHub CI, Coverage, and Interop Gate passed.
+
+The PCI performance recorder now rejects ECMP bucket counter deltas whose
+sum exceeds source `packets_tx`, while still allowing a smaller sum when
+packets are lost. Its focused suite passes **20/20**, including impossible
+counter rejection and a valid loss-bearing observation; full CTest remains
+**77/77 PASS**. The result schema and runner contract document this invariant.
 
 Physical I211 functional forwarding remains independently demonstrated by the
 tightly bracketed 3072-frame run below. The later `tight3` replay is only
