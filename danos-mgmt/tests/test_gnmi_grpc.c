@@ -385,20 +385,33 @@ static int test_unknown_method(void)
 
 static int test_subscribe_unsupported_options_rejected(void)
 {
-    uint8_t req[128];
-    gnmi_pb_t w;
-    gnmi_pb_init(&w, req, sizeof(req));
-    size_t list = gnmi_pb_begin_nested(&w, 1);
-    gnmi_pb_put_bool(&w, 7, true); /* unsupported use_models */
-    size_t sub = gnmi_pb_begin_nested(&w, 2);
-    gnmi_pb_put_uint64(&w, 5, 1000000000); /* heartbeat_interval */
-    gnmi_pb_end_nested(&w, sub);
-    gnmi_pb_end_nested(&w, list);
+    for (uint32_t option = 0; option < 5; option++) {
+        uint8_t req[128];
+        gnmi_pb_t w;
+        gnmi_pb_init(&w, req, sizeof(req));
+        size_t list = gnmi_pb_begin_nested(&w, 1);
+        if (option == 0) {
+            size_t model = gnmi_pb_begin_nested(&w, 7); /* use_models */
+            gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
+            gnmi_pb_end_nested(&w, model);
+        }
+        size_t sub = gnmi_pb_begin_nested(&w, 2);
+        if (option == 1)
+            gnmi_pb_put_enum(&w, 2, 1); /* ON_CHANGE */
+        else if (option == 2)
+            gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
+        else if (option == 3)
+            gnmi_pb_put_bool(&w, 4, true); /* suppress_redundant */
+        else if (option == 4)
+            gnmi_pb_put_uint64(&w, 5, 1000000000); /* heartbeat_interval */
+        gnmi_pb_end_nested(&w, sub);
+        gnmi_pb_end_nested(&w, list);
 
-    /* Validation must reject unsupported semantics before touching the
-     * connection, and expose the status mapped to gRPC InvalidArgument. */
-    assert(gnmi_handle_subscribe(NULL, 1, req, w.len) ==
-           -(int)DANOS_ERR_INVALID_ARG);
+        /* Validation must reject unsupported semantics before touching the
+         * connection and expose gRPC InvalidArgument. */
+        assert(gnmi_handle_subscribe(NULL, 1, req, w.len) ==
+               -(int)DANOS_ERR_INVALID_ARG);
+    }
     printf("[PASS] test_subscribe_unsupported_options_rejected\n");
     return 0;
 }

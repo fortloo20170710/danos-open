@@ -122,7 +122,9 @@ static int test_subscribe_unsupported_options_decode(void)
     gnmi_pb_t w;
     gnmi_pb_init(&w, req, sizeof(req));
     size_t list = gnmi_pb_begin_nested(&w, 1);
-    gnmi_pb_put_string(&w, 7, "openconfig-interfaces"); /* use_models */
+    size_t model = gnmi_pb_begin_nested(&w, 7); /* use_models */
+    gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
+    gnmi_pb_end_nested(&w, model);
     size_t sub = gnmi_pb_begin_nested(&w, 2);
     gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
     gnmi_pb_end_nested(&w, sub);
