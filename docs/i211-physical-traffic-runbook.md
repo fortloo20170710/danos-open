@@ -61,6 +61,29 @@ Artifacts under `build/physical-udp64-count256-20261013-batch2/`; SHA256:
 | `r4-after/result.json` | `0ce5a3046d128ed4ee87534d471d6086d5e44c7910206cfa6fc7764a2dd759ff` |
 | `end-to-end-window.json` | `c99445e9ada4d35de04c580504ad77bcf0ac9b68f3c105262c7ccbb420ca343c` |
 
+## Repeated four-node physical UDP window — 2026-10-13 (OBSERVED)
+
+A new single-pass 3072-frame run again produced matching counters: R2 I211 TX
++3072, R3 P4 RX +3072, R3 P1/P2 TX +2304/+768, and independent R1/R4 RX
++768/+2304. R3 PID remained 3272 and its measured drop deltas were zero. The
+R3 before/after interval was 256.77s, but receiver windows were R1 3441.18s
+and R4 4908.19s. Since the receiver windows exceed the 1800s gate, the overall
+result remains `OBSERVED`, despite exact counter agreement. Performance remains
+`ENVIRONMENT-OPEN`; this is not a line-rate or ECMP-balance result.
+
+Artifacts under `build/physical-udp64-count256-20261014-tight3/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `ccca687f28ae6aa892859333f0a4b7ce7e3e0e4e76eea41ac86687c0f5505b94` |
+| `r3-before/result.json` | `bc8d67e31d8e9b7a8798e76140c548ef9d47e51544b5e60c36cecd3d137e1aa4` |
+| `r3-after/result.json` | `20475151da12035026cc2600bf7bbeb794f6b91d8734214e0d76b8aa5e754a20` |
+| `r1-before/result.json` | `0e68160486f4016f077fe573c1bce329e60b300da210eddeedff396d8d6bccd7` |
+| `r1-after/result.json` | `0b48fec6077171e1b06a9831c95c2e0799542b67724413f23663aa480c69e472` |
+| `r4-before/result.json` | `856734ff490a6810dec3821324ccba62bb5f6a154166f03b2075a1b3164ff9ef` |
+| `r4-after/result.json` | `0e833df3283f90a88828f1dbf16e64d0005b8f33da8c446f6b51fdaacd4aeff9` |
+| `end-to-end-window.json` | `3df36774f51817829569eccd5c2eee256c71a43485d455ac5e7de195f98080c9` |
+
 ## UART RPC long-payload compatibility and earlier wide-window replay — 2026-10-13
 
 The first R3/R4 counter-snapshot attempts exposed two physical-console
