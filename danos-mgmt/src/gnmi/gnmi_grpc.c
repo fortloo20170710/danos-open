@@ -27,6 +27,8 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -311,6 +313,90 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
             return 0;
         }
     }
+}
+
+/* Consume exactly one complete frame only when it is already available.
+ * STREAM handlers must not call recv_frame() after a zero-time poll: a peer
+ * can have delivered only part of a frame, and read_full() would then block
+ * the store-event loop until the peer sends more data. Return 1 for a frame,
+ * 0 for no complete frame yet, and -1 for a closed/broken connection. */
+static int recv_available_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
+                                uint32_t *stream, uint8_t *payload,
+                                uint32_t *len)
+{
+    uint8_t frame[9 + H2_MAX_FRAME_LEN];
+    size_t need = 9;
+    if (c->ssl) {
+        int old_flags = fcntl(c->fd, F_GETFL, 0);
+        if (old_flags < 0 || fcntl(c->fd, F_SETFL, old_flags | O_NONBLOCK) < 0)
+            return -1;
+        int n = SSL_peek(c->ssl, frame, 9);
+        if (n <= 0) {
+            int err = SSL_get_error(c->ssl, n);
+            fcntl(c->fd, F_SETFL, old_flags);
+            return (err == SSL_ERROR_ZERO_RETURN ||
+                    (err == SSL_ERROR_SYSCALL && n == 0)) ? -1 : 0;
+        }
+        if (n < 9) {
+            fcntl(c->fd, F_SETFL, old_flags);
+            return 0;
+        }
+        uint32_t body_len = ((uint32_t)frame[0] << 16) |
+                            ((uint32_t)frame[1] << 8) | frame[2];
+        if (body_len > H2_MAX_FRAME_LEN) {
+            fcntl(c->fd, F_SETFL, old_flags);
+            return -1;
+        }
+        need += body_len;
+        n = SSL_peek(c->ssl, frame, (int)need);
+        if (n < 0) {
+            int err = SSL_get_error(c->ssl, n);
+            fcntl(c->fd, F_SETFL, old_flags);
+            return (err == SSL_ERROR_ZERO_RETURN ||
+                    (err == SSL_ERROR_SYSCALL && n == 0)) ? -1 : 0;
+        }
+        if ((size_t)n < need) {
+            fcntl(c->fd, F_SETFL, old_flags);
+            return 0;
+        }
+        size_t got = 0;
+        while (got < need) {
+            int k = SSL_read(c->ssl, frame + got, (int)(need - got));
+            if (k <= 0) {
+                int err = SSL_get_error(c->ssl, k);
+                fcntl(c->fd, F_SETFL, old_flags);
+                return (err == SSL_ERROR_ZERO_RETURN ||
+                        (err == SSL_ERROR_SYSCALL && k == 0)) ? -1 : 0;
+            }
+            got += (size_t)k;
+        }
+        fcntl(c->fd, F_SETFL, old_flags);
+    } else {
+        ssize_t n = recv(c->fd, frame, 9, MSG_PEEK | MSG_DONTWAIT);
+        if (n == 0) return -1;
+        if (n < 0) return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
+        if (n < 9) return 0;
+        uint32_t body_len = ((uint32_t)frame[0] << 16) |
+                            ((uint32_t)frame[1] << 8) | frame[2];
+        if (body_len > H2_MAX_FRAME_LEN) return -1;
+        need += body_len;
+        int available = 0;
+        if (ioctl(c->fd, FIONREAD, &available) < 0) return -1;
+        if (available < 0 || (size_t)available < need) return 0;
+        n = recv(c->fd, frame, need, MSG_DONTWAIT);
+        if (n == 0) return -1;
+        if (n < 0) return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
+        if ((size_t)n != need) return 0;
+    }
+
+    *type = frame[3];
+    *flags = frame[4];
+    *stream = ((uint32_t)(frame[5] & 0x7f) << 24) |
+              ((uint32_t)frame[6] << 16) |
+              ((uint32_t)frame[7] << 8) | frame[8];
+    *len = (uint32_t)(need - 9);
+    if (*len && payload) memcpy(payload, frame + 9, *len);
+    return 1;
 }
 
 /* Replenish our receive window after consuming `n` bytes of DATA.
@@ -779,15 +865,49 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
             uint8_t type, flags;
             uint32_t sid, frame_len = H2_MAX_FRAME_LEN;
             uint8_t frame[H2_MAX_FRAME_LEN];
-            int rr = recv_frame(c, &type, &flags, &sid, frame, &frame_len);
+            int rr = recv_available_frame(c, &type, &flags, &sid, frame,
+                                          &frame_len);
             if (rr < 0) return 0;  /* EOF or transport error */
-            if (rr == 0) {
+            if (rr > 0) {
                 if (type == H2_F_RST && sid == stream) {
                     stream_forget(c, stream);
                     return 0;
                 }
-                if (sid != stream)
+                if (type == H2_F_SETTINGS) {
+                    if (!(flags & H2_FLAG_ACK)) {
+                        if (frame_len % 6 == 0) {
+                            for (uint32_t i = 0; i + 6 <= frame_len; i += 6) {
+                                uint16_t id = (uint16_t)((frame[i] << 8) | frame[i + 1]);
+                                uint32_t value = ((uint32_t)frame[i + 2] << 24) |
+                                                 ((uint32_t)frame[i + 3] << 16) |
+                                                 ((uint32_t)frame[i + 4] << 8) | frame[i + 5];
+                                if (id == 0x4) {
+                                    int64_t delta = (int64_t)value -
+                                                    (int64_t)c->peer_initial_window;
+                                    c->peer_initial_window = value;
+                                    for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
+                                        if (c->streams[w].used)
+                                            c->streams[w].window += delta;
+                                }
+                            }
+                        }
+                        (void)write_frame(c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
+                    }
+                } else if (type == H2_F_PING) {
+                    if (!(flags & H2_FLAG_ACK) && frame_len == 8)
+                        (void)write_frame(c, H2_F_PING, H2_FLAG_ACK, 0, frame, frame_len);
+                } else if (type == H2_F_WINDOW && frame_len >= 4) {
+                    uint32_t inc = ((uint32_t)frame[0] << 24) |
+                                   ((uint32_t)frame[1] << 16) |
+                                   ((uint32_t)frame[2] << 8) | frame[3];
+                    if (sid == 0) c->conn_window += inc;
+                    else {
+                        h2_stream_t *s = stream_get(c, sid);
+                        if (s) s->window += inc;
+                    }
+                } else if (sid != stream) {
                     pending_push(c, type, flags, sid, frame, frame_len);
+                }
             }
         }
 

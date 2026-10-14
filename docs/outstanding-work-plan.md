@@ -9,8 +9,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-14
 
-Source checkpoint: `4c48393`; latest status-doc push: `760ddc2`; CTest 77/77 PASS;
-latest GitHub CI, Coverage and Interop Gate passed. The current physical and
+Source checkpoint: `e6f6cd9` plus an uncommitted gNMI STREAM fix; CTest 77/77
+and local external gnmic I1-I5/I9 PASS. CI/Coverage passed for `e6f6cd9`, but
+its Interop Gate failed at I5. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
 
@@ -20,10 +21,13 @@ Execution priority, as confirmed on 2026-10-14:
    Prepare a qualified traffic source and independent receiver, then measure
    sustained 64-byte PCI DPDK throughput, loss, latency, CPU and per-flow/ECMP
    bucket distribution. R3 preflight and bounded packet delivery are not
-   performance qualification. R1–R4 and the host are now user-reported on a
-   switch, but host-to-node management is not yet verified (the configured
-   `192.168.71.2` next hop did not answer); retain `ENVIRONMENT-OPEN` until the
-   topology and measurement path are validated. In the same physical
+   performance qualification. R1–R4 and the host are user-reported on a
+   five-port router via P3. Host `192.168.1.243`↔R2 P3 `192.168.1.244` passed
+   bounded bidirectional ping and R2 carrier is 1 Gbps/full duplex. R2's VPP
+   address is runtime-only; other nodes' addresses and the traffic measurement
+   path remain unverified. Keep performance `ENVIRONMENT-OPEN` until
+   independently sourced traffic and receiver measurements are validated. In
+   the same physical
    qualification track, roll R2/R4 to r14,
    complete identity-bound four-node checks, test live VPP reconnect/recovery
    with mgrd active, and deploy/verify production PKI/mTLS before enabling
@@ -32,10 +36,15 @@ Execution priority, as confirmed on 2026-10-14:
    implementation now honors STREAM `updates_only`, emits the required
    initial `sync_response`, applies JSON versus JSON_IETF TypedValue selection,
    and removes an unconditional sleep after event/timed waits. Protocol tests
-   cover initial snapshot, updates-only and both encodings; targeted tests and
-   full CTest 77/77 pass. Remaining: define/implement `use_models`, sample
-   interval, suppress-redundant and heartbeat semantics or reject unsupported
-   options explicitly; add cancellation/reset and subscription-lifecycle tests.
+   cover initial snapshot, updates-only and both encodings. The current change
+   consumes HTTP/2 RST_STREAM during a live STREAM; its test cancels the
+   subscription and proves a subsequent Capabilities RPC succeeds on the same
+   connection. A follow-up fixed a blocking read of partial HTTP/2 frames in
+   the STREAM waiter; local external gnmic I1-I5/I9 and full CTest 77/77 pass.
+   Remaining:
+   define/implement `use_models`, sample interval, suppress-redundant and
+   heartbeat semantics or reject unsupported options explicitly; expand
+   cancellation/reset and subscription-lifecycle tests.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The
@@ -1240,8 +1249,9 @@ Still open:
   `sample_interval`, `suppress_redundant` and `heartbeat_interval` are not
   implemented. Until implemented, unsupported request options must be
   explicitly rejected rather than silently treated as event-driven STREAM.
-- Cancellation/reset and broader subscription lifecycle behavior need
-  regression coverage. The current bounded 200 ms wait is a liveness fallback
+- Broader cancellation/reset and subscription lifecycle behavior need
+  regression coverage beyond the new RST_STREAM/same-connection case. The
+  current bounded 200 ms wait is a liveness fallback
   around store-event wakeups, not the former unconditional polling loop.
 - BYTES/PROTO/ASCII encodings and scalar/decimal TypedValues remain outside
   the advertised encoding set; JSON and JSON_IETF are the supported forms.

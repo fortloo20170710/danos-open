@@ -3,11 +3,13 @@
 ## 2026-10-14 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source change is `4c48393` (gNMI STREAM event-update regression);
+The latest pushed source change is `e6f6cd9` (gNMI HTTP/2 STREAM cancellation);
 `147b7b4` implements the initial-sync semantics, and `b7bff99` makes
-desired/programmed diff callbacks reentrant. Status documentation was last
-updated in `760ddc2`. CTest is 77/77 PASS; GitHub CI, Coverage, and Interop
-Gate all passed for that documentation push. See
+desired/programmed diff callbacks reentrant. Working-tree follow-up fixes a
+blocking partial-frame read in STREAM and passes local external gnmic I1-I5/I9
+plus CTest 77/77; this fix is not yet committed. On `e6f6cd9`, CI and Coverage
+passed but Interop Gate failed at I5. Status documentation was last pushed in
+`720f1b9`. See
 the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
@@ -36,24 +38,29 @@ item that cannot be measured in the current environment; keep it
 `ENVIRONMENT-OPEN` while advancing the software items in this order. The
 actionable criteria are in [outstanding work](outstanding-work-plan.md).
 
-gNMI Subscribe progress at `4c48393`/`147b7b4`: STREAM now honors
+gNMI Subscribe progress at `e6f6cd9`/`4c48393`/`147b7b4`: STREAM now honors
 `updates_only`, sends initial `sync_response`, selects JSON/JSON_IETF
 TypedValue encoding, and relies on store-event wakeups with a bounded
-200 ms liveness fallback rather than adding an extra sleep. New gRPC tests
-cover initial snapshot omission/presence and both encodings; full CTest remains
-77/77 PASS. `use_models`, per-subscription sample/suppress/heartbeat controls,
-and cancellation/reset lifecycle tests remain open.
+200 ms liveness fallback rather than adding an extra sleep. The pushed server
+consumes HTTP/2 RST_STREAM, but did so using a blocking frame read after a
+zero-time poll; this stalled external STREAM updates. The working-tree fix
+only consumes a complete frame already available. The same-connection
+cancel/Capabilities regression and full CTest pass; external gnmic I1-I5/I9
+also pass locally. `use_models`, per-subscription
+sample/suppress/heartbeat controls, and broader cancellation lifecycle cases
+remain open.
 
-Physical connectivity update (user report, 2026-10-14): R1–R4 and the
-development host are now cabled to a switch. Host read-only inspection sees
-`enp4s0` carrier-up at 1 Gbps/full duplex and `192.168.71.1/24`; its NIC is
-RTL8168 (`r8169`), not a DPDK traffic NIC. No local iperf3/trafgen/testpmd/TRex
-was found. A bounded ping to the previously configured lab next hop
-`192.168.71.2` received no replies. Switch port/VLAN mapping, node management
-reachability, and serial target are therefore still unverified; no new
-physical test or performance result is claimed. Preserve the isolated L3
-links/VLANs in the physical runbook rather than placing all router ports into
-one flat broadcast domain.
+Physical connectivity update (2026-10-14): the user reports R1–R4 and the
+development host connect to the same five-port router using each node's P3.
+The host now has `enp4s0=192.168.1.243/24` (gateway `.1`), and the R2 UART
+identity is r9 with four I211 ports bound to `uio_pci_generic`. R2 P3
+(`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was assigned runtime VPP
+address `192.168.1.244/24` and administratively enabled; carrier is 1 Gbps,
+full duplex. Host→R2 ping passed 2/2 and R2→host passed 5/5, zero loss. This
+confirms only the shared-L2 management path between this host and R2; the
+runtime address is not persisted, other nodes' P3 addresses are unverified,
+and it does not qualify routed transit, ECMP, or performance. Keep the
+existing isolated L3 test links intact.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 

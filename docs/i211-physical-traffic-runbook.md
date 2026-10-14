@@ -2,24 +2,24 @@
 
 更新时间：2026-10-14
 
-## 2026-10-14 switch-cabling readiness (OPEN)
+## 2026-10-14 shared-router management link (scoped PASS)
 
-Operator reports that R1–R4 and the development host are connected to a
-switch. Read-only host inspection confirms `enp4s0` is carrier-up at 1 Gbps
-full duplex with `192.168.71.1/24`; the previously configured lab next hop
-`192.168.71.2` did not answer two bounded ICMP probes. This does not establish
-that the four routers are offline, but the switch port/VLAN map and a usable
-host-to-runner/serial path are not yet verified. No new physical test was run.
+The operator reports each R1–R4 third I211 port and the development host are
+connected to one five-port router. Host `enp4s0` has `192.168.1.243/24`;
+gateway is `192.168.1.1`. With the USB-UART identifying R2 r9, P3 was mapped
+to VPP `GigabitEthernet3/0/0`, PCI `0000:03:00.0`, MAC
+`00:1f:7a:69:f5:ee`. It was assigned runtime address `192.168.1.244/24` and
+set administratively up. Carrier came up at 1 Gbps/full duplex. Host→R2 ping
+passed 2/2; R2→host VPP ping passed 5/5; host neighbor MAC matched R2 P3.
 
-Before resuming the established R2 → R3 → R1/R4 windows, preserve the topology
-in the switch configuration: R2↔R3 ingress, R3↔R1 and R3↔R4 as distinct
-egress L3 links (or isolated VLANs), plus a separate development-host
-management/traffic-generator path. Do not bridge all router-facing ports into
-one flat VLAN; that would change the tested L3/ECMP topology. After mapping,
-verify each link's peer MAC/carrier and the two R3 next hops, then take fresh
-before/after snapshots around exactly one bounded batch. The host RTL8168 NIC
-is not a DPDK runner; use an I211 port on R2 for traffic generation and the
-independent R1/R4 counters as already documented below.
+This is a bounded shared-L2 management reachability PASS only. The VPP address
+is not persisted across VPP restart/reboot. R1/R3/R4 third-port state and
+addresses are not yet verified, and no throughput, latency, or ECMP claim is
+made. Keep the established R2→R3→R1/R4 L3 test links/VLANs separate; do not
+flatten or rewire them as part of the management LAN. Host RTL8168/r8169 is not
+a DPDK traffic source; continue to use the I211 packet-generator and
+independent receiver counters for functional transit, with a qualified PCI
+runner still needed for performance.
 
 ## Four-node tightly bracketed physical UDP window — 2026-10-13 (PASS)
 
