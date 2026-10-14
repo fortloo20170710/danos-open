@@ -21,9 +21,10 @@ Execution priority, as confirmed on 2026-10-14:
    sustained 64-byte PCI DPDK throughput, loss, latency, CPU and per-flow/ECMP
    bucket distribution. R3 preflight and bounded packet delivery are not
    performance qualification. R1–R4 and the host are user-reported on a
-   five-port router via P3. Host `192.168.1.243`↔R2 P3 `192.168.1.244` passed
-   bounded bidirectional ping and R2 carrier is 1 Gbps/full duplex. R2's VPP
-   address is runtime-only; other nodes' addresses and the traffic measurement
+   five-port router via P3. Host `.243`↔R2 P3 `.244` passed bounded ping, and
+   host `.243`↔R1 P3 `.245` passed 5/5 in both directions; R1 P3 carrier is
+   1 Gbps/full duplex and its MAC matches the node identity. Both VPP addresses
+   are runtime-only; R3/R4 management addresses and the traffic measurement
    path remain unverified. Keep performance `ENVIRONMENT-OPEN` until
    independently sourced traffic and receiver measurements are validated. In
    the same physical

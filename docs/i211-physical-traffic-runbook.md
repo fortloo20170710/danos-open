@@ -2,6 +2,21 @@
 
 更新时间：2026-10-14
 
+## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
+
+UART identity confirms R1: SATA `/dev/sda1`, Debian 6.12.107, VPP 26.10,
+FRR active, mgrd disabled; all four I211 ports use `uio_pci_generic`. P1 MAC
+`00:1f:7a:40:28:20` matches the recorded R1 identity. P3 is
+`GigabitEthernet3/0/0`, PCI `0000:03:00.0`, MAC `00:1f:7a:40:28:22`.
+After enabling P3, carrier reported 1 Gbps/full duplex. A pre-assignment host
+probe found no ARP neighbor at `.245`; P3 was assigned runtime-only
+`192.168.1.245/24`. Host `.243`→R1 `.245` and R1 VPP `.245`→host `.243` each
+passed 5/5 ICMP with zero loss; the host learned the expected R1 MAC.
+
+This proves shared-L2 management reachability only. The address is not
+persistent, mgrd remains disabled, and this does not qualify transit, ECMP or
+performance. Existing R1 P1↔R3 configuration was left untouched.
+
 ## 2026-10-14 shared-router management link (scoped PASS)
 
 The operator reports each R1–R4 third I211 port and the development host are
@@ -13,7 +28,7 @@ set administratively up. Carrier came up at 1 Gbps/full duplex. Host→R2 ping
 passed 2/2; R2→host VPP ping passed 5/5; host neighbor MAC matched R2 P3.
 
 This is a bounded shared-L2 management reachability PASS only. The VPP address
-is not persisted across VPP restart/reboot. R1/R3/R4 third-port state and
+is not persisted across VPP restart/reboot. R3/R4 third-port state and
 addresses are not yet verified, and no throughput, latency, or ECMP claim is
 made. Keep the established R2→R3→R1/R4 L3 test links/VLANs separate; do not
 flatten or rewire them as part of the management LAN. Host RTL8168/r8169 is not

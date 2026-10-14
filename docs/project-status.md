@@ -3,13 +3,14 @@
 ## 2026-10-14 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source change is `8f618ed` (nonblocking complete-frame handling in
-gNMI STREAM);
+The latest source change is `a65c11f` (regression coverage for explicitly
+rejected gNMI Subscribe options), following `90abaa7` (the rejection behavior)
+and `8f618ed` (nonblocking complete-frame handling in gNMI STREAM);
 `147b7b4` implements the initial-sync semantics, and `b7bff99` makes
-desired/programmed diff callbacks reentrant. Commit `8f618ed` is pushed to
+desired/programmed diff callbacks reentrant. Both latest commits are pushed to
 `origin/main`; CTest 77/77 and local external gnmic I1-I5/I9 pass, and GitHub
-CI, Coverage and Interop Gate all pass. The preceding `e6f6cd9` Interop I5
-failure was caused by blocking on partial HTTP/2 frames. See
+CI, Coverage and Interop Gate pass at `a65c11f`. The preceding `e6f6cd9`
+Interop I5 failure was caused by blocking on partial HTTP/2 frames. See
 the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
@@ -58,11 +59,13 @@ The host now has `enp4s0=192.168.1.243/24` (gateway `.1`), and the R2 UART
 identity is r9 with four I211 ports bound to `uio_pci_generic`. R2 P3
 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was assigned runtime VPP
 address `192.168.1.244/24` and administratively enabled; carrier is 1 Gbps,
-full duplex. Host→R2 ping passed 2/2 and R2→host passed 5/5, zero loss. This
-confirms only the shared-L2 management path between this host and R2; the
-runtime address is not persisted, other nodes' P3 addresses are unverified,
-and it does not qualify routed transit, ECMP, or performance. Keep the
-existing isolated L3 test links intact.
+full duplex. Host→R2 ping passed 2/2 and R2→host passed 5/5, zero loss. R1 P3
+identity `00:1f:7a:40:28:22` was also confirmed at 1 Gbps/full duplex and
+assigned runtime-only `.245/24`; host↔R1 passed 5/5 in both directions. R1 is
+r14, FRR is active, and mgrd remains disabled. This confirms shared-L2
+management reachability only; R1/R2 addresses are not persisted, R3/R4 P3
+addresses remain unverified, and no routed-transit, ECMP, or performance
+claim follows. Keep the existing isolated L3 test links intact.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 
