@@ -23,12 +23,11 @@ Usage:
 
 import argparse
 import json
-import os
-import subprocess
 import sys
 import time
 from dataclasses import dataclass, asdict
-from typing import List, Optional
+from pathlib import Path
+from typing import List
 
 
 @dataclass
@@ -157,7 +156,7 @@ def run_test(cores: int, duration: int, frame_size: int,
     )
 
 
-def validate_scaling(results: List[TestResult]) -> bool:
+def validate_scaling(results: List[TestResult], simulated: bool = False) -> bool:
     """Validate that throughput scales linearly with cores.
 
     Acceptance criteria (H3):
@@ -190,9 +189,27 @@ def validate_scaling(results: List[TestResult]) -> bool:
             print(f"  FAIL: p99 latency {r.latency_p99_ns/1000:.1f}us > 100us")
             all_pass = False
         if eff >= 85.0 and r.latency_p99_ns <= 100000:
-            print(f"  PASS")
+            print("  SIMULATED (demo only; not acceptance data)" if simulated else "  PASS")
 
     return all_pass
+
+
+def write_output(path: str, status: str, result, *, reason: str = "") -> None:
+    """Write an explicit provenance/status envelope; demos are never acceptance data."""
+    payload = {
+        "schema_version": 1,
+        "status": status,
+        "accepted": status == "PASS",
+        "synthetic": status == "SIMULATED",
+        "scope": "multicore forwarding performance",
+    }
+    if reason:
+        payload["reason"] = reason
+    if result is not None:
+        payload["result"] = result
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2) + "\n")
 
 
 def main():
@@ -224,10 +241,11 @@ def main():
                       f"{r.aggregate_gbps:.2f} Gbps, "
                       f"p99={r.latency_p99_ns/1000:.1f}us")
 
-            ok = validate_scaling(results)
+            ok = validate_scaling(results, simulated=args.simulate)
             if args.output:
-                with open(args.output, "w") as f:
-                    json.dump([asdict(r) for r in results], f, indent=2)
+                write_output(args.output, "SIMULATED" if args.simulate else
+                             ("PASS" if ok else "FAIL"),
+                             [asdict(r) for r in results])
             sys.exit(0 if ok else 1)
         r = run_test(args.cores, args.duration, args.frame_size, args.simulate)
         print(f"\n=== Result ===")
@@ -240,10 +258,12 @@ def main():
                   f"CPU {cr.cpu_util:.0f}%, drops {cr.drops}")
 
         if args.output:
-            with open(args.output, "w") as f:
-                json.dump(asdict(r), f, indent=2)
+            write_output(args.output, "SIMULATED" if args.simulate else "PASS",
+                         asdict(r))
     except RuntimeError as exc:
         print(f"[ENVIRONMENT-OPEN] {exc}", file=sys.stderr)
+        if args.output:
+            write_output(args.output, "ENVIRONMENT-OPEN", None, reason=str(exc))
         sys.exit(2)
 
 
