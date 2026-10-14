@@ -94,9 +94,10 @@ try:
    enabled[name]=time.monotonic(); cli('packet-generator enable-stream '+name)
   deadline=time.monotonic()+cap/rate+5; samples=0; rows={{}}
   while time.monotonic()<deadline:
-   now=time.monotonic(); rows=stream_rows(cli('show packet-generator'),names); samples+=1
+   rows=stream_rows(cli('show packet-generator'),names); now=time.monotonic(); samples+=1
    for name,row in rows.items():
-    if row['count']>rate*(now-enabled[name]+0.1)+32: raise RuntimeError('stream exceeded monotonic pacing bound: '+name)
+    age=now-enabled[name]; allowed=rate*(age+0.1)+32
+    if row['count']>allowed: raise RuntimeError('stream exceeded monotonic pacing bound: '+name+' count='+str(row['count'])+' elapsed='+format(age,'.6f')+'s allowed='+format(allowed,'.1f'))
    if tx_drops(cli('show errors'))>phase['tx_drops_before']: raise RuntimeError('new R2 TX drop; stopping remaining phases')
    if all(not row['enabled'] and row['count']==cap for row in rows.values()): break
    time.sleep(0.1)
@@ -237,6 +238,17 @@ def validate_result(result: dict, count: int = 256) -> None:
             raise ValueError("measured Mbps disagrees with measured TX pps")
 
 
+def validate_remote_result(result: dict, count: int) -> dict:
+    """Preserve the complete remote diagnostic when a captured result fails validation."""
+    try:
+        validate_result(result, count)
+    except ValueError as error:
+        result["status"] = "FAIL"
+        result.setdefault("failure_reason", str(error))
+        result["validation_failure"] = str(error)
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True)
@@ -248,8 +260,9 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=False)
     marker = "DANOS_PHYSICAL_PG_" + uuid.uuid4().hex + ":"
     try:
-        result = _exchange(args.device, build_remote(marker, args.count), marker, reply_timeout=60)
-        validate_result(result, args.count)
+        result = validate_remote_result(
+            _exchange(args.device, build_remote(marker, args.count), marker, reply_timeout=60),
+            args.count)
     except (OSError, ValueError, TimeoutError) as error:
         result = {"status": "FAIL", "scope": "bounded physical 64-byte UDP packet-generator diagnostic",
                   "failure_reason": str(error)}

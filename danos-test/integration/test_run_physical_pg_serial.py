@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_physical_pg_serial import R2_MAC, R3_P4_MAC, build_remote, validate_result
+from run_physical_pg_serial import (R2_MAC, R3_P4_MAC, build_remote,
+                                    validate_remote_result, validate_result)
 
 
 class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
@@ -59,6 +60,15 @@ class PhysicalPacketGeneratorSerialTest(unittest.TestCase):
 
     def test_valid_result_passes(self):
         validate_result(self.valid_result())
+
+    def test_failed_remote_result_retains_phase_diagnostics(self):
+        result = self.valid_result()
+        result["status"] = "FAIL"
+        result["failure_reason"] = "stream exceeded monotonic pacing bound"
+        retained = validate_remote_result(result, 256)
+        self.assertEqual(retained["failure_reason"], "stream exceeded monotonic pacing bound")
+        self.assertEqual(len(retained["phases"]), 3)
+        self.assertEqual(retained["status"], "FAIL")
 
     def test_frame_count_must_match_independent_source_nic(self):
         for field, value in (("generated_frames", 3071), ("hardware_tx_delta", 3071)):
