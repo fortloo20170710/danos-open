@@ -1,5 +1,24 @@
 # DANOS Open Project Status
 
+## 2026-10-13 development checkpoint (source `8bcce4d`)
+
+The multicore performance CLI now emits a machine-readable result when the
+real TRex integration is unavailable: `ENVIRONMENT-OPEN` with an explicit
+reason. `--simulate` is marked `SIMULATED`/`accepted=false`, and simulated
+scaling output no longer prints `PASS`. The new CLI tests cover those three
+behaviors; current CTest is **77/77 PASS**. The change is pushed to
+`origin/main`; GitHub CI, Coverage, and Interop Gate passed.
+
+Physical I211 functional forwarding remains independently demonstrated by the
+tightly bracketed 3072-frame run below. The later `tight3` replay is only
+`OBSERVED` because receiver snapshot intervals exceeded the 1800-second
+window, despite matching counters. No switch is currently available, the
+development host wired NIC reports `NO-CARRIER`, and this host has no TRex,
+trafgen, iperf3, or testpmd executable. Therefore sustained PCI performance,
+latency, and line-rate qualification remain **ENVIRONMENT-OPEN**; do not
+promote finite functional packet counts or simulated output into performance
+acceptance.
+
 ## Current v0.16 qualification verdict — 2026-10-13
 
 Route/NH/NHGroup contract remains frozen; deterministic contract gate PASS.
@@ -80,8 +99,10 @@ non-warmup losses in a 7.26-second cluster aligned after correcting the
 measured R3 clock lag (~591.6 s); all four destinations then returned to stable
 success. This is observed interrupted forwarding and recovery, not lossless
 restart. Evidence and hashes are indexed in `iso-installation-acceptance.md`.
-Full CTest at the current source tree passes 76/76, including identity-bound
-R1/R4 independent receiver snapshot and counter-window tools.
+Full CTest at the current source tree passes 77/77, including identity-bound
+R1/R4 independent receiver snapshot and counter-window tools, plus the
+multicore performance CLI's explicit real-runner-open and simulation-status
+checks.
 
 R3's installed PCI/DPDK preflight passes: BDFs `0000:01:00.0` through
 `0000:04:00.0` are I211 devices bound to `uio_pci_generic`; 28×2 MiB
@@ -101,7 +122,7 @@ the finite batch only. It does not establish wire PPS, throughput, latency,
 CPU, sustained load or balanced hashing; performance qualification remains
 OPEN. Evidence hashes are indexed in `iso-installation-acceptance.md`.
 
-Current CTest 76/76 PASS (the historical release-gate run below had its
+Current CTest 77/77 PASS (the historical release-gate run below had its
 then-current test count). The clean `b3804e0` shared-L2 QEMU cold boot now proves
 actual learned BGP route ADD/WITHDRAW/RESTORE/POSTFRR packet/FIB phases,
 FRR/zserv recovery, VPP restart/replay and ECMP path recovery. Archived
