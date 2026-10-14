@@ -1,6 +1,25 @@
 # I211 physical LIVE traffic qualification runbook
 
-更新时间：2026-10-13
+更新时间：2026-10-14
+
+## 2026-10-14 switch-cabling readiness (OPEN)
+
+Operator reports that R1–R4 and the development host are connected to a
+switch. Read-only host inspection confirms `enp4s0` is carrier-up at 1 Gbps
+full duplex with `192.168.71.1/24`; the previously configured lab next hop
+`192.168.71.2` did not answer two bounded ICMP probes. This does not establish
+that the four routers are offline, but the switch port/VLAN map and a usable
+host-to-runner/serial path are not yet verified. No new physical test was run.
+
+Before resuming the established R2 → R3 → R1/R4 windows, preserve the topology
+in the switch configuration: R2↔R3 ingress, R3↔R1 and R3↔R4 as distinct
+egress L3 links (or isolated VLANs), plus a separate development-host
+management/traffic-generator path. Do not bridge all router-facing ports into
+one flat VLAN; that would change the tested L3/ECMP topology. After mapping,
+verify each link's peer MAC/carrier and the two R3 next hops, then take fresh
+before/after snapshots around exactly one bounded batch. The host RTL8168 NIC
+is not a DPDK runner; use an I211 port on R2 for traffic generation and the
+independent R1/R4 counters as already documented below.
 
 ## Four-node tightly bracketed physical UDP window — 2026-10-13 (PASS)
 

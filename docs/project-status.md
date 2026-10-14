@@ -5,9 +5,9 @@
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
 The latest source change is `4c48393` (gNMI STREAM event-update regression);
 `147b7b4` implements the initial-sync semantics, and `b7bff99` makes
-desired/programmed diff callbacks reentrant. Prior status documentation push
-was `b54dced`. CTest is 77/77 PASS; GitHub CI and Coverage passed for the
-current push, while Interop Gate was still running at the latest check. See
+desired/programmed diff callbacks reentrant. Status documentation was last
+updated in `760ddc2`. CTest is 77/77 PASS; GitHub CI, Coverage, and Interop
+Gate all passed for that documentation push. See
 the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
@@ -16,8 +16,9 @@ Current release/qualification gaps:
 
 - Real PCI/DPDK sustained performance, latency, CPU and line-rate qualification
   is `ENVIRONMENT-OPEN`. R3 I211 preflight and finite correlated packet runs
-  pass only their stated functional scope; no switch-backed sustained-load
-  and independent measurement lane is presently available.
+  pass only their stated functional scope; the newly reported switch
+  connection has not yet produced a verified runner-to-node management path
+  or a sustained-load measurement.
 - Physical rollout is incomplete: R1/R3 have r14 evidence, R2 remains r9 and
   R4 is unverified. Four-node homogeneous r14 acceptance is open.
 - Physical management is disabled; production PKI/mTLS deployment and live
@@ -45,10 +46,14 @@ and cancellation/reset lifecycle tests remain open.
 
 Physical connectivity update (user report, 2026-10-14): R1–R4 and the
 development host are now cabled to a switch. Host read-only inspection sees
-`enp4s0` carrier-up at `192.168.71.1/24`, but only RTL8168 (`r8169`) is present
-on the development host; no local iperf3/trafgen/testpmd/TRex was found. Switch
-port/VLAN mapping and a management path to the routers have not yet been
-verified, so no new physical performance result is claimed.
+`enp4s0` carrier-up at 1 Gbps/full duplex and `192.168.71.1/24`; its NIC is
+RTL8168 (`r8169`), not a DPDK traffic NIC. No local iperf3/trafgen/testpmd/TRex
+was found. A bounded ping to the previously configured lab next hop
+`192.168.71.2` received no replies. Switch port/VLAN mapping, node management
+reachability, and serial target are therefore still unverified; no new
+physical test or performance result is claimed. Preserve the isolated L3
+links/VLANs in the physical runbook rather than placing all router ports into
+one flat broadcast domain.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 

@@ -9,7 +9,7 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-14
 
-Source checkpoint: `4c48393`; prior status-doc push: `b54dced`; CTest 77/77 PASS;
+Source checkpoint: `4c48393`; latest status-doc push: `760ddc2`; CTest 77/77 PASS;
 latest GitHub CI, Coverage and Interop Gate passed. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
@@ -20,14 +20,16 @@ Execution priority, as confirmed on 2026-10-14:
    Prepare a qualified traffic source and independent receiver, then measure
    sustained 64-byte PCI DPDK throughput, loss, latency, CPU and per-flow/ECMP
    bucket distribution. R3 preflight and bounded packet delivery are not
-   performance qualification. The current environment cannot produce this
-   result; retain `ENVIRONMENT-OPEN` and resume as soon as a suitable runner is
-   available. In the same physical qualification track, roll R2/R4 to r14,
+   performance qualification. R1–R4 and the host are now user-reported on a
+   switch, but host-to-node management is not yet verified (the configured
+   `192.168.71.2` next hop did not answer); retain `ENVIRONMENT-OPEN` until the
+   topology and measurement path are validated. In the same physical
+   qualification track, roll R2/R4 to r14,
    complete identity-bound four-node checks, test live VPP reconnect/recovery
    with mgrd active, and deploy/verify production PKI/mTLS before enabling
    physical management.
-2. **gNMI Subscribe semantics / user experience (in progress).** The current
-   working-tree change now honors STREAM `updates_only`, emits the required
+2. **gNMI Subscribe semantics / user experience (in progress).** The committed
+   implementation now honors STREAM `updates_only`, emits the required
    initial `sync_response`, applies JSON versus JSON_IETF TypedValue selection,
    and removes an unconditional sleep after event/timed waits. Protocol tests
    cover initial snapshot, updates-only and both encodings; targeted tests and
@@ -1234,10 +1236,15 @@ Done:
   [Set/Get semantics](gnmi-set-get-semantics.md).
 
 Still open:
-- `updates_only`, `use_models`, `encoding` are ignored; no bytes/decimal
-  `TypedValue`
-- STREAM still polls on an approximately 100 ms tick rather than subscribing to store events,
-  so latency and CPU cost scale with stream count
+- `use_models` is not decoded/applied; per-subscription SAMPLE/ON_CHANGE mode,
+  `sample_interval`, `suppress_redundant` and `heartbeat_interval` are not
+  implemented. Until implemented, unsupported request options must be
+  explicitly rejected rather than silently treated as event-driven STREAM.
+- Cancellation/reset and broader subscription lifecycle behavior need
+  regression coverage. The current bounded 200 ms wait is a liveness fallback
+  around store-event wakeups, not the former unconditional polling loop.
+- BYTES/PROTO/ASCII encodings and scalar/decimal TypedValues remain outside
+  the advertised encoding set; JSON and JSON_IETF are the supported forms.
 
 ### [ ] 8. NETCONF has no transport
 
