@@ -2,7 +2,34 @@
 
 更新时间：2026-10-13
 
-## UART RPC long-payload compatibility and latest four-node replay — 2026-10-13
+## Four-node tightly bracketed physical UDP window — 2026-10-13 (PASS)
+
+A fresh snapshot sequence completed within the verifier's 1800s per-node
+limit: R3 180.01s, R1 344.23s, R4 291.39s. R2 generated 3072 64-byte frames;
+its I211 TX-good delta was 3072 and TX drops did not increase. R3 P4 RX was
++3072, P1/P2 TX were +2304/+768, and drops were unchanged. Independent receiver
+RX was R4 +2304 and R1 +768, exactly matching the corresponding R3 egress
+counters and totaling 3072. Stable R3 VPP PID and the resolved two-path FIB
+were verified. This is a bounded functional forwarding/delivery PASS, not an
+ECMP statistical-balance or performance qualification. R3 CPU averaged
+99.75% of one logical CPU across the 180s interval, not phase-aligned; measured
+phase rates include CLI/control overhead. Latency, paired forwarding CPU,
+sustained performance, and line rate remain open.
+
+Artifacts under `build/physical-udp64-tight2-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `03ce6a4e46b71f6fd0cc2f5bf0b80664579be94ab84f24ff0cf7b230174db333` |
+| `r3-before/result.json` | `b3f1a9df89644969953cf595d7b6e39d269fb639830da307ba2aff9bda86b790` |
+| `r3-after/result.json` | `532e27aeaa7119273436215bea6c356813009753483bc7a9eb26534ec5f1c2b6` |
+| `r1-before/result.json` | `544c0e8bf8d33b0a91a60100c910503fe117e2ea607d7af25a76b08365ab5740` |
+| `r1-after/result.json` | `08d80352fd7c38410bca38b1e598c0fa10270ed84f60897ed3532907cd3038c1` |
+| `r4-before/result.json` | `ce0c56dbd6fae652b0fe494a89f2b1f899f588f0d4d3c115b6a4efa7346763df` |
+| `r4-after/result.json` | `526c8654d0f6a752423baac5858a7ba78d50fe46d528159536c3449775da258a` |
+| `end-to-end-window.json` | `28082da1ce1b16340be8bfa80c062e850ec018a625a347f030e9c9d7dd761897` |
+
+## UART RPC long-payload compatibility and earlier wide-window replay — 2026-10-13
 
 The first R3/R4 counter-snapshot attempts exposed two physical-console
 constraints: multiline `python3 -c` source was interpreted as shell input, and
@@ -12,13 +39,13 @@ any stale continuation prompt with Ctrl-C, and executes one compact bootstrap;
 it creates no remote file. Fifteen UART adapter tests and CTest 76/76 pass.
 R3 before/after and R4 after then passed against the live devices.
 
-The latest bounded UDP batch generated 3072 frames on R2, with an exact R2
+The earlier wide-window UDP batch generated 3072 frames on R2, with an exact R2
 I211 TX-good delta of 3072 and no TX-drop increase. R3 P4 RX/TX increased
 3072, P1 TX increased 2304, P2 TX increased 768, and the three relevant R3
 drop counters did not increase. Independent RX deltas were R1 +768 and R4
 +2304, totaling 3072. VPP PID/start ticks and both resolved ECMP paths remained
 stable. Thus the packet counts are consistent end-to-end, but the verifier
-returns `OBSERVED`: the per-node snapshot spans were R3 266.00s, R1 11135.01s,
+returned `OBSERVED`: the per-node snapshot spans were R3 266.00s, R1 11135.01s,
 and R4 1089.93s; R1 exceeded the 1800s bound. This is not a tightly bracketed
 same-batch proof, a statistical ECMP-balance claim, nor a performance result.
 Latency, paired forwarding CPU, sustained performance, and line rate remain
