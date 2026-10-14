@@ -605,17 +605,51 @@ static int test_subscribe_stream_initial(bool updates_only,
         }
     }
 
-    if ((updates_only && updates != 0) || (!updates_only && updates == 0))
-        fprintf(stderr, "STREAM initial mismatch: updates_only=%d updates=%d sync=%d kind=%d\n",
-                updates_only, updates, sync, value_kind);
+    assert(sync);
     assert(updates_only ? updates == 0 : updates > 0);
     if (!updates_only)
         assert(value_kind == (encoding == GNMI_ENC_JSON
                             ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF));
+
+    /* Mutate the store after sync_response and require an event-driven update
+     * on this same stream, including for updates_only subscriptions. */
+    int updates_before_change = updates;
+    danos_iface_t changed;
+    size_t changed_size = sizeof(changed);
+    assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 77,
+                             &changed, &changed_size) == DANOS_OK);
+    changed.mtu++;
+    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 77,
+                               &changed, sizeof(changed)) == DANOS_OK);
+    while (updates == updates_before_change) {
+        uint8_t fh[9];
+        assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
+        uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                             ((uint32_t)fh[1] << 8) | fh[2];
+        assert(frame_len <= sizeof(frame));
+        assert(read_full_c(conn_fd, frame, frame_len) == 0);
+        if (fh[3] != 0) continue;
+        assert(accumulated_len + frame_len <= sizeof(accumulated));
+        memcpy(accumulated + accumulated_len, frame, frame_len);
+        accumulated_len += frame_len;
+        while (accumulated_len >= 5) {
+            size_t message_len = ((size_t)accumulated[1] << 24) |
+                                 ((size_t)accumulated[2] << 16) |
+                                 ((size_t)accumulated[3] << 8) |
+                                 accumulated[4];
+            if (accumulated_len < 5 + message_len) break;
+            inspect_subscribe_response(accumulated + 5, message_len,
+                                       &updates, &sync, &value_kind);
+            accumulated_len -= 5 + message_len;
+            memmove(accumulated, accumulated + 5 + message_len,
+                    accumulated_len);
+        }
+    }
+    assert(updates > updates_before_change);
     shutdown(conn_fd, SHUT_RDWR);
     close(conn_fd);
     conn_fd = -1;
-    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d)\n",
+    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d, event-update)\n",
            updates_only, encoding);
     return 0;
 }
