@@ -1,5 +1,36 @@
 # DANOS Open Project Status
 
+## 2026-10-14 current development summary
+
+The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
+The latest source change is `b7bff99` (reentrant desired/programmed diff
+callbacks), followed by documentation index commit `443c6bb`. The working tree
+was clean at review. CTest is 77/77 PASS; GitHub CI, Coverage and Interop Gate
+for the latest documentation commit passed. See the [acceptance matrix](v0.16-acceptance-matrix.md)
+for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
+for next tasks.
+
+Current release/qualification gaps:
+
+- Real PCI/DPDK sustained performance, latency, CPU and line-rate qualification
+  is `ENVIRONMENT-OPEN`. R3 I211 preflight and finite correlated packet runs
+  pass only their stated functional scope; no switch-backed sustained-load
+  and independent measurement lane is presently available.
+- Physical rollout is incomplete: R1/R3 have r14 evidence, R2 remains r9 and
+  R4 is unverified. Four-node homogeneous r14 acceptance is open.
+- Physical management is disabled; production PKI/mTLS deployment and live
+  VPP reconnect/recovery are open. Existing QEMU synthetic-neighbor mTLS and
+  restart evidence must not be generalized to those gates.
+- v0.16.0 final release remains undecided pending disposition of the release
+  gates above. BFD, VLAN, VXLAN and EVPN remain deferred.
+
+Independent engineering backlog (not all are v0.16 blockers) includes gNMI
+STREAM semantics/event-driven updates, full desired-vs-operational backend
+readback, backend selection, NETCONF SSH transport, HA/CoPP integration,
+upstream-derived golden fixtures, and supply-chain/repository hygiene. The
+open-work document is the actionable inventory; its older chronological
+entries are historical and may be superseded by this summary.
+
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 
 The multicore performance CLI now emits a machine-readable result when the

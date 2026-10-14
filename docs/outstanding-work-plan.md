@@ -7,7 +7,50 @@ at the top.
 
 Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
-### Current delivery checkpoint — 2026-10-13 r14
+### Current delivery and work inventory — 2026-10-14
+
+Source checkpoint: `b7bff99`; latest docs index: `443c6bb`; CTest 77/77 PASS;
+latest GitHub CI, Coverage and Interop Gate passed. The current physical and
+release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
+still `v0.16.0-rc1`, not a final-release PASS.
+
+Release/qualification work still open:
+
+- [ ] Obtain a qualified switch/traffic-generator/independent-receiver lane;
+  measure sustained 64-byte PCI DPDK throughput, loss, latency, CPU and
+  per-flow/ECMP bucket distribution. R3 preflight and bounded packet delivery
+  are not performance qualification. Until then this gate is
+  `ENVIRONMENT-OPEN`, not silently waived.
+- [ ] Roll R2 and R4 to the current r14 image and complete identity-bound,
+  homogeneous four-node checks. Current evidence is R1/R3 r14, R2 r9, R4
+  unverified.
+- [ ] Qualify live VPP reconnect/recovery while mgrd remains running, and
+  deploy/verify production PKI/mTLS before enabling physical management.
+- [ ] Re-run the final release decision gate; satisfy the remaining gates or
+  explicitly disposition each environment-open limitation before deciding
+  whether v0.16.0 can be released.
+
+Independent engineering backlog (not all are formal v0.16 release blockers):
+
+- [ ] Complete gNMI Subscribe semantics (`updates_only`, `use_models`,
+  encoding/TypedValue, redundant/heartbeat behavior as supported) and replace
+  the 200 ms STREAM polling loop with event-driven updates.
+- [ ] Finish backend selection/capability-driven dispatch and actual backend
+  operational readback; the recent reentrant diff callback fix is only a
+  safe callback foundation, not full reconciliation/OPER verification.
+- [ ] Decide and implement NETCONF SSH transport, HA/CoPP integration, and
+  remaining upstream-derived golden fixtures according to explicit scope.
+- [ ] Close supply-chain/repository hygiene gaps (dependency pins, SBOM and
+  artifact provenance as appropriate); the tracked large-document history
+  rewrite remains a separate, approval-gated operation.
+
+Deferred scope: BFD, VLAN, VXLAN and EVPN stay frozen until the v0.16 release
+decision; OVS/P4/platform remain intentionally unstarted. Older notes below
+are chronological evidence, not a competing current task list. In particular,
+any old CTest counts or statements that callbacks are stubs are superseded by
+this checkpoint and the 2026-10-13 project-status entry.
+
+### Historical r14 delivery checkpoint — 2026-10-13
 
 - [x] Rebuild Debian trixie mgrd from clean `28b4a9e`, including explicit
   VPP programming backend selection, and include it in LIVE/installed payloads.
@@ -1133,8 +1176,11 @@ use), and `reconcile_trigger()` marks state dirty so the next pass runs
 immediately. Two regression tests cover withdrawal and the retry limit.
 
 Still open:
-- `danos_state_diff_desired_programmed()` is stubbed and `diff_cb` is an empty
-  stub — drift detection is reported, not repaired per-type
+- desired/programmed key differences can now be snapshotted under the store
+  lock and callbacks are invoked after unlock (commit `b7bff99`), including a
+  reentrant-mutation regression. This does not yet establish that every drift
+  is translated into per-type repair operations or verified against backend
+  readback; those end-to-end behaviors remain open.
 - OPER does not exist: there is no path from backend state to an OPER view, so
   `DANOS_ERR_VERIFY_FAIL` is unreachable
 
