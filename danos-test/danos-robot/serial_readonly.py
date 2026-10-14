@@ -5,7 +5,6 @@ import json
 import os
 import re
 import select
-import shlex
 import subprocess
 import stat
 import termios
@@ -20,6 +19,25 @@ def decode_reply(raw, marker):
         if line.startswith(marker):
             return json.loads(base64.b64decode(line[len(marker):], validate=True))
     return None
+
+
+def _wire_command(script):
+    """Keep UART input lines short and remote Python source single-line.
+
+    Some login shells have bracketed-paste / line-editing modes enabled; raw
+    newlines in a ``python3 -c`` payload can be interpreted as separate shell
+    commands, and long physical-console lines can exceed the tty input buffer.
+    Send the Base64 payload through short shell-variable append lines, then
+    execute one compact bootstrap. No remote file is created.
+    """
+    encoded = base64.b64encode(script.encode()).decode()
+    commands = ["__DANOS_UART_B64=\r"]
+    for offset in range(0, len(encoded), 256):
+        chunk = encoded[offset:offset + 256]
+        commands.append('__DANOS_UART_B64="${__DANOS_UART_B64}' + chunk + '"\r')
+    bootstrap = "import base64;exec(compile(base64.b64decode('${__DANOS_UART_B64}'),'<uart-rpc>','exec'))"
+    commands.append('python3 -c "' + bootstrap + '"\r')
+    return "".join(commands)
 
 
 def read_command(device, command):
@@ -67,7 +85,7 @@ def read_installed_inventory(device):
 def _exchange(device, script, marker, reply_timeout=15):
     if not 0 < reply_timeout <= 60:
         raise ValueError("bounded UART reply timeout required")
-    wire = "python3 -c " + shlex.quote(script) + "\r"
+    wire = _wire_command(script)
     fd = os.open(device, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
     try:
         if not stat.S_ISCHR(os.fstat(fd).st_mode):
@@ -79,6 +97,10 @@ def _exchange(device, script, marker, reply_timeout=15):
         attrs[4] = attrs[5] = termios.B115200
         attrs[6][termios.VMIN] = attrs[6][termios.VTIME] = 0
         termios.tcsetattr(fd, termios.TCSANOW, attrs)
+        # Abort any stale unmatched quote/continuation prompt left by an
+        # interrupted earlier RPC before beginning a fresh bounded command.
+        os.write(fd, b"\x03")
+        time.sleep(.15)
         for byte in wire.encode():
             os.write(fd, bytes([byte]))
             time.sleep(.007)

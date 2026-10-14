@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from vpp_readonly import VppReadOnly
-from serial_readonly import read_command, decode_reply
+from serial_readonly import read_command, decode_reply, _wire_command
 from capture_installed_inventory import qualify
 
 
@@ -63,6 +63,24 @@ class ReadOnlyTests(unittest.TestCase):
                          [0, "vpp version", ""])
         self.assertEqual(decode_reply(b"\x1b[?2004l\r" + prefix + payload + b"\r\n", "MARK:"),
                          [0, "vpp version", ""])
+
+    def test_uart_multiline_script_is_transmitted_as_one_shell_line(self):
+        wire = _wire_command("print('first')\nprint('second')")
+        lines = wire.replace("\r", "\n").splitlines()
+        self.assertTrue(all(len(line) < 512 for line in lines))
+        self.assertIn("base64.b64decode", wire)
+        completed = subprocess.run(["bash", "-c", "\n".join(lines)],
+                                   capture_output=True, text=True, check=True)
+        self.assertEqual(completed.stdout, "first\nsecond\n")
+
+    def test_uart_large_script_is_chunked_below_tty_line_limit(self):
+        wire = _wire_command("print(" + repr("x" * 5000) + ")")
+        lines = wire.replace("\r", "\n").splitlines()
+        self.assertGreater(len(lines), 10)
+        self.assertTrue(all(len(line) < 512 for line in lines))
+        completed = subprocess.run(["bash", "-c", "\n".join(lines)],
+                                   capture_output=True, text=True, check=True)
+        self.assertEqual(completed.stdout, "x" * 5000 + "\n")
 
     def test_uart_rejects_mutating_commands_before_open(self):
         for command in (["clear", "errors"], ["set", "interface", "state"],

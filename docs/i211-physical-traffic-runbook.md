@@ -2,6 +2,41 @@
 
 更新时间：2026-10-13
 
+## UART RPC long-payload compatibility and latest four-node replay — 2026-10-13
+
+The first R3/R4 counter-snapshot attempts exposed two physical-console
+constraints: multiline `python3 -c` source was interpreted as shell input, and
+the receiver RPC exceeded the tty's single-line input capacity. The read-only
+UART transport now sends Base64 source in short shell-variable chunks, aborts
+any stale continuation prompt with Ctrl-C, and executes one compact bootstrap;
+it creates no remote file. Fifteen UART adapter tests and CTest 76/76 pass.
+R3 before/after and R4 after then passed against the live devices.
+
+The latest bounded UDP batch generated 3072 frames on R2, with an exact R2
+I211 TX-good delta of 3072 and no TX-drop increase. R3 P4 RX/TX increased
+3072, P1 TX increased 2304, P2 TX increased 768, and the three relevant R3
+drop counters did not increase. Independent RX deltas were R1 +768 and R4
++2304, totaling 3072. VPP PID/start ticks and both resolved ECMP paths remained
+stable. Thus the packet counts are consistent end-to-end, but the verifier
+returns `OBSERVED`: the per-node snapshot spans were R3 266.00s, R1 11135.01s,
+and R4 1089.93s; R1 exceeded the 1800s bound. This is not a tightly bracketed
+same-batch proof, a statistical ECMP-balance claim, nor a performance result.
+Latency, paired forwarding CPU, sustained performance, and line rate remain
+open.
+
+Artifacts under `build/physical-udp64-tight-window-20261013/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `e60b32f45227db4105e9ed4727b64d731500cfc7e429a3117d201109d9eaea49` |
+| `r3-before-final/result.json` | `5ad9b4c6504199e19ed4958647ef254b52eeaf94f6dd5c622fc6498fe3d9a929` |
+| `r3-after/result.json` | `3f2d1158f53b60de4092d50dedeaec266b91ebdc3dd079f5dae7076d319004ec` |
+| `r1-before/result.json` | `82dd893334b2853505cb08e82aef755761de70be773b2ea376866520cd28d77d` |
+| `r1-after/result.json` | `3375806bdd7cb4a5df77ff362e54905eddd86ea9a7ba780aace4f4aa2614ef92` |
+| `r4-before/result.json` | `ab3c101a5ae48fb5051d3332913051569070f559a22a989ebd62e8ced0ba7b59` |
+| `r4-after-final/result.json` | `40930a5be8495f9b83ee04b3b629db2460c521ccf8d35d9d83e5a1aec8fc717f` |
+| `end-to-end-window.json` | `5aeff9a2d37566634da16fe85d7acb6f99dd25bc8a7617ba9ea1558cf0b8a36a` |
+
 ## R2 per-phase VPP CPU runner replay — 2026-10-13
 
 After commit `3bc9e10`, the bounded serial runner was replayed on physical R2.
