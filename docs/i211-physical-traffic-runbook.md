@@ -29,6 +29,38 @@ Artifacts under `build/physical-udp64-tight2-20261013/`; SHA256:
 | `r4-after/result.json` | `526c8654d0f6a752423baac5858a7ba78d50fe46d528159536c3449775da258a` |
 | `end-to-end-window.json` | `28082da1ce1b16340be8bfa80c062e850ec018a625a347f030e9c9d7dd761897` |
 
+## Repeated four-node UDP window — 2026-10-13 (OBSERVED)
+
+A follow-up single-pass run sent 3072 finite 64-byte frames from R2. The R2
+I211 TX-good delta was exactly 3072 and TX drops did not increase. R3 P4 RX was
+3072; ECMP P1/P2 TX were 2304/768; R1/R4 independently received 768/2304;
+the measured R3 drop deltas were zero and the R3 VPP PID remained 3272. Thus
+the endpoint and forwarding counters agree for the batch. The verifier reports
+`OBSERVED`, not `PASS`, because the snapshot intervals were R3 3089.77s, R1
+4164.02s, and R4 2659.66s, all beyond the 1800s same-window limit. This is
+supporting counter correlation only; it does not replace the tightly bracketed
+PASS above and does not qualify performance or statistical ECMP balance.
+
+The preceding 49152-frame diagnostic batch was rejected because the R3
+before/after interval also enclosed earlier sender retries; its P4 delta did
+not equal that batch's source count. No traffic result is inferred from that
+failed correlation. To avoid recurrence, the next physical run should be a
+single bounded send between fresh snapshots, with serial changes performed
+continuously and without unrelated retries or long pauses.
+
+Artifacts under `build/physical-udp64-count256-20261013-batch2/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r2-source/result.json` | `672c2aa16ef1781fd9903f1da0e9bf2658ed45193e1cd4503605e98fb1c611a3` |
+| `r3-before/result.json` | `a1018615a6fbba0f063502d8699ecd0677a71d9851aca316e9011ccf2e107ebd` |
+| `r3-after/result.json` | `8960e0ddf8773dd117d5473bd817f62fd76779f8f0fd351e7b1fcf213cdbd57e` |
+| `r1-before/result.json` | `6c33b90a017d08d84c91ae71e37411e6f801a9e96efe6e6e368c04013e6e515f` |
+| `r1-after-retry1/result.json` | `9631fc73bc881fa6e2f2b31042b8d42b25ac4cd3720f3e18619c8238cf5a36e6` |
+| `r4-before-retry1/result.json` | `fd70d19f6c9a3bb2d22293f4bbfdb7754133fa9dd9b18370c345db86b2e0545c` |
+| `r4-after/result.json` | `0ce5a3046d128ed4ee87534d471d6086d5e44c7910206cfa6fc7764a2dd759ff` |
+| `end-to-end-window.json` | `c99445e9ada4d35de04c580504ad77bcf0ac9b68f3c105262c7ccbb420ca343c` |
+
 ## UART RPC long-payload compatibility and earlier wide-window replay — 2026-10-13
 
 The first R3/R4 counter-snapshot attempts exposed two physical-console
