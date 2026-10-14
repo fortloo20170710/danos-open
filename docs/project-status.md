@@ -3,10 +3,12 @@
 ## 2026-10-14 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source change is `b7bff99` (reentrant desired/programmed diff
-callbacks), followed by documentation index commit `443c6bb`. The working tree
-was clean at review. CTest is 77/77 PASS; GitHub CI, Coverage and Interop Gate
-for the latest documentation commit passed. See the [acceptance matrix](v0.16-acceptance-matrix.md)
+The latest source change is `147b7b4` (gNMI STREAM initial-sync semantics);
+the preceding core fix `b7bff99` makes desired/programmed diff callbacks
+reentrant. Prior status documentation push was `de5e6a3`. CTest is 77/77 PASS;
+GitHub CI, Coverage and Interop Gate passed on the prior docs checkpoint. The
+new source commit has passed local CTest; remote workflows have not yet been
+observed for it. See the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
 
@@ -24,12 +26,29 @@ Current release/qualification gaps:
 - v0.16.0 final release remains undecided pending disposition of the release
   gates above. BFD, VLAN, VXLAN and EVPN remain deferred.
 
-Independent engineering backlog (not all are v0.16 blockers) includes gNMI
-STREAM semantics/event-driven updates, full desired-vs-operational backend
-readback, backend selection, NETCONF SSH transport, HA/CoPP integration,
-upstream-derived golden fixtures, and supply-chain/repository hygiene. The
-open-work document is the actionable inventory; its older chronological
-entries are historical and may be superseded by this summary.
+Current execution priority is: (1) physical performance/runner qualification
+and related four-node, live-reconnect and production-PKI closure; (2) gNMI
+Subscribe semantics and event-driven STREAM behavior; (3) actual backend OPER
+readback and desired/programmed/operational truth; (4) NETCONF SSH transport;
+(5) supply-chain and repository hygiene. Physical performance is the only
+item that cannot be measured in the current environment; keep it
+`ENVIRONMENT-OPEN` while advancing the software items in this order. The
+actionable criteria are in [outstanding work](outstanding-work-plan.md).
+
+gNMI Subscribe progress at `147b7b4`: STREAM now honors
+`updates_only`, sends initial `sync_response`, selects JSON/JSON_IETF
+TypedValue encoding, and relies on store-event wakeups with a bounded
+200 ms liveness fallback rather than adding an extra sleep. New gRPC tests
+cover initial snapshot omission/presence and both encodings; full CTest remains
+77/77 PASS. `use_models`, per-subscription sample/suppress/heartbeat controls,
+and a change-delivery/cleanup lifecycle test remain open.
+
+Physical connectivity update (user report, 2026-10-14): R1–R4 and the
+development host are now cabled to a switch. Host read-only inspection sees
+`enp4s0` carrier-up at `192.168.71.1/24`, but only RTL8168 (`r8169`) is present
+on the development host; no local iperf3/trafgen/testpmd/TRex was found. Switch
+port/VLAN mapping and a management path to the routers have not yet been
+verified, so no new physical performance result is claimed.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 

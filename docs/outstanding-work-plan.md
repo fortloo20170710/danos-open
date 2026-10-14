@@ -9,40 +9,49 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-14
 
-Source checkpoint: `b7bff99`; latest docs index: `443c6bb`; CTest 77/77 PASS;
+Source checkpoint: `147b7b4`; prior status-doc push: `de5e6a3`; CTest 77/77 PASS;
 latest GitHub CI, Coverage and Interop Gate passed. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
 
-Release/qualification work still open:
+Execution priority, as confirmed on 2026-10-14:
 
-- [ ] Obtain a qualified switch/traffic-generator/independent-receiver lane;
-  measure sustained 64-byte PCI DPDK throughput, loss, latency, CPU and
-  per-flow/ECMP bucket distribution. R3 preflight and bounded packet delivery
-  are not performance qualification. Until then this gate is
-  `ENVIRONMENT-OPEN`, not silently waived.
-- [ ] Roll R2 and R4 to the current r14 image and complete identity-bound,
-  homogeneous four-node checks. Current evidence is R1/R3 r14, R2 r9, R4
-  unverified.
-- [ ] Qualify live VPP reconnect/recovery while mgrd remains running, and
-  deploy/verify production PKI/mTLS before enabling physical management.
-- [ ] Re-run the final release decision gate; satisfy the remaining gates or
-  explicitly disposition each environment-open limitation before deciding
-  whether v0.16.0 can be released.
+1. **Physical performance qualification (highest priority, environment-open).**
+   Prepare a qualified traffic source and independent receiver, then measure
+   sustained 64-byte PCI DPDK throughput, loss, latency, CPU and per-flow/ECMP
+   bucket distribution. R3 preflight and bounded packet delivery are not
+   performance qualification. The current environment cannot produce this
+   result; retain `ENVIRONMENT-OPEN` and resume as soon as a suitable runner is
+   available. In the same physical qualification track, roll R2/R4 to r14,
+   complete identity-bound four-node checks, test live VPP reconnect/recovery
+   with mgrd active, and deploy/verify production PKI/mTLS before enabling
+   physical management.
+2. **gNMI Subscribe semantics / user experience (in progress).** The current
+   working-tree change now honors STREAM `updates_only`, emits the required
+   initial `sync_response`, applies JSON versus JSON_IETF TypedValue selection,
+   and removes an unconditional sleep after event/timed waits. Protocol tests
+   cover initial snapshot, updates-only and both encodings; targeted tests and
+   full CTest 77/77 pass. Remaining: define/implement `use_models`, sample
+   interval, suppress-redundant and heartbeat semantics or reject unsupported
+   options explicitly; test actual update delivery and subscription cleanup.
+3. **OPER readback / control-plane-data-plane truth.** Read actual backend
+   state, publish it through the OPER view, compare it with desired/programmed
+   state, and test drift detection/repair and verification failure. The
+   reentrant diff callback fix is done, but the callback currently only counts
+   differences in the reconciler; it is not hardware readback. The separate
+   programming pass must not be mistaken for OPER verification.
+4. **NETCONF SSH transport.** Implement and qualify SSH transport and RFC 6242
+   framing only after the higher-priority items; align advertised capabilities
+   with implemented behavior.
+5. **Supply-chain and repository hygiene.** Pin remaining dependencies and
+   base images, add SBOM and artifact provenance/signing, and decide separately
+   whether to rewrite history to remove the tracked large document.
 
-Independent engineering backlog (not all are formal v0.16 release blockers):
-
-- [ ] Complete gNMI Subscribe semantics (`updates_only`, `use_models`,
-  encoding/TypedValue, redundant/heartbeat behavior as supported) and replace
-  the 200 ms STREAM polling loop with event-driven updates.
-- [ ] Finish backend selection/capability-driven dispatch and actual backend
-  operational readback; the recent reentrant diff callback fix is only a
-  safe callback foundation, not full reconciliation/OPER verification.
-- [ ] Decide and implement NETCONF SSH transport, HA/CoPP integration, and
-  remaining upstream-derived golden fixtures according to explicit scope.
-- [ ] Close supply-chain/repository hygiene gaps (dependency pins, SBOM and
-  artifact provenance as appropriate); the tracked large-document history
-  rewrite remains a separate, approval-gated operation.
+After these priorities, re-evaluate HA/CoPP integration, mechanically
+generated upstream fixtures and other architecture gaps against project scope;
+they are not allowed to displace the ordered list above without a new decision.
+Re-run the final release gate after applicable acceptance criteria pass, then
+decide whether v0.16.0 can be released.
 
 Deferred scope: BFD, VLAN, VXLAN and EVPN stay frozen until the v0.16 release
 decision; OVS/P4/platform remain intentionally unstarted. Older notes below
@@ -1227,7 +1236,7 @@ Done:
 Still open:
 - `updates_only`, `use_models`, `encoding` are ignored; no bytes/decimal
   `TypedValue`
-- STREAM still polls on a 200 ms tick rather than subscribing to store events,
+- STREAM still polls on an approximately 100 ms tick rather than subscribing to store events,
   so latency and CPU cost scale with stream count
 
 ### [ ] 8. NETCONF has no transport
