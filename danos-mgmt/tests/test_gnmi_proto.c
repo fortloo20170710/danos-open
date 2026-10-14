@@ -95,6 +95,27 @@ static int test_get_request_decode(void)
     return 0;
 }
 
+static int test_subscribe_request_decode(void)
+{
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    gnmi_pb_put_enum(&w, 5, GNMI_SUB_MODE_STREAM);
+    gnmi_pb_put_enum(&w, 8, GNMI_ENC_JSON);
+    gnmi_pb_put_bool(&w, 9, true);
+    gnmi_pb_end_nested(&w, list);
+
+    gnmi_subscribe_request_t decoded;
+    assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+    assert(decoded.subscribe.mode == GNMI_SUB_MODE_STREAM);
+    assert(decoded.subscribe.encoding == GNMI_ENC_JSON);
+    assert(decoded.subscribe.updates_only);
+    assert(!decoded.is_poll);
+    printf("[PASS] test_subscribe_request_decode (encoding/updates_only)\n");
+    return 0;
+}
+
 static int test_get_response_roundtrip(void)
 {
     gnmi_notification_t n;
@@ -240,6 +261,7 @@ int main(void)
     if (test_pb_primitives() != 0) failed++;
     if (test_path_encoding() != 0) failed++;
     if (test_get_request_decode() != 0) failed++;
+    if (test_subscribe_request_decode() != 0) failed++;
     if (test_get_response_roundtrip() != 0) failed++;
     if (test_set_request_decode() != 0) failed++;
     if (test_capabilities_encoding() != 0) failed++;

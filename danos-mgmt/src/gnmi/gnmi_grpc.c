@@ -619,7 +619,6 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
                                         uint32_t path_count,
                                         uint8_t *resp, size_t resp_cap)
 {
-    (void)sl;
     /* Emits the BARE Notification message body (no field tag): the
      * caller wraps it as SubscribeResponse.update. */
     gnmi_pb_t w;
@@ -648,7 +647,10 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
                             json, sizeof(json));
                 size_t us = gnmi_pb_begin_nested(&w, 4);
                 gnmi_encode_path(&w, 1, p);
-                gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
+                gnmi_typed_value_t v = {
+                    .kind = sl->encoding == GNMI_ENC_JSON
+                          ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
+                };
                 snprintf(v.s, sizeof(v.s), "%s", json);
                 gnmi_encode_typed_value(&w, 3, &v);
                 gnmi_pb_end_nested(&w, us);
@@ -663,7 +665,10 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
                             json, sizeof(json));
                 size_t us = gnmi_pb_begin_nested(&w, 4);
                 gnmi_encode_path(&w, 1, p);
-                gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
+                gnmi_typed_value_t v = {
+                    .kind = sl->encoding == GNMI_ENC_JSON
+                          ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
+                };
                 snprintf(v.s, sizeof(v.s), "%s", json);
                 gnmi_encode_typed_value(&w, 3, &v);
                 gnmi_pb_end_nested(&w, us);
@@ -678,7 +683,10 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
                             json, sizeof(json));
                 size_t us = gnmi_pb_begin_nested(&w, 4);
                 gnmi_encode_path(&w, 1, p);
-                gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
+                gnmi_typed_value_t v = {
+                    .kind = sl->encoding == GNMI_ENC_JSON
+                          ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
+                };
                 snprintf(v.s, sizeof(v.s), "%s", json);
                 gnmi_encode_typed_value(&w, 3, &v);
                 gnmi_pb_end_nested(&w, us);
@@ -688,8 +696,8 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
     return w.overflow ? -1 : (int)w.len;
 }
 
-/* STREAM mode: push notifications when the store changes. Poll every
- * 100 ms; detect client GOAWAY/RST/close via recv with MSG_PEEK. */
+/* STREAM mode: store events wake the waiter; a bounded timeout also detects
+ * peer disconnects and protects against a missed event notification. */
 /* Order-sensitive hash over every object's bytes. FNV-1a over the payload,
  * folded with the type and id so a change of either registers. Streams the
  * store rather than copying into a fixed array, so correctness does not
@@ -733,8 +741,29 @@ uint64_t stream_state_hash_for_test(void)
 static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
                                  const gnmi_subscribe_list_t *sl)
 {
-    uint64_t last_hash = 0;
-    bool first = true;
+    uint64_t last_hash = stream_state_hash();
+    gnmi_path_t paths[GNMI_MAX_ELEMS];
+    uint32_t path_count = 0;
+    for (uint32_t i = 0; i < sl->sub_count && path_count < GNMI_MAX_ELEMS; i++)
+        paths[path_count++] = sl->subs[i].path;
+
+    if (send_stream_headers(c, stream) < 0) return -1;
+    if (!sl->updates_only) {
+        uint8_t notification[8192], response[16384];
+        int length = build_notification_for_paths(sl, paths, path_count,
+                                                  notification,
+                                                  sizeof(notification));
+        if (length < 0) return -1;
+        gnmi_pb_t w;
+        gnmi_pb_init(&w, response, sizeof(response));
+        gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
+        if (send_stream_message(c, stream, response, w.len) < 0) return -1;
+    }
+    uint8_t sync[16];
+    gnmi_pb_t sync_writer;
+    gnmi_pb_init(&sync_writer, sync, sizeof(sync));
+    gnmi_encode_subscribe_sync(&sync_writer);
+    if (send_stream_message(c, stream, sync, sync_writer.len) < 0) return -1;
 
     for (;;) {
         /* check peer liveness + consume control frames */
@@ -765,7 +794,7 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
          * there is no capacity limit. */
         uint64_t hash = stream_state_hash();
 
-        /* wait for a store mutation (or 200 ms tick) before re-hashing */
+        /* Wait for a store mutation (or bounded liveness-check timeout). */
         pthread_mutex_lock(&g_store_ev_lock);
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
@@ -773,22 +802,14 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
         if (ts.tv_nsec >= 1000000000) { ts.tv_sec++; ts.tv_nsec -= 1000000000; }
         pthread_cond_timedwait(&g_store_ev_cond, &g_store_ev_lock, &ts);
         pthread_mutex_unlock(&g_store_ev_lock);
+        hash = stream_state_hash();
 
-        if (first || hash != last_hash) {
-            gnmi_path_t paths[GNMI_MAX_ELEMS];
-            uint32_t pc = 0;
-            for (uint32_t i = 0; i < sl->sub_count && pc < GNMI_MAX_ELEMS; i++)
-                paths[pc++] = sl->subs[i].path;
-
+        if (hash != last_hash) {
             uint8_t msg[8192];
-            int mlen = build_notification_for_paths(sl, paths, pc,
+            int mlen = build_notification_for_paths(sl, paths, path_count,
                                                     msg, sizeof(msg));
             if (mlen < 0) return -1;
 
-            if (first) {
-                if (send_stream_headers(c, stream) < 0) return -1;
-                first = false;
-            }
             uint8_t resp[16384];
             gnmi_pb_t w;
             gnmi_pb_init(&w, resp, sizeof(resp));
@@ -797,7 +818,6 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
             if (send_stream_message(c, stream, resp, w.len) < 0) return -1;
             last_hash = hash;
         }
-        usleep(100000);
     }
 }
 
@@ -855,6 +875,10 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
     if (!gnmi_decode_subscribe_request(req, req_len, &sr)) return -1;
 
     const gnmi_subscribe_list_t *sl = &sr.subscribe;
+    if ((sl->encoding != GNMI_ENC_JSON &&
+         sl->encoding != GNMI_ENC_JSON_IETF) ||
+        (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM))
+        return -1;
 
     if (sl->mode == GNMI_SUB_MODE_ONCE) {
         poll_stream_drop(stream);

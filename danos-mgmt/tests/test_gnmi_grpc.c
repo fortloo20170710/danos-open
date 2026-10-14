@@ -484,6 +484,142 @@ static int test_subscribe_once(void)
     return 0;
 }
 
+static void inspect_subscribe_response(const uint8_t *data, size_t len,
+                                      int *updates, bool *sync,
+                                      gnmi_val_kind_t *first_value_kind)
+{
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, data, len);
+    uint32_t field, wire;
+    while ((field = gnmi_pbr_tag(&r, &wire)) != 0) {
+        const uint8_t *body;
+        size_t body_len;
+        if (field == 1 && wire == 2 && gnmi_pbr_bytes(&r, &body, &body_len)) {
+            gnmi_pb_reader_t nr;
+            gnmi_pbr_init(&nr, body, body_len);
+            uint32_t nf, nw;
+            while ((nf = gnmi_pbr_tag(&nr, &nw)) != 0) {
+                const uint8_t *update;
+                size_t update_len;
+                if (nf != 4 || nw != 2 ||
+                    !gnmi_pbr_bytes(&nr, &update, &update_len)) {
+                    gnmi_pbr_skip(&nr, nw);
+                    continue;
+                }
+                (*updates)++;
+                gnmi_pb_reader_t ur;
+                gnmi_pbr_init(&ur, update, update_len);
+                uint32_t uf, uw;
+                while ((uf = gnmi_pbr_tag(&ur, &uw)) != 0) {
+                    const uint8_t *value;
+                    size_t value_len;
+                    if (uf == 3 && uw == 2 &&
+                        gnmi_pbr_bytes(&ur, &value, &value_len)) {
+                        gnmi_typed_value_t decoded;
+                        memset(&decoded, 0, sizeof(decoded));
+                        assert(gnmi_decode_typed_value(value, value_len,
+                                                       &decoded));
+                        if (*first_value_kind == GNMI_VAL_UNSET)
+                            *first_value_kind = decoded.kind;
+                    } else {
+                        gnmi_pbr_skip(&ur, uw);
+                    }
+                }
+            }
+        } else if (field == 3 && wire == 0) {
+            *sync = gnmi_pbr_varint(&r) == 1;
+        } else {
+            gnmi_pbr_skip(&r, wire);
+        }
+    }
+}
+
+static int test_subscribe_stream_initial(bool updates_only,
+                                         gnmi_encoding_t encoding)
+{
+    if (conn_fd >= 0) close(conn_fd);
+    conn_fd = -1;
+    assert(client_connect() == 0);
+
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    size_t sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_path_t path;
+    assert(gnmi_path_from_str(&path, "interfaces"));
+    gnmi_encode_path(&w, 1, &path);
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_put_enum(&w, 8, encoding);
+    gnmi_pb_put_bool(&w, 9, updates_only);
+    gnmi_pb_end_nested(&w, list);
+
+    uint8_t headers[256];
+    size_t hlen = 0;
+    int k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                                 ":method", "POST");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             ":scheme", "http");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             ":path", "/gnmi.gNMI/Subscribe");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             "content-type", "application/grpc");
+    assert(k > 0); hlen += (size_t)k;
+    const uint32_t stream = 101;
+    assert(write_frame_c(conn_fd, 1, 0x4, stream, headers, (uint32_t)hlen) == 0);
+    uint8_t grpc_header[5] = {0, 0, 0, 0, (uint8_t)w.len};
+    assert(write_frame_c(conn_fd, 0, 0, stream, grpc_header, sizeof(grpc_header)) == 0);
+    assert(write_frame_c(conn_fd, 0, 0x1, stream, req, (uint32_t)w.len) == 0);
+
+    int updates = 0;
+    bool sync = false;
+    gnmi_val_kind_t value_kind = GNMI_VAL_UNSET;
+    uint8_t frame[16384], accumulated[32768];
+    size_t accumulated_len = 0;
+    while (!sync) {
+        uint8_t fh[9];
+        assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
+        uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                             ((uint32_t)fh[1] << 8) | fh[2];
+        if (frame_len > sizeof(frame)) return 1;
+        assert(read_full_c(conn_fd, frame, frame_len) == 0);
+        if (fh[3] == 4) continue;
+        if (fh[3] != 0) continue;
+        assert(accumulated_len + frame_len <= sizeof(accumulated));
+        memcpy(accumulated + accumulated_len, frame, frame_len);
+        accumulated_len += frame_len;
+        while (accumulated_len >= 5) {
+            size_t message_len = ((size_t)accumulated[1] << 24) |
+                                 ((size_t)accumulated[2] << 16) |
+                                 ((size_t)accumulated[3] << 8) |
+                                 accumulated[4];
+            if (accumulated_len < 5 + message_len) break;
+            inspect_subscribe_response(accumulated + 5, message_len,
+                                       &updates, &sync, &value_kind);
+            accumulated_len -= 5 + message_len;
+            memmove(accumulated, accumulated + 5 + message_len,
+                    accumulated_len);
+        }
+    }
+
+    if ((updates_only && updates != 0) || (!updates_only && updates == 0))
+        fprintf(stderr, "STREAM initial mismatch: updates_only=%d updates=%d sync=%d kind=%d\n",
+                updates_only, updates, sync, value_kind);
+    assert(updates_only ? updates == 0 : updates > 0);
+    if (!updates_only)
+        assert(value_kind == (encoding == GNMI_ENC_JSON
+                            ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF));
+    shutdown(conn_fd, SHUT_RDWR);
+    close(conn_fd);
+    conn_fd = -1;
+    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d)\n",
+           updates_only, encoding);
+    return 0;
+}
+
 static int test_get_large_flow_control(void)
 {
     /* create ~1000 interfaces in ONE transaction (response >> 64KB
@@ -1052,6 +1188,10 @@ int main(void)
     if (test_get_not_found_status() != 0) failed++;
     if (test_dataplane_operational_path() != 0) failed++;
     if (test_stream_detector_sees_all_fields() != 0) failed++;
+
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON) != 0) failed++;
+    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF) != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);
