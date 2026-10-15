@@ -73,15 +73,14 @@ reported r12. All four host↔router P3 shared-L2 links now pass; addresses are
 runtime-only, mgrd remains disabled, and this does not qualify routed transit,
 ECMP, or performance. Keep existing isolated L3 test links intact.
 
-Latest physical traffic replay (2026-10-15): a bounded 49,152-frame R2 run
-matched I211 TX-good; R3 P4 RX and P1/P2 egress matched the expected totals,
-and independent R1/R4 RX deltas also summed to 49,152 with zero relevant
-drop deltas. The result remains `OBSERVED`, because R4's before/after window
-was 13,285 seconds, exceeding the 1,800-second correlation gate. It supports
-four-node path use, not tight same-batch timing or performance qualification.
-The earlier 3,072-frame R2→R3 bracket passed its narrower forwarding scope.
-Latency, phase-aligned forwarding CPU, sustained throughput and line rate
-remain open. Full evidence and hashes are in the [physical I211 runbook](i211-physical-traffic-runbook.md).
+Latest physical traffic replay (2026-10-15): a tightly bracketed four-node
+12,288-frame UDP64 run passed the unified verifier. R2 hardware TX, R3 ingress
+and ECMP egress, and independent R1/R4 NIC RX deltas matched; all per-node
+windows were below 1,800 seconds and relevant drop deltas were zero. This is
+bounded functional forwarding/path-use evidence only. A larger 49,152-frame
+run had exact aggregate counters but remains `OBSERVED` because its R4 window
+exceeded the gate. Latency, phase-aligned forwarding CPU, sustained throughput
+and line rate remain open. Evidence and hashes are in the [physical I211 runbook](i211-physical-traffic-runbook.md).
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 

@@ -364,6 +364,14 @@ the current delivery and supersedes their pending-image statements.
   despite exact counter totals. Keep line-rate/performance gate OPEN; repeat
   with a synchronized receiver window. Evidence hashes are in the runbook.
 
+- [x] 2026-10-15 tight four-node 12,288-frame UDP64 replay: R2 hardware TX,
+  R3 ingress/ECMP egress, and independent R1/R4 RX counters matched exactly;
+  relevant drops were unchanged and R3/R1/R4 windows were 453/1,074/1,722s
+  (<1,800s). Unified verifier PASS for bounded functional forwarding only.
+  Performance remains OPEN because latency, phase-aligned forwarding CPU,
+  sustained load and line-rate were not qualified. Evidence hashes are in the
+  physical runbook.
+
 - [x] Real VPP process CPU sampler implemented with start-tick identity,
   monotonic timing and one-logical-CPU normalization. Five deterministic
   cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;

@@ -94,6 +94,40 @@ Artifacts under `build/physical-udp64-r2-r3-r1-r4-large-20261015/`; SHA256:
 | `r3-after/result.json` | `8214a2a94d8ea544176afcf9de821d4219a4845018b1878e5ac08850482f93e5` |
 | `end-to-end-window.json` | `d5ccef73eefc8811d9bf5e081119751b4bd1de24224e877ed89fad037ce3b3ee` |
 
+## Tight four-node 12,288-frame UDP64 replay — 2026-10-15 (PASS)
+
+A fresh R4/R1/R3 before → R2 send → R3/R1/R4 after sequence completed
+12,288 64-byte frames (four destinations × 1,024 frames × three pacing
+phases). Source I211 TX-good delta matched 12,288, TX drops were unchanged,
+VPP identity stayed stable, and all packet-generator streams were removed.
+R3 PID 3272 remained stable with both ECMP paths resolved. R3 P4 RX increased
+12,288; P1/P2 TX increased 9,216/3,072; independent R4/R1 RX increased
+9,216/3,072, respectively. The egress/receiver totals sum exactly to source
+TX and all relevant R3 drop deltas were zero. R3 P4 TX was 12,281 (seven
+below P4 RX); reverse traffic was not an acceptance criterion.
+
+The unified verifier returned PASS with R3/R1/R4 snapshot windows of
+452.80/1,074.28/1,722.30 seconds, all below the 1,800-second gate. This is
+four-node bounded functional forwarding and ECMP path-use evidence, not a
+statistical balance or performance qualification. Source TX-derived rates
+were approximately 397/1,912/3,746 aggregate pps for the requested
+100/500/1,000 pps per-flow phases, with roughly 100% of one logical CPU used;
+the intervals include CLI observation overhead. Latency, phase-aligned R3
+CPU, sustained performance and line-rate remain open.
+
+Artifacts under `build/physical-udp64-tight-four-node-20261015/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r1-before/result.json` | `0c03ab3fe669bc90d833fd2f5134a3db389bbdabf66ed4d9f345d1f9e1c84656` |
+| `r1-after/result.json` | `343465428e2fede762473056b05d06eef5f7f941f6874606b2ebc05ca012cbfe` |
+| `r4-before/result.json` | `f7c1440189d408fd4007a27d04f713c678c69ec80c542ee2d91ff5dbeeb556c1` |
+| `r4-after/result.json` | `c43a036e2f4330bb484032a4264ca8ff210fbb66cc587430d18abb4792da742f` |
+| `r3-before/result.json` | `b7efba166f581dd3c2ee027458ada5e1ab2ba6392c1c330478dcb04181c7c88f` |
+| `r2-source/result.json` | `84a7f8dfb0d81dcc3d4d9278e7a248169c43adf7d4a1fc969fc25d4bfa71402e` |
+| `r3-after/result.json` | `d0078efb71eb4f111cce742319966a66e326128e27c7acbda0dbe4fe0c437dbf` |
+| `end-to-end-window.json` | `79a2274082bb5a985cd28cbb06c5035a42767ac0d487030406ff42051383e99e` |
+
 ## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
 
 UART identity confirms R1: SATA `/dev/sda1`, Debian 6.12.107, VPP 26.10,
