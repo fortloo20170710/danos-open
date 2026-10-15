@@ -1,6 +1,6 @@
 # I211 physical LIVE traffic qualification runbook
 
-更新时间：2026-10-14
+更新时间：2026-10-15
 
 ## R4 serial recheck — 2026-10-14 (read-only)
 
@@ -58,6 +58,41 @@ Artifacts under `build/physical-udp64-r2-r3-bracket-20261014/`; SHA256:
 | `r2-source/result.json` | `5af28de2c5f3437ed9ed2b8d77928100d6d26f8ed61c74ac5c73d7312a4fffc8` |
 | `r3-after/result.json` | `e5d77e3d2869463944087929bc3c340509139a99ac58ce681039e51e04f77b66` |
 | `r3-correlation.json` | `6cc934f96aa8a954a3d155cd832b0d5490068f4ae8fd605b7992924c24b87a1b` |
+
+## Four-node 49,152-frame UDP64 replay — 2026-10-15 (OBSERVED)
+
+A larger source batch completed 4 flows × 4,096 frames at each of the three
+requested per-flow pacing phases (100/500/1,000 pps), for 49,152 frames.
+R2 VPP identity was stable, hardware TX-good increased by exactly 49,152,
+TX drops were unchanged, and packet-generator streams were removed. Hardware
+counter/time-derived source rates were 399/1,983/3,939 pps aggregate with
+approximately 99.5–99.7% of one logical CPU consumed. The rates closely track
+the requested aggregate pacing but include CLI observation/control overhead;
+they are not line-rate qualification.
+
+R3 PID 3272 and both resolved ECMP paths remained present. R3 P4 RX increased
+49,152; P1/P2 TX increased 36,864/12,288; all relevant R3 drop deltas were
+zero. Independent R4/R1 RX deltas were 36,864/12,288, exactly matching their
+corresponding egress counters and summing to source TX. The overall verifier
+returns `OBSERVED`, not PASS: R4's before/after receiver interval was
+13,285.34s, beyond the 1,800s same-window limit (R3 564.78s, R1 1,258.60s).
+Exact aggregate deltas therefore support path use but cannot establish tight
+same-batch receiver timing. R3 P4 TX was 49,089, 63 below P4 RX; return traffic
+was outside the acceptance criterion. Latency, sustained performance,
+phase-aligned forwarding CPU and line rate remain open.
+
+Artifacts under `build/physical-udp64-r2-r3-r1-r4-large-20261015/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r1-before/result.json` | `09cd70ea05be4af41d1bdc7b4ffdb63d535e446c4096dcf96a3c7061bc7c3b31` |
+| `r1-after/result.json` | `d1d5ab829be467e8dc3f3efe1807627663479fe16d868d19463d7a8cafefd3a8` |
+| `r4-before/result.json` | `0f8b3d87b603951c4f27df8f50ea16b6a6d1021e4becdf7fca471a534954457e` |
+| `r4-after/result.json` | `976af061ec2de751ff9b1677d77b1eafe7bd47460db8c7d6d4a9120cfdeacacc` |
+| `r3-before/result.json` | `8df200fcade908aae305f949469cec5ca9733b4ebf6313202db7f72ec131fb83` |
+| `r2-source/result.json` | `e9bed2dcdfe59ef326fff1c641a52dd12cf11375bf8e7a14b596e823f43b49dc` |
+| `r3-after/result.json` | `8214a2a94d8ea544176afcf9de821d4219a4845018b1878e5ac08850482f93e5` |
+| `end-to-end-window.json` | `d5ccef73eefc8811d9bf5e081119751b4bd1de24224e877ed89fad037ce3b3ee` |
 
 ## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
 

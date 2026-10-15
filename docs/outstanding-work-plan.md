@@ -357,6 +357,13 @@ the current delivery and supersedes their pending-image statements.
   are in `docs/i211-physical-traffic-runbook.md`. Repeat with tighter
   independent receiver brackets before extending the performance claim.
 
+- [x] 2026-10-15 four-node larger UDP64 replay: 49,152 source TX-good frames,
+  R3 ingress +49,152 and egress +36,864/+12,288, independent R4/R1 RX
+  +36,864/+12,288, and zero relevant drop deltas. The verifier correctly
+  retained `OBSERVED` because R4's receiver interval was 13,285s (>1,800s),
+  despite exact counter totals. Keep line-rate/performance gate OPEN; repeat
+  with a synchronized receiver window. Evidence hashes are in the runbook.
+
 - [x] Real VPP process CPU sampler implemented with start-tick identity,
   monotonic timing and one-logical-CPU normalization. Five deterministic
   cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;
