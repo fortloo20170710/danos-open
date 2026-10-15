@@ -28,6 +28,19 @@ neighbor for `.246` before assignment. R3 P3 received runtime-only
 learned the expected R3 MAC. Existing R3 P1/P2/P4 L3 addresses and links were
 unchanged. This is shared-L2 reachability only, not transit or performance.
 
+## R4 P3 shared-router link — 2026-10-14 (scoped PASS)
+
+UART identity confirms R4 P1 MAC `00:1f:7a:40:01:80` and P3 MAC
+`00:1f:7a:40:01:82` at PCI `0000:03:00.0`; all four I211 ports use
+`uio_pci_generic`, VPP 26.10 and FRR are active, and mgrd is disabled. The
+installed build-info identifies DANOS commit `3f1691c` (r9), despite the
+earlier operator report of r12; record this node as r9 pending an update, not
+r12. P3 carrier came up at 1 Gbps/full duplex after admin-up. Host `.243` had
+no ARP neighbor for `.247` before assignment. R4 P3 received runtime-only
+`192.168.1.247/24`; host↔R4 each passed 5/5 ICMP with zero loss and the host
+learned the expected R4 MAC. Existing R4 P1 L3 configuration was unchanged.
+This is shared-L2 reachability only, not transit or performance.
+
 ## 2026-10-14 shared-router management link (scoped PASS)
 
 The operator reports each R1–R4 third I211 port and the development host are
@@ -39,8 +52,9 @@ set administratively up. Carrier came up at 1 Gbps/full duplex. Host→R2 ping
 passed 2/2; R2→host VPP ping passed 5/5; host neighbor MAC matched R2 P3.
 
 This is a bounded shared-L2 management reachability PASS only. The VPP address
-is not persisted across VPP restart/reboot. R4 third-port state and address
-are not yet verified, and no throughput, latency, or ECMP claim is
+is not persisted across VPP restart/reboot. R1/R3/R4 P3 are also verified;
+R2 is r9, R4 is r9, and R1/R3 are r14. All four VPP P3 management addresses
+are runtime-only. No throughput, latency, or ECMP claim is
 made. Keep the established R2→R3→R1/R4 L3 test links/VLANs separate; do not
 flatten or rewire them as part of the management LAN. Host RTL8168/r8169 is not
 a DPDK traffic source; continue to use the I211 packet-generator and

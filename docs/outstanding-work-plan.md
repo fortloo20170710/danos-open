@@ -24,8 +24,9 @@ Execution priority, as confirmed on 2026-10-14:
    five-port router via P3. Host `.243`↔R2 P3 `.244` passed bounded ping, and
    host `.243`↔R1 P3 `.245` and `.243`↔R3 P3 `.246` passed 5/5 in both
    directions; both port identities and 1 Gbps/full duplex carriers match.
-   These VPP addresses are runtime-only; R4 management address and the traffic
-   measurement path remain unverified. Keep performance `ENVIRONMENT-OPEN` until
+   R4 P3 `.247` now also passes host ping 5/5 each way. All four P3 addresses
+   `.244`–`.247` are runtime-only. R2/R4 report r9 (R4 build commit `3f1691c`),
+   while R1/R3 report r14. Keep performance `ENVIRONMENT-OPEN` until
    independently sourced traffic and receiver measurements are validated. In
    the same physical
    qualification track, roll R2/R4 to r14,

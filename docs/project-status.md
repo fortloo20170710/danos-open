@@ -66,9 +66,12 @@ r14, FRR is active, and mgrd remains disabled. R3 P3 identity
 `00:1f:7a:69:f7:4e` came up at 1 Gbps/full duplex, received runtime-only
 `.246/24`, and host↔R3 passed 5/5 in each direction. R1/R3 are r14, FRR is
 active, and mgrd remains disabled. This confirms shared-L2 management
-reachability only; R1/R2/R3 addresses are not persisted, R4 P3 remains
-unverified, and no routed-transit, ECMP, or performance claim follows. Keep
-the existing isolated L3 test links intact.
+reachability only. R4 P3 identity `00:1f:7a:40:01:82` came up at 1 Gbps/full
+duplex, received runtime-only `.247/24`, and host↔R4 passed 5/5 in each
+direction. R4 build-info reports commit `3f1691c`/r9, not the previously
+reported r12. All four host↔router P3 shared-L2 links now pass; addresses are
+runtime-only, mgrd remains disabled, and this does not qualify routed transit,
+ECMP, or performance. Keep existing isolated L3 test links intact.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 
