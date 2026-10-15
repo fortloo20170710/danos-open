@@ -13,6 +13,26 @@ traffic counters. Development host `.243` pinged R4 `.247` 3/3 with zero
 loss. This reconfirms management reachability and image identity only; no
 configuration was changed and no transit/performance result is implied.
 
+## R2 scripted physical sender replay — 2026-10-14 (PASS, source-side scope)
+
+The reusable UART runner passed on R2 with its identity guard intact: VPP PID
+2097 and start ticks `6597040` were unchanged, R2 P1 identity/link checks
+passed, and all three requested pacing phases completed four streams × 256
+64-byte frames (3,072 total). VPP generated-frame count and I211 hardware
+TX-good delta both equal 3,072; TX drops stayed at 99,719; no packet-generator
+streams remained. Measured phase intervals and hardware TX rates were 2.604s /
+393 pps, 0.636s / 1,610 pps, and 0.399s / 2,570 pps. These intervals include
+VPP CLI/control overhead and are not wire-rate or line-rate measurements.
+VPP process CPU was approximately 100% of one logical CPU in each phase; this
+is source-node process CPU, not paired forwarding CPU. The test used the
+existing R2→R3 P1/P4 lab path and made no route changes.
+
+Artifact: `build/physical-udp64-r2-20261014-rerun/result.json`, SHA256
+`78f0fe330d4cc782495880784f340f2efb8acc9a4a056be00988b4d8a76c7b3a`.
+This proves repeatable bounded source generation and cleanup only. A fresh
+R3-before → R2-send → R3-after counter bracket is still needed for this replay;
+latency, sustained performance, and PCI line-rate qualification remain open.
+
 ## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
 
 UART identity confirms R1: SATA `/dev/sda1`, Debian 6.12.107, VPP 26.10,

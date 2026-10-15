@@ -337,9 +337,17 @@ the current delivery and supersedes their pending-image statements.
   Fixed multiline `vppctl exec` failure by emitting one command per line.
   Physical VPP 26.10 parser verified two disabled/count-zero streams; cleanup
   returned to no streams. Evidence/digest in performance schema. CTest 64/64
-  PASS. R2 UART switch is still needed for actual generator traffic. The
-  QEMU input attempt remains unverified. Configuration acceptance is not
-  measured physical traffic, latency or performance PASS.
+  PASS. The QEMU input attempt remains unverified. Configuration acceptance
+  is not measured physical traffic, latency or performance PASS.
+
+- [x] 2026-10-14 R2 UART sender replay: bounded 64-byte UDP runner completed
+  3 × (4 flows × 256 frames); VPP-generated frames and I211 TX-good both
+  increased by 3,072, TX drops were unchanged, VPP process identity remained
+  stable, and streams were cleaned. Per-phase TX-good rates include CLI
+  overhead and are diagnostic only. Artifact and digest are indexed in the
+  physical traffic runbook. A fresh synchronized R3-before/R2-send/R3-after
+  bracket, receiver confirmation, latency, sustained performance and line-rate
+  qualification remain open.
 
 - [x] Real VPP process CPU sampler implemented with start-tick identity,
   monotonic timing and one-logical-CPU normalization. Five deterministic
