@@ -18,6 +18,8 @@ class ReceiverWindowTest(unittest.TestCase):
             "status": "PASS", "role": role, "phase": phase,
             "mac": RECEIVERS[role]["mac"], "interface": RECEIVERS[role]["interface"],
             "pid": pid, "captured_unix_time": 10 if phase == "before" else 20,
+            "host_capture_started_monotonic": 9 if phase == "before" else 19,
+            "host_capture_finished_monotonic": 10 if phase == "before" else 20,
             "rx_good_packets": rx, "tx_good_packets": tx,
         }))
         return path

@@ -60,6 +60,8 @@ def r3_snapshot(phase, counters):
         "scope": "read-only R3 interface counters and FIB", "pid": "300",
         "captured_unix_time": 100 if phase == "before" else 200,
         "captured_monotonic": 10.0 if phase == "before" else 20.0,
+        "host_capture_started_monotonic": 9.0 if phase == "before" else 103.0,
+        "host_capture_finished_monotonic": 10.0 if phase == "before" else 104.0,
         "vpp_cpu_sample": {"pid": "300", "start_ticks": "900",
                            "cpu_ticks": 100 if phase == "before" else 200,
                            "clock_ticks_per_second": 100,
@@ -76,6 +78,8 @@ def receiver(role, phase, rx, timestamp):
             "scope": "read-only independent receiver NIC counters", "mac": mac,
             "interface": "GigabitEthernet1/0/0", "pid": "400" if role == "R1" else "500",
             "captured_unix_time": timestamp, "rx_good_packets": rx,
+            "host_capture_started_monotonic": timestamp - 1,
+            "host_capture_finished_monotonic": timestamp,
             "tx_good_packets": rx, "link": "1 Gbps full duplex"}
 
 
@@ -170,6 +174,8 @@ class PhysicalUDPWindowTest(unittest.TestCase):
     def test_wide_per_node_snapshot_windows_are_observed_not_pass(self):
         for key in ("r1_after", "r4_after", "r3_after"):
             self.values[key]["captured_unix_time"] += 3601
+            self.values[key]["host_capture_started_monotonic"] += 3601
+            self.values[key]["host_capture_finished_monotonic"] += 3601
             self.paths[key].write_text(json.dumps(self.values[key]))
         result = verify_window(self.paths)
         self.assertEqual(result["status"], "OBSERVED")
@@ -195,6 +201,10 @@ class PhysicalUDPWindowTest(unittest.TestCase):
         self.values["r3_after"]["captured_unix_time"] = 1_000_200
         self.values["r3_before"]["captured_monotonic"] = 100.0
         self.values["r3_after"]["captured_monotonic"] = 200.0
+        self.values["r3_before"]["host_capture_started_monotonic"] = 99.0
+        self.values["r3_before"]["host_capture_finished_monotonic"] = 100.0
+        self.values["r3_after"]["host_capture_started_monotonic"] = 103.0
+        self.values["r3_after"]["host_capture_finished_monotonic"] = 104.0
         self.values["r3_after"]["interfaces"] = (
             self.values["r3_after"]["interfaces"].replace("rx packets 3272", "rx packets 4296")
             .replace("tx packets 1124", "tx packets 3172")

@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,7 +55,11 @@ except Exception as error:
 print({marker!r}+__import__("base64").b64encode(json.dumps(result).encode()).decode())
 '''
     try:
+        host_capture_started = time.monotonic()
         result = _exchange(args.device, script, marker, reply_timeout=30)
+        host_capture_finished = time.monotonic()
+        result["host_capture_started_monotonic"] = host_capture_started
+        result["host_capture_finished_monotonic"] = host_capture_finished
     except (OSError, ValueError, TimeoutError) as error:
         result = {"status": "UNKNOWN", "phase": args.phase,
                   "scope": "read-only R3 interface counters and FIB",

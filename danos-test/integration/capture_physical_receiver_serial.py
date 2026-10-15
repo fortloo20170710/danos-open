@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import re
 import sys
+import time
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -84,9 +85,13 @@ def main() -> int:
     args.output.mkdir(parents=True, exist_ok=False)
     marker = "DANOS_RECEIVER_COUNTER_" + uuid.uuid4().hex + ":"
     try:
+        host_capture_started = time.monotonic()
         result = _exchange(args.device, build_remote(args.role, args.phase, marker),
                            marker, reply_timeout=30)
+        host_capture_finished = time.monotonic()
         validate_result(result, args.role, args.phase)
+        result["host_capture_started_monotonic"] = host_capture_started
+        result["host_capture_finished_monotonic"] = host_capture_finished
     except (OSError, ValueError, TimeoutError) as error:
         result = {"status": "FAIL", "role": args.role, "phase": args.phase,
                   "scope": "read-only independent receiver NIC counters",

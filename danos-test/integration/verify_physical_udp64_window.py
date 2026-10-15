@@ -180,19 +180,18 @@ def verify_window(paths: dict[str, Path]) -> dict:
         timestamp = snapshot.get("captured_unix_time")
         if type(timestamp) not in (int, float) or not math.isfinite(timestamp):
             raise WindowError("R3 capture timestamp is invalid")
-    capture_before = before.get("captured_monotonic", before["captured_unix_time"])
-    capture_after = after.get("captured_monotonic", after["captured_unix_time"])
+    capture_before = before.get("host_capture_finished_monotonic")
+    capture_after = after.get("host_capture_started_monotonic")
+    if capture_before is None or capture_after is None:
+        raise WindowError("R3 host-side monotonic capture boundaries are missing")
+    if (type(capture_before) not in (int, float) or type(capture_after) not in (int, float) or
+            not math.isfinite(capture_before) or not math.isfinite(capture_after)):
+        raise WindowError("R3 host-side monotonic capture boundaries are invalid")
     if capture_after <= capture_before:
         raise WindowError("R3 after snapshot is not later than before snapshot")
     if source_started is not None:
-        wall_start, wall_finish, mono_start, mono_finish = source_started
-        use_monotonic = (type(before.get("captured_monotonic")) in (int, float) and
-                         type(after.get("captured_monotonic")) in (int, float))
-        start, finish = ((mono_start, mono_finish) if use_monotonic else
-                         (wall_start, wall_finish))
-        lower = before["captured_monotonic"] if use_monotonic else before["captured_unix_time"]
-        upper = after["captured_monotonic"] if use_monotonic else after["captured_unix_time"]
-        if not (lower <= start <= finish <= upper):
+        _, _, mono_start, mono_finish = source_started
+        if not (capture_before <= mono_start <= mono_finish <= capture_after):
             raise WindowError("host source batch is not bracketed by R3 snapshots")
     snapshot_windows = {"R3": capture_after - capture_before}
     first, last = parse_interfaces(before.get("interfaces", "")), parse_interfaces(after.get("interfaces", ""))
@@ -234,8 +233,12 @@ def verify_window(paths: dict[str, Path]) -> dict:
         for role, before_key, after_key in (("R1", "r1_before", "r1_after"),
                                             ("R4", "r4_before", "r4_after")):
             peer_before, peer_after = read_json(paths[before_key]), read_json(paths[after_key])
-            snapshot_windows[role] = (peer_after.get("captured_monotonic", peer_after["captured_unix_time"]) -
-                                      peer_before.get("captured_monotonic", peer_before["captured_unix_time"]))
+            peer_start = peer_before.get("host_capture_finished_monotonic")
+            peer_end = peer_after.get("host_capture_started_monotonic")
+            if (type(peer_start) not in (int, float) or type(peer_end) not in (int, float) or
+                    not math.isfinite(peer_start) or not math.isfinite(peer_end) or peer_end <= peer_start):
+                raise WindowError(f"{role} host-side monotonic capture boundaries are invalid")
+            snapshot_windows[role] = peer_end - peer_start
 
     tightly_bracketed = all(0 < seconds <= MAX_BRACKET_SECONDS
                             for seconds in snapshot_windows.values())

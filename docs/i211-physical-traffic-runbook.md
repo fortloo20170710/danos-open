@@ -1516,10 +1516,13 @@ therefore returned FAIL (`host source batch is not bracketed by R3 snapshots`); 
 is recorded as counter-consistent but temporally unqualified, **not** an end-to-end PASS.
 The captures are under `build/host-udp64-four-node-20261015/` and are local, untracked artifacts.
 
-To avoid NTP/wall-clock jumps in the next run, source and serial capture artifacts now include
-host `time.monotonic()` timestamps, and the verifier uses them for bracket ordering and window
-durations when available. This change is covered by CTest; it still needs a fresh compact
-physical run with new R4/R1/R3 before snapshots, source batch, then R3/R1/R4 after snapshots.
+The first attempt to address this used monotonic timestamps generated inside each router. Those
+clocks have unrelated boot origins and cannot be compared to the development host; that approach
+was invalid. The capture wrappers now record **development-host** monotonic times around each UART
+request/response. The verifier conservatively brackets the source batch between the R3-before
+response and R3-after request, and computes node windows from matching host-side UART envelopes.
+This change is covered by CTest; it still needs a fresh compact physical run with new
+R4/R1/R3 before snapshots, source batch, then R3/R1/R4 after snapshots.
 One attempted R1-before capture was correctly rejected because its observed MAC was not R1's;
 do not reuse it. Confirm the UART target physically before each capture. The temporary host route
 is operator-managed and the sender does not modify or remove it.

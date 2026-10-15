@@ -4,6 +4,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from capture_physical_receiver_serial import RECEIVERS, validate_result
@@ -32,8 +33,11 @@ def verify_window(paths: dict[str, tuple[Path, Path]], expected_rx_total: int | 
         after = read_snapshot(after_path, role, "after")
         if before["pid"] != after["pid"]:
             raise WindowError(f"{role} VPP PID changed during receiver window")
-        before_time = before.get("captured_monotonic", before["captured_unix_time"])
-        after_time = after.get("captured_monotonic", after["captured_unix_time"])
+        before_time = before.get("host_capture_finished_monotonic")
+        after_time = after.get("host_capture_started_monotonic")
+        if (type(before_time) not in (int, float) or type(after_time) not in (int, float) or
+                not math.isfinite(before_time) or not math.isfinite(after_time)):
+            raise WindowError(f"{role} host-side monotonic capture boundaries are invalid")
         if after_time <= before_time:
             raise WindowError(f"{role} after snapshot is not later than before snapshot")
         rx_delta = after["rx_good_packets"] - before["rx_good_packets"]

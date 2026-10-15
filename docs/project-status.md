@@ -1874,8 +1874,10 @@ physical end-to-end PASS or performance result. A stale UART target also made
 one R1 snapshot fail its MAC identity guard, so it was discarded.
 
 The host sender route guard now accepts the kernel's `from <source>` route-get
-format, and source/serial evidence records monotonic timestamps to prevent
-wall-clock adjustments from invalidating a properly bracketed run. Unit tests
-and full CTest pass (78/78). A fresh physical run with verified UART targets
-and new compact before/send/after snapshots remains required. See
+format. Router-local monotonic values cannot be compared across devices; the
+capture wrappers now record development-host monotonic boundaries around each
+UART request/response, and the verifier brackets the source batch with those
+conservative host-side boundaries. Unit tests and full CTest pass (78/78). A
+fresh physical run with verified UART targets and new compact before/send/after
+snapshots remains required. See
 `docs/i211-physical-traffic-runbook.md` for exact artifacts and scope.
