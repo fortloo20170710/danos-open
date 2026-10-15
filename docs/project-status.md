@@ -1,16 +1,16 @@
 # DANOS Open Project Status
 
-## 2026-10-14 current development summary
+## 2026-10-15 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source change is `a65c11f` (regression coverage for explicitly
-rejected gNMI Subscribe options), following `90abaa7` (the rejection behavior)
-and `8f618ed` (nonblocking complete-frame handling in gNMI STREAM);
-`147b7b4` implements the initial-sync semantics, and `b7bff99` makes
-desired/programmed diff callbacks reentrant. Both latest commits are pushed to
-`origin/main`; CTest 77/77 and local external gnmic I1-I5/I9 pass, and GitHub
-CI, Coverage and Interop Gate pass at `a65c11f`. The preceding `e6f6cd9`
-Interop I5 failure was caused by blocking on partial HTTP/2 frames. See
+The latest source commit is `8528902` (independent host UDP64 sender with
+route and carrier guards), pushed to `origin/main`; CTest is 78/78 PASS.
+GitHub CI/Coverage/Interop Gate previously passed at `a65c11f`; no workflow
+run is currently visible for `8528902`. Recent gNMI changes at `90abaa7`,
+`8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
+options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
+semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking
+on partial HTTP/2 frames. See
 the [acceptance matrix](v0.16-acceptance-matrix.md)
 for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
 for next tasks.
@@ -49,7 +49,7 @@ Capabilities RPC succeeds on the same connection. Full CTest, external gnmic
 I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
 checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather
-than being silently ignored; local CTest remains 77/77 and external gnmic
+than being silently ignored; local CTest remains 78/78 and external gnmic
 I1-I5/I9 passes. Broader cancellation lifecycle tests and implementation of
 supported sampling/heartbeat semantics remain open.
 

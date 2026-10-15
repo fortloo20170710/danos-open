@@ -9,12 +9,13 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-15
 
-Source checkpoint: `8f618ed`; CTest 78/78, local external gnmic I1-I5/I9, and
-GitHub CI/Coverage/Interop Gate PASS. The current physical and
+Source checkpoint: `8528902`; CTest 78/78 and local external gnmic I1-I5/I9
+pass. GitHub CI/Coverage/Interop Gate passed at prior code checkpoint
+`a65c11f`; no workflow run is currently visible for `8528902`. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
 
-Execution priority, as confirmed on 2026-10-14:
+Execution priority, as confirmed on 2026-10-15:
 
 1. **Physical performance qualification (highest priority, environment-open).**
    Prepare a qualified traffic source and independent receiver, then measure
