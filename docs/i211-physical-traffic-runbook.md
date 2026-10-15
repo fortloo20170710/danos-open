@@ -29,9 +29,35 @@ existing R2→R3 P1/P4 lab path and made no route changes.
 
 Artifact: `build/physical-udp64-r2-20261014-rerun/result.json`, SHA256
 `78f0fe330d4cc782495880784f340f2efb8acc9a4a056be00988b4d8a76c7b3a`.
-This proves repeatable bounded source generation and cleanup only. A fresh
-R3-before → R2-send → R3-after counter bracket is still needed for this replay;
-latency, sustained performance, and PCI line-rate qualification remain open.
+This source-only replay proved bounded generation and cleanup. A later
+bracketed replay is recorded below; the source-only run itself has no paired
+forwarding counters. Latency, sustained performance, and PCI line-rate
+qualification remain open.
+
+## R2→R3 synchronized sender/forwarder replay — 2026-10-14 (PASS, bounded)
+
+A fresh R3-before / R2-send / R3-after sequence correlated the sender with
+the forwarding node. R2 generated 3,072 frames and its I211 TX-good delta was
+3,072; TX drops remained 99,719 and all streams were removed. R3 VPP PID
+3272 stayed stable, and its two resolved ECMP next hops remained present.
+Within the 788.54-second R3 snapshot window (below the 1,800-second gate), P4
+RX/TX each increased by 3,072; P1 RX/TX increased by 2,304; P2 RX/TX increased
+by 768; all three relevant drop deltas were zero. Aggregate egress equals
+ingress and both physical paths carried packets. This is bounded R2-to-R3
+forwarding and two-path-use evidence, not a statistical balance assertion.
+The wide snapshot interval may include unrelated background traffic, so this
+does not replace tighter receiver-side correlation. Independent R1/R4 RX
+snapshots were not taken in this replay. Latency, sustained throughput,
+phase-aligned forwarding CPU, and line-rate qualification remain open.
+
+Artifacts under `build/physical-udp64-r2-r3-bracket-20261014/`; SHA256:
+
+| Evidence | SHA256 |
+| --- | --- |
+| `r3-before/result.json` | `456c0e5b15903b08eda4e569b89705ce91df5cd4fe3e05c6d1614c0988d80b03` |
+| `r2-source/result.json` | `5af28de2c5f3437ed9ed2b8d77928100d6d26f8ed61c74ac5c73d7312a4fffc8` |
+| `r3-after/result.json` | `e5d77e3d2869463944087929bc3c340509139a99ac58ce681039e51e04f77b66` |
+| `r3-correlation.json` | `6cc934f96aa8a954a3d155cd832b0d5490068f4ae8fd605b7992924c24b87a1b` |
 
 ## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
 
