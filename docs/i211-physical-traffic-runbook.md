@@ -1497,3 +1497,29 @@ forwarding bucket; all four destination probes received zero replies and second-
 failed. This is consistent with unresolved peer adjacency and/or missing peer return routing, but
 the partial serial capture cannot distinguish the exact cause. Configure and verify both peers
 above, then repeat with a cold-start capture before changing DPDK binding or VPP settings.
+
+## 2026-10-15 independent host-source qualification attempt
+
+The development host was configured by the operator with a temporary route for
+`30.30.30.0/24` via R2 `192.168.1.244`, interface `enp4s0`, source `192.168.1.243`.
+The sender's initial route guard rejected the kernel's valid `ip route get ... from ...`
+format (which prints `from`, not a redundant `src` field); no packets were sent on that
+attempt. The guard now accepts either source representation while still requiring the exact
+gateway/device/source. Six sender tests pass.
+
+A subsequent independent-host batch completed 4096 UDP payload sends (1024 each to
+`30.30.30.2–.5`, requested 1000 pps per flow; sendto duration 1.023 s). The adjacent serial
+counter snapshots showed R3 P4 RX +4096, R3 P1/P2 TX +2048/+2048, and R1/R4 NIC RX
++2048/+2048, with no drop-counter increase. However, the host source wall-clock timestamps
+were later than the R3 after snapshot timestamps despite command order. The combined verifier
+therefore returned FAIL (`host source batch is not bracketed by R3 snapshots`); this evidence
+is recorded as counter-consistent but temporally unqualified, **not** an end-to-end PASS.
+The captures are under `build/host-udp64-four-node-20261015/` and are local, untracked artifacts.
+
+To avoid NTP/wall-clock jumps in the next run, source and serial capture artifacts now include
+host `time.monotonic()` timestamps, and the verifier uses them for bracket ordering and window
+durations when available. This change is covered by CTest; it still needs a fresh compact
+physical run with new R4/R1/R3 before snapshots, source batch, then R3/R1/R4 after snapshots.
+One attempted R1-before capture was correctly rejected because its observed MAC was not R1's;
+do not reuse it. Confirm the UART target physically before each capture. The temporary host route
+is operator-managed and the sender does not modify or remove it.

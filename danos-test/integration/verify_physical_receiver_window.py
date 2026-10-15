@@ -32,7 +32,9 @@ def verify_window(paths: dict[str, tuple[Path, Path]], expected_rx_total: int | 
         after = read_snapshot(after_path, role, "after")
         if before["pid"] != after["pid"]:
             raise WindowError(f"{role} VPP PID changed during receiver window")
-        if after["captured_unix_time"] <= before["captured_unix_time"]:
+        before_time = before.get("captured_monotonic", before["captured_unix_time"])
+        after_time = after.get("captured_monotonic", after["captured_unix_time"])
+        if after_time <= before_time:
             raise WindowError(f"{role} after snapshot is not later than before snapshot")
         rx_delta = after["rx_good_packets"] - before["rx_good_packets"]
         tx_delta = after["tx_good_packets"] - before["tx_good_packets"]

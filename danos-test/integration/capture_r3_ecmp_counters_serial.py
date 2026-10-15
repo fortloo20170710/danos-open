@@ -38,6 +38,7 @@ def cpu_sample(pid):
             'monotonic':time.monotonic()}}
 try:
     result["captured_unix_time"] = time.time()
+    result["captured_monotonic"] = time.monotonic()
     result["pid"] = run(["systemctl","show","vpp","-p","MainPID","--value"]).strip()
     assert result["pid"] not in ("","0"),"VPP is not active"
     result["vpp_cpu_sample"] = cpu_sample(result["pid"])

@@ -35,6 +35,7 @@ def run(argv):
  return p.stdout
 try:
  result["captured_unix_time"]=time.time()
+ result["captured_monotonic"] = time.monotonic()
  result["pid"]=run(["systemctl","show","vpp","-p","MainPID","--value"]).strip()
  assert result["pid"] not in ("","0"),"VPP is not active"
  hw=run(vpp+["show","hardware-interfaces",expected["interface"]])

@@ -1860,3 +1860,22 @@ by BGP/OSPF neighbor validation.
 Topology-26 closes the real QEMU VPP process-restart gate: the guest emitted
 `VPP-RESTART-TEST PASS` after SIGTERM, API socket recreation and route lookup;
 the bridge concurrently reported `replay attempted=1 failed=0`.
+
+## 2026-10-15 independent physical host-source attempt
+
+The development host route to `30.30.30.0/24` via R2 (`192.168.1.244`,
+`enp4s0`, source `192.168.1.243`) was operator-configured and verified. The
+independent UDP64 sender completed 4096 `sendto` calls. R3/R1/R4 packet
+counters showed matching aggregate deltas (R3 ingress 4096, ECMP egress
+2048/2048, R1/R4 RX 2048/2048, no observed drop increase), but wall-clock
+ordering placed the sender outside the R3 before/after bracket. The verifier
+correctly rejected the run; it is counter-consistent observation, not a
+physical end-to-end PASS or performance result. A stale UART target also made
+one R1 snapshot fail its MAC identity guard, so it was discarded.
+
+The host sender route guard now accepts the kernel's `from <source>` route-get
+format, and source/serial evidence records monotonic timestamps to prevent
+wall-clock adjustments from invalidating a properly bracketed run. Unit tests
+and full CTest pass (78/78). A fresh physical run with verified UART targets
+and new compact before/send/after snapshots remains required. See
+`docs/i211-physical-traffic-runbook.md` for exact artifacts and scope.

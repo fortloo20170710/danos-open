@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for combined physical UDP source/router/receiver evidence."""
 import json
+import datetime as dt
 import sys
 import tempfile
 import unittest
@@ -58,6 +59,7 @@ def r3_snapshot(phase, counters):
         "status": "PASS", "phase": phase,
         "scope": "read-only R3 interface counters and FIB", "pid": "300",
         "captured_unix_time": 100 if phase == "before" else 200,
+        "captured_monotonic": 10.0 if phase == "before" else 20.0,
         "vpp_cpu_sample": {"pid": "300", "start_ticks": "900",
                            "cpu_ticks": 100 if phase == "before" else 200,
                            "clock_ticks_per_second": 100,
@@ -75,6 +77,29 @@ def receiver(role, phase, rx, timestamp):
             "interface": "GigabitEthernet1/0/0", "pid": "400" if role == "R1" else "500",
             "captured_unix_time": timestamp, "rx_good_packets": rx,
             "tx_good_packets": rx, "link": "1 Gbps full duplex"}
+
+
+def host_source_result(count=1024):
+    targets = ("30.30.30.2", "30.30.30.3", "30.30.30.4", "30.30.30.5")
+    route = {"returncode": 0, "matches": True,
+             "output": "30.30.30.2 from 192.168.1.243 via 192.168.1.244 dev enp4s0 src 192.168.1.243"}
+    return {
+        "status": "PASS", "scope": "independent-host paced UDP64 source batch",
+        "sender": {"source_ipv4": "192.168.1.243", "interface": "enp4s0",
+                   "required_gateway": "192.168.1.244", "carrier_up": True},
+        "targets": list(targets), "udp_destination_port": 30000,
+        "l2_frame_bytes_including_fcs": 64, "udp_payload_bytes": 22,
+        "requested_pps_per_flow": 1000, "count_per_flow": count,
+        "requested_total_frames": count * 4,
+        "routes": {target: dict(route, output=route["output"].replace("30.30.30.2", target))
+                   for target in targets},
+        "sent_per_target": {target: count for target in targets},
+        "sendto_completed": count * 4, "elapsed_seconds": 1.1,
+        "started_utc": "1970-01-12T13:46:41+00:00",
+        "finished_utc": "1970-01-12T13:46:42+00:00",
+        "started_monotonic": 101.0, "finished_monotonic": 102.0,
+        "performance_status": "ENVIRONMENT-OPEN",
+    }
 
 
 class PhysicalUDPWindowTest(unittest.TestCase):
@@ -162,6 +187,35 @@ class PhysicalUDPWindowTest(unittest.TestCase):
             "tx packets 1124", "tx packets 1123", 1)
         self.paths["r3_after"].write_text(json.dumps(self.values["r3_after"]))
         with self.assertRaisesRegex(WindowError, "aggregate ECMP egress"):
+            verify_window(self.paths)
+
+    def test_independent_host_source_requires_route_guard_and_hardware_counter_correlation(self):
+        self.values["source"] = host_source_result()
+        self.values["r3_before"]["captured_unix_time"] = 1_000_000
+        self.values["r3_after"]["captured_unix_time"] = 1_000_200
+        self.values["r3_before"]["captured_monotonic"] = 100.0
+        self.values["r3_after"]["captured_monotonic"] = 200.0
+        self.values["r3_after"]["interfaces"] = (
+            self.values["r3_after"]["interfaces"].replace("rx packets 3272", "rx packets 4296")
+            .replace("tx packets 1124", "tx packets 3172")
+            .replace("tx packets 2148", "tx packets 1124"))
+        for role, before_count, after_count in (("R1", 1000, 2024), ("R4", 2000, 5072)):
+            self.values[role.lower() + "_before"]["rx_good_packets"] = before_count
+            self.values[role.lower() + "_after"]["rx_good_packets"] = after_count
+        for key, value in self.values.items():
+            self.paths[key].write_text(json.dumps(value))
+        result = verify_window(self.paths)
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["source_kind"], "independent-host")
+        self.assertEqual(result["generated_frames"], 4096)
+        self.assertEqual(result["receiver_packets_rx"], 4096)
+        self.assertIsNone(result["r2_hardware_tx_delta"])
+
+    def test_independent_host_route_mismatch_is_rejected(self):
+        self.values["source"] = host_source_result()
+        self.values["source"]["routes"]["30.30.30.5"]["matches"] = False
+        self.paths["source"].write_text(json.dumps(self.values["source"]))
+        with self.assertRaisesRegex(WindowError, "guarded routes"):
             verify_window(self.paths)
 
 

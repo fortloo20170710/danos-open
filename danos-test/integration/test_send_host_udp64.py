@@ -22,6 +22,11 @@ class HostUdp64Tests(unittest.TestCase):
             self.assertFalse(route_matches(bad, gateway="192.168.1.244",
                                            interface="enp4s0", source="192.168.1.243"))
 
+    def test_route_get_from_selector_is_accepted_as_source_identity(self):
+        output = "30.30.30.2 from 192.168.1.243 via 192.168.1.244 dev enp4s0 uid 1000"
+        self.assertTrue(route_matches(output, gateway="192.168.1.244",
+                                      interface="enp4s0", source="192.168.1.243"))
+
     @patch("send_host_udp64.subprocess.run")
     def test_inspect_routes_does_not_change_routes(self, run):
         run.return_value.returncode = 0

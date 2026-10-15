@@ -26,13 +26,21 @@ def route_matches(output: str, *, gateway: str, interface: str, source: str) -> 
     """Check `ip route get` output without accepting a default-router path."""
     fields = output.split()
     values = {}
-    for key in ("via", "dev", "src"):
+    for key in ("via", "dev"):
         try:
             values[key] = fields[fields.index(key) + 1]
         except (ValueError, IndexError):
             return False
+    for key in ("src", "from"):
+        try:
+            values["source"] = fields[fields.index(key) + 1]
+            break
+        except (ValueError, IndexError):
+            continue
+    if "source" not in values:
+        return False
     return (values["via"] == gateway and values["dev"] == interface and
-            values["src"] == source)
+            values["source"] == source)
 
 
 def inspect_routes(targets, *, gateway: str, interface: str, source: str):
@@ -120,6 +128,7 @@ def send_batch(*, source: str, gateway: str, interface: str, targets,
             sock.bind((source, 0))
             result["source_udp_port"] = sock.getsockname()[1]
             started = time.monotonic()
+            result["started_monotonic"] = started
             result["started_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()
             for sequence in range(count):
                 deadline = started + sequence / rate
@@ -134,6 +143,7 @@ def send_batch(*, source: str, gateway: str, interface: str, targets,
                     result["sent_per_target"][target] += 1
             result["finished_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()
             elapsed = time.monotonic() - started
+            result["finished_monotonic"] = time.monotonic()
             result["elapsed_seconds"] = elapsed
             result["sendto_completed"] = sum(result["sent_per_target"].values())
             result["observed_sendto_pps"] = result["sendto_completed"] / elapsed

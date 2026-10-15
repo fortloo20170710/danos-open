@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Correlate a bounded R2 64-byte UDP run across R3 and independent peers."""
 import argparse
+import datetime as dt
 import hashlib
 import json
 import math
@@ -17,6 +18,8 @@ R3_PORTS = ("GigabitEthernet1/0/0", "GigabitEthernet2/0/0",
 R3_MACS = {"GigabitEthernet1/0/0": "00:1f:7a:69:f7:4c",
            "GigabitEthernet2/0/0": "00:1f:7a:69:f7:4d"}
 MAX_BRACKET_SECONDS = 1800
+HOST_SCOPE = "independent-host paced UDP64 source batch"
+HOST_TARGETS = ("30.30.30.2", "30.30.30.3", "30.30.30.4", "30.30.30.5")
 
 
 class WindowError(ValueError):
@@ -64,6 +67,56 @@ def validate_fib(raw: str) -> None:
         raise WindowError("R3 FIB paths are not both resolved forwarding adjacencies")
 
 
+def validate_host_source(source: dict) -> tuple[int, int]:
+    """Validate source-side intent and route guards; NIC counters prove delivery."""
+    try:
+        sender = source["sender"]
+        count = source["count_per_flow"]
+        rate = source["requested_pps_per_flow"]
+        sent = source["sent_per_target"]
+        routes = source["routes"]
+        if (source.get("status") != "PASS" or source.get("scope") != HOST_SCOPE or
+                sender != {"source_ipv4": "192.168.1.243", "interface": "enp4s0",
+                           "required_gateway": "192.168.1.244", "carrier_up": True}):
+            raise ValueError("status, scope, or sender identity mismatch")
+        if (type(count) is not int or not 1 <= count <= 4096 or
+                type(rate) is not int or not 1 <= rate <= 1000 or
+                source.get("targets") != list(HOST_TARGETS) or
+                source.get("udp_destination_port") != 30000 or
+                source.get("l2_frame_bytes_including_fcs") != 64 or
+                source.get("udp_payload_bytes") != 22 or
+                source.get("requested_total_frames") != count * len(HOST_TARGETS) or
+                sent != {target: count for target in HOST_TARGETS} or
+                source.get("sendto_completed") != count * len(HOST_TARGETS)):
+            raise ValueError("target, packet size, or sent-frame totals mismatch")
+        if set(routes) != set(HOST_TARGETS) or any(
+                route.get("returncode") != 0 or route.get("matches") is not True or
+                not re.search(r"\bvia 192\.168\.1\.244\b.*\bdev enp4s0\b",
+                              route.get("output", "")) or
+                not re.search(r"\b(?:src|from) 192\.168\.1\.243\b",
+                              route.get("output", ""))
+                for route in routes.values()):
+            raise ValueError("one or more guarded routes do not use R2 via enp4s0")
+        elapsed = source["elapsed_seconds"]
+        if (type(elapsed) not in (int, float) or not math.isfinite(elapsed) or elapsed <= 0 or
+                source.get("performance_status") != "ENVIRONMENT-OPEN"):
+            raise ValueError("source timing/performance status invalid")
+        started = dt.datetime.fromisoformat(source["started_utc"].replace("Z", "+00:00")).timestamp()
+        finished = dt.datetime.fromisoformat(source["finished_utc"].replace("Z", "+00:00")).timestamp()
+        if finished < started:
+            raise ValueError("source timestamps are reversed")
+        started_mono = source.get("started_monotonic")
+        finished_mono = source.get("finished_monotonic")
+        if (type(started_mono) not in (int, float) or
+                type(finished_mono) not in (int, float) or
+                not math.isfinite(started_mono) or not math.isfinite(finished_mono) or
+                finished_mono < started_mono):
+            raise ValueError("monotonic source timestamps are invalid")
+        return count * len(HOST_TARGETS), (started, finished, started_mono, finished_mono)
+    except (KeyError, TypeError, ValueError, AttributeError) as error:
+        raise WindowError(f"independent host source result invalid: {error}") from None
+
+
 def verify_window(paths: dict[str, Path]) -> dict:
     required = ("source", "r3_before", "r3_after")
     missing = [key for key in required if key not in paths]
@@ -74,11 +127,16 @@ def verify_window(paths: dict[str, Path]) -> dict:
     if has_receiver_evidence and any(key not in paths for key in receiver_keys):
         raise WindowError("receiver evidence must include R1/R4 before/after snapshots")
     source = read_json(paths["source"])
-    try:
-        count = source["frames_per_flow_per_phase"]
-        validate_result(source, count)
-    except (KeyError, TypeError, ValueError) as error:
-        raise WindowError(f"R2 source result invalid: {error}") from None
+    host_source = source.get("scope") == HOST_SCOPE
+    if host_source:
+        generated, source_started = validate_host_source(source)
+    else:
+        try:
+            count = source["frames_per_flow_per_phase"]
+            validate_result(source, count)
+            generated, source_started = source["generated_frames"], None
+        except (KeyError, TypeError, ValueError) as error:
+            raise WindowError(f"R2 source result invalid: {error}") from None
 
     before, after = read_json(paths["r3_before"]), read_json(paths["r3_after"])
     for snapshot, phase in ((before, "before"), (after, "after")):
@@ -122,9 +180,21 @@ def verify_window(paths: dict[str, Path]) -> dict:
         timestamp = snapshot.get("captured_unix_time")
         if type(timestamp) not in (int, float) or not math.isfinite(timestamp):
             raise WindowError("R3 capture timestamp is invalid")
-    if after["captured_unix_time"] <= before["captured_unix_time"]:
+    capture_before = before.get("captured_monotonic", before["captured_unix_time"])
+    capture_after = after.get("captured_monotonic", after["captured_unix_time"])
+    if capture_after <= capture_before:
         raise WindowError("R3 after snapshot is not later than before snapshot")
-    snapshot_windows = {"R3": after["captured_unix_time"] - before["captured_unix_time"]}
+    if source_started is not None:
+        wall_start, wall_finish, mono_start, mono_finish = source_started
+        use_monotonic = (type(before.get("captured_monotonic")) in (int, float) and
+                         type(after.get("captured_monotonic")) in (int, float))
+        start, finish = ((mono_start, mono_finish) if use_monotonic else
+                         (wall_start, wall_finish))
+        lower = before["captured_monotonic"] if use_monotonic else before["captured_unix_time"]
+        upper = after["captured_monotonic"] if use_monotonic else after["captured_unix_time"]
+        if not (lower <= start <= finish <= upper):
+            raise WindowError("host source batch is not bracketed by R3 snapshots")
+    snapshot_windows = {"R3": capture_after - capture_before}
     first, last = parse_interfaces(before.get("interfaces", "")), parse_interfaces(after.get("interfaces", ""))
     if any(port not in first or port not in last for port in R3_PORTS):
         raise WindowError("R3 interface counter snapshot is incomplete")
@@ -137,7 +207,6 @@ def verify_window(paths: dict[str, Path]) -> dict:
           for port in R3_PORTS}
     if any(value < 0 for counters in r3.values() for value in counters.values()):
         raise WindowError("R3 interface counter reset/decrease detected")
-    generated = source["generated_frames"]
     p1, p2, p4 = R3_PORTS
     if r3[p4]["rx packets"] != generated:
         raise WindowError("R3 P4 RX does not match R2 generated frames")
@@ -165,7 +234,8 @@ def verify_window(paths: dict[str, Path]) -> dict:
         for role, before_key, after_key in (("R1", "r1_before", "r1_after"),
                                             ("R4", "r4_before", "r4_after")):
             peer_before, peer_after = read_json(paths[before_key]), read_json(paths[after_key])
-            snapshot_windows[role] = peer_after["captured_unix_time"] - peer_before["captured_unix_time"]
+            snapshot_windows[role] = (peer_after.get("captured_monotonic", peer_after["captured_unix_time"]) -
+                                      peer_before.get("captured_monotonic", peer_before["captured_unix_time"]))
 
     tightly_bracketed = all(0 < seconds <= MAX_BRACKET_SECONDS
                             for seconds in snapshot_windows.values())
@@ -192,10 +262,11 @@ def verify_window(paths: dict[str, Path]) -> dict:
         "performance_status": "ENVIRONMENT-OPEN",
         "performance_limitations": performance_limitations,
         "generated_frames": generated,
-        "r2_hardware_tx_delta": source["hardware_tx_delta"],
-        "r2_tx_drops_before": source["tx_drops_before"],
-        "r2_tx_drops_after": source["tx_drops_after"],
-        "phase_rates": [{key: phase[key] for key in (
+        "source_kind": "independent-host" if host_source else "R2 VPP packet-generator",
+        "r2_hardware_tx_delta": None if host_source else source["hardware_tx_delta"],
+        "r2_tx_drops_before": None if host_source else source["tx_drops_before"],
+        "r2_tx_drops_after": None if host_source else source["tx_drops_after"],
+        "phase_rates": [] if host_source else [{key: phase[key] for key in (
             "requested_pps_per_flow", "hardware_tx_delta", "observation_seconds",
             "measured_tx_pps", "measured_mbps", "vpp_cpu_pct_one_core")
                         if key in phase} for phase in source["phases"]],
