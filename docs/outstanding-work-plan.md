@@ -349,6 +349,14 @@ the current delivery and supersedes their pending-image statements.
   bracket, receiver confirmation, latency, sustained performance and line-rate
   qualification remain open.
 
+- [x] 2026-10-14 synchronized R2→R3 physical replay: source TX and R3 P4
+  ingress each increased by 3,072; R3 P1/P2 egress increased by 2,304/768,
+  the two-path sum matched ingress, relevant drops were unchanged, and VPP PID
+  remained stable. The R3 window was 788.54s and independent R1/R4 counters
+  were not captured; retain this as bounded path-use PASS only. Evidence hashes
+  are in `docs/i211-physical-traffic-runbook.md`. Repeat with tighter
+  independent receiver brackets before extending the performance claim.
+
 - [x] Real VPP process CPU sampler implemented with start-tick identity,
   monotonic timing and one-logical-CPU normalization. Five deterministic
   cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;
