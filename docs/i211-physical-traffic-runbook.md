@@ -2,6 +2,36 @@
 
 更新时间：2026-10-15
 
+## Independent host sender route preflight — 2026-10-15 (ENVIRONMENT-OPEN)
+
+`danos-test/integration/send_host_udp64.py` now provides a finite standard-
+library UDP64 source with machine-readable output. Before sending, it checks
+that every target route uses gateway `192.168.1.244` (R2 P3), device `enp4s0`,
+and source `192.168.1.243`; it never changes routes. Current host lookup
+instead selects Wi-Fi gateway `10.248.5.1`, so the preflight correctly sent
+zero packets and returned `ENVIRONMENT-OPEN`. Evidence:
+`build/host-udp64-route-preflight-20261015-v2/result.json`, SHA256
+`432a1dbdd4ee2e3222b157d5fb5127f40c02f594f8441bb601c5320e6e7f6060`.
+
+To enable the independent-source test, add this temporary specific route on
+the development host, then verify the lookup prints `via 192.168.1.244 dev
+enp4s0 src 192.168.1.243`:
+
+```sh
+sudo ip route add 30.30.30.0/24 via 192.168.1.244 dev enp4s0 src 192.168.1.243
+ip -4 route get 30.30.30.2 from 192.168.1.243
+```
+
+Remove it after testing with:
+
+```sh
+sudo ip route del 30.30.30.0/24 via 192.168.1.244 dev enp4s0
+```
+
+The sender and its route-guard tests are implemented; end-to-end host-source
+traffic has not yet run. Its observed `sendto` rate is not hardware TX proof;
+independent R2/R3/R1/R4 counters remain required.
+
 ## R4 serial recheck — 2026-10-14 (read-only)
 
 After the UART was switched to R4, installed inventory again identified

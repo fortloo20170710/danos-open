@@ -82,6 +82,13 @@ run had exact aggregate counters but remains `OBSERVED` because its R4 window
 exceeded the gate. Latency, phase-aligned forwarding CPU, sustained throughput
 and line rate remain open. Evidence and hashes are in the [physical I211 runbook](i211-physical-traffic-runbook.md).
 
+An independent Linux host UDP64 sender and route-guard test were added to
+avoid relying solely on VPP packet-generator CPU. Its preflight correctly
+refused to send because current target routing selects Wi-Fi gateway
+`10.248.5.1`; no route or packet state was changed. A temporary specific route
+via R2 P3 `.244` on `enp4s0` is required before the independent-source lane can
+run. Full CTest is now 78/78 PASS; real PCI performance remains OPEN.
+
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 
 The multicore performance CLI now emits a machine-readable result when the
