@@ -22,8 +22,8 @@ Current release/qualification gaps:
   pass only their stated functional scope. Host↔R2 P3 management reachability
   is now verified, but this provides neither a qualified traffic-generator
   path nor a sustained-load measurement.
-- Physical rollout is incomplete: R1/R3 have r14 evidence, R2 remains r9 and
-  R4 is unverified. Four-node homogeneous r14 acceptance is open.
+- Physical rollout is incomplete: R1/R3 have r14 evidence; R2 and R4 report
+  r9. Four-node homogeneous r14 acceptance is open.
 - Physical management is disabled; production PKI/mTLS deployment and live
   VPP reconnect/recovery are open. Existing QEMU synthetic-neighbor mTLS and
   restart evidence must not be generalized to those gates.

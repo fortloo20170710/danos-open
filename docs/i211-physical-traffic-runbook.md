@@ -2,6 +2,17 @@
 
 更新时间：2026-10-14
 
+## R4 serial recheck — 2026-10-14 (read-only)
+
+After the UART was switched to R4, installed inventory again identified
+`/dev/sda1` as the root filesystem, build commit `3f1691c` / generic DPDK
+r9, kernel `6.12.107+deb13-amd64`, VPP 26.10 and active VPP/FRR services;
+mgrd remains disabled. All four I211 functions are bound to
+`uio_pci_generic`. VPP P3 `GigabitEthernet3/0/0` is up with small management
+traffic counters. Development host `.243` pinged R4 `.247` 3/3 with zero
+loss. This reconfirms management reachability and image identity only; no
+configuration was changed and no transit/performance result is implied.
+
 ## R1 P3 shared-router link — 2026-10-14 (scoped PASS)
 
 UART identity confirms R1: SATA `/dev/sda1`, Debian 6.12.107, VPP 26.10,
