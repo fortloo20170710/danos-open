@@ -5,8 +5,9 @@
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
 The latest source commit is `8528902` (independent host UDP64 sender with
 route and carrier guards), pushed to `origin/main`; CTest is 78/78 PASS.
-GitHub CI/Coverage/Interop Gate previously passed at `a65c11f`; no workflow
-run is currently visible for `8528902`. Recent gNMI changes at `90abaa7`,
+GitHub CI, Coverage and Interop Gate all passed for `8528902` (runs
+`38710071870`, `38710072003`, `38710071850`); the documentation checkpoint
+`14d301d` also passed all three workflows. Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
 options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
 semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking

@@ -10,8 +10,9 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 ### Current delivery and work inventory — 2026-10-15
 
 Source checkpoint: `8528902`; CTest 78/78 and local external gnmic I1-I5/I9
-pass. GitHub CI/Coverage/Interop Gate passed at prior code checkpoint
-`a65c11f`; no workflow run is currently visible for `8528902`. The current physical and
+pass. GitHub CI/Coverage/Interop Gate all pass at `8528902` (runs
+`38710071870`, `38710072003`, `38710071850`); the documentation checkpoint
+`14d301d` also passed all three. The current physical and
 release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
 still `v0.16.0-rc1`, not a final-release PASS.
 
