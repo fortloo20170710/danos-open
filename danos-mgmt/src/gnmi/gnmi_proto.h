@@ -213,8 +213,8 @@ bool gnmi_encode_set_response(gnmi_pb_t *w, const gnmi_set_response_t *resp);
  * SubscribeRequest oneof: subscribe=1, poll=3
  * SubscriptionList { prefix=1, subscription=2, mode=5, encoding=8, updates_only=9 }
  * Subscription { path=1, mode=2 (TARGET_DEFINED=0, ON_CHANGE=1, SAMPLE=2),
- *                sample_interval=3,
- *                suppress_redundant=4, heartbeat_interval=5 }
+ *                sample_interval=3, suppress_redundant=4,
+ *                heartbeat_interval=5 }
  * Mode: STREAM=0, ONCE=1, POLL=2
  * SubscribeResponse oneof: update=1 (Notification), sync_response=3 (bool)
  */
@@ -234,6 +234,8 @@ typedef struct {
     bool                 updates_only;
     bool                 sample_mode;
     uint64_t             sample_interval_ns;
+    bool                 suppress_redundant;
+    uint64_t             heartbeat_interval_ns;
     bool                 unsupported_options;
 } gnmi_subscribe_list_t;
 

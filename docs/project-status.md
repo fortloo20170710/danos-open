@@ -71,12 +71,15 @@ per-subscription ON_CHANGE, suppress-redundant and heartbeat options return
 InvalidArgument rather than being silently ignored. Per-path SAMPLE is now
 supported for homogeneous STREAM lists: default/zero interval is 1 s,
 sub-100 ms values are rounded to the 100 ms service cadence, and intervals
-over 24 h or mixed path modes/intervals are rejected. Sampled streams send an
+over 24 h or mixed path contracts are rejected. Sampled streams send an
 initial snapshot/sync followed by periodic snapshots and do not emit early on
-store changes. The 250 ms end-to-end timing test passes; full CTest is 78/78
-and the gNMI gRPC test passed 10 consecutive runs. CI, Coverage and Interop
-Gate pass at `9efecc9`, including ASan/UBSan, TSan, gnmic I1-I9, VPP V1-V5 and
-K4/K5. Broader lifecycle stress and heartbeat remain open.
+store changes. `suppress_redundant` hashes serialized update content without
+the notification timestamp and suppresses unchanged samples; a configured
+heartbeat emits an unchanged update at its deadline. Both options are accepted
+only with SAMPLE, and heartbeat requires suppress_redundant. End-to-end tests
+cover the 250 ms sample interval and a 300 ms unchanged-data heartbeat. Full
+CTest remains 78/78; targeted and remote gates for this increment are pending.
+ON_CHANGE, `use_models`, and heterogeneous per-path contracts remain deferred.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.

@@ -76,14 +76,16 @@ Execution priority, as confirmed on 2026-10-15:
    omitted/zero intervals select 1 s, intervals below the 100 ms service
    cadence are rounded up, and values above 24 h are rejected. Sampling sends
    the initial snapshot/sync and then periodic snapshots; store changes do not
-   trigger early samples. Mixed per-path modes/intervals, ON_CHANGE,
-   suppress-redundant, heartbeat and `use_models` remain explicitly rejected.
-   An end-to-end test changes the store and proves the next update waits for
-   the requested 250 ms sample interval. Full CTest is 78/78 and the gNMI
-   gRPC test passed 10 consecutive runs. CI, Coverage and Interop Gate pass at
-   `9efecc9`, including ASan/UBSan, TSan, gnmic I1-I9, VPP V1-V5 and K4/K5.
-   Broaden cancellation/reset and subscription lifecycle stress before adding
-   heartbeat semantics.
+   trigger early samples. `suppress_redundant` compares serialized update
+   content excluding notification timestamps and skips unchanged periodic
+   samples. A heartbeat emits an unchanged update on its configured deadline;
+   heartbeat is valid only with suppress_redundant, and both options require
+   SAMPLE. Mixed per-path contracts, ON_CHANGE and `use_models` remain
+   explicitly rejected. End-to-end tests cover a changed value waiting for a
+   250 ms sample interval and an unchanged value emitted by a 300 ms heartbeat.
+   Full CTest is 78/78; targeted and remote gates for this increment are
+   pending. ON_CHANGE requires event/path-scoped change detection and remains
+   the next subscription-semantic gap.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The
@@ -1315,10 +1317,9 @@ Done:
   [Set/Get semantics](gnmi-set-get-semantics.md).
 
 Still open:
-- `use_models` is not decoded/applied; per-subscription SAMPLE/ON_CHANGE mode,
-  `sample_interval`, `suppress_redundant` and `heartbeat_interval` are not
-  implemented. Until implemented, unsupported request options must be
-  explicitly rejected rather than silently treated as event-driven STREAM.
+- `use_models` is not decoded/applied; ON_CHANGE path-scoped event detection
+  is not implemented. Unsupported request options must be explicitly rejected
+  rather than silently treated as event-driven STREAM.
 - Broader cancellation/reset and subscription lifecycle behavior need
   regression coverage beyond the new RST_STREAM/same-connection case. The
   current bounded 200 ms wait is a liveness fallback

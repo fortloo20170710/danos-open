@@ -583,7 +583,10 @@ static int test_subscribe_stream_initial(bool updates_only,
                                          gnmi_encoding_t encoding,
                                          bool reset_stream,
                                          uint32_t path_mode,
-                                         uint64_t sample_interval_ns)
+                                         uint64_t sample_interval_ns,
+                                         bool suppress_redundant,
+                                         uint64_t heartbeat_interval_ns,
+                                         bool mutate_store)
 {
     if (conn_fd >= 0) close(conn_fd);
     conn_fd = -1;
@@ -600,6 +603,9 @@ static int test_subscribe_stream_initial(bool updates_only,
     if (path_mode) gnmi_pb_put_enum(&w, 2, (int32_t)path_mode);
     if (sample_interval_ns)
         gnmi_pb_put_uint64(&w, 3, sample_interval_ns);
+    if (suppress_redundant) gnmi_pb_put_bool(&w, 4, true);
+    if (heartbeat_interval_ns)
+        gnmi_pb_put_uint64(&w, 5, heartbeat_interval_ns);
     gnmi_pb_end_nested(&w, sub);
     gnmi_pb_put_enum(&w, 8, encoding);
     gnmi_pb_put_bool(&w, 9, updates_only);
@@ -720,13 +726,15 @@ static int test_subscribe_stream_initial(bool updates_only,
      * on this same stream, including for updates_only subscriptions. */
     int updates_before_change = updates;
     uint64_t sample_start_ns = test_monotonic_ns();
-    danos_iface_t changed;
-    size_t changed_size = sizeof(changed);
-    assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 77,
-                             &changed, &changed_size) == DANOS_OK);
-    changed.mtu++;
-    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 77,
-                               &changed, sizeof(changed)) == DANOS_OK);
+    if (mutate_store) {
+        danos_iface_t changed;
+        size_t changed_size = sizeof(changed);
+        assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 77,
+                                 &changed, &changed_size) == DANOS_OK);
+        changed.mtu++;
+        assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 77,
+                                   &changed, sizeof(changed)) == DANOS_OK);
+    }
     while (updates == updates_before_change) {
         uint8_t fh[9];
         assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
@@ -755,6 +763,10 @@ static int test_subscribe_stream_initial(bool updates_only,
     if (sample_interval_ns) {
         uint64_t elapsed = test_monotonic_ns() - sample_start_ns;
         assert(elapsed >= sample_interval_ns * 3 / 4);
+    }
+    if (heartbeat_interval_ns) {
+        uint64_t elapsed = test_monotonic_ns() - sample_start_ns;
+        assert(elapsed >= heartbeat_interval_ns * 3 / 4);
     }
 
     if (reset_stream) {
@@ -1526,11 +1538,17 @@ int main(void)
     if (test_dataplane_operational_path() != 0) failed++;
     if (test_stream_detector_sees_all_fields() != 0) failed++;
 
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false, 0, 0) != 0) failed++;
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON, false, 0, 0) != 0) failed++;
-    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true, 0, 0) != 0) failed++;
     if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
-                                      2, 250000000ULL) != 0) failed++;
+                                      0, 0, false, 0, true) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON, false,
+                                      0, 0, false, 0, true) != 0) failed++;
+    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true,
+                                      0, 0, false, 0, true) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
+                                      2, 250000000ULL, false, 0, true) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
+                                      2, 100000000ULL, true,
+                                      300000000ULL, false) != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);

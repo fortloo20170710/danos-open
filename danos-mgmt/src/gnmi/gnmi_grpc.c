@@ -93,6 +93,10 @@ typedef struct {
     uint64_t last_hash;
     uint64_t sample_interval_ns;
     uint64_t next_sample_ns;
+    bool suppress_redundant;
+    uint64_t heartbeat_interval_ns;
+    uint64_t next_heartbeat_ns;
+    uint64_t last_sample_hash;
     gnmi_subscribe_list_t list;
 } h2_active_subscription_t;
 
@@ -875,6 +879,34 @@ static int subscription_send_update(h2_conn_t *c,
     return send_stream_message(c, sub->stream, response, w.len);
 }
 
+/* Hash only the serialized update content, excluding Notification.timestamp,
+ * so a fresh timestamp alone does not defeat suppress_redundant. */
+static uint64_t subscription_data_hash(const gnmi_subscribe_list_t *list)
+{
+    gnmi_path_t paths[GNMI_MAX_ELEMS];
+    uint32_t path_count = 0;
+    for (uint32_t i = 0; i < list->sub_count &&
+                         path_count < GNMI_MAX_ELEMS; i++)
+        paths[path_count++] = list->subs[i].path;
+    uint8_t notification[8192];
+    int len = build_notification_for_paths(list, paths, path_count,
+                                           notification,
+                                           sizeof(notification));
+    if (len < 0) return UINT64_MAX;
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, notification, (size_t)len);
+    uint32_t wire;
+    if (gnmi_pbr_tag(&r, &wire) != 1 || wire != 0) return UINT64_MAX;
+    (void)gnmi_pbr_varint(&r);
+    if (r.err) return UINT64_MAX;
+    uint64_t hash = 14695981039346656037ULL;
+    for (size_t i = r.pos; i < r.len; i++) {
+        hash ^= r.p[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
 static void subscriptions_service(h2_conn_t *c)
 {
     uint64_t hash = stream_state_hash();
@@ -883,14 +915,26 @@ static void subscriptions_service(h2_conn_t *c)
         h2_active_subscription_t *sub = &c->subscriptions[i];
         if (!sub->used) continue;
         if (sub->sample_interval_ns) {
-            if (now < sub->next_sample_ns) continue;
-            if (subscription_send_update(c, sub) < 0) {
-                stream_forget(c, sub->stream);
-                memset(sub, 0, sizeof(*sub));
-                continue;
+            bool sample_due = now >= sub->next_sample_ns;
+            bool heartbeat_due = sub->heartbeat_interval_ns &&
+                                 now >= sub->next_heartbeat_ns;
+            if (!sample_due && !heartbeat_due) continue;
+            uint64_t data_hash = subscription_data_hash(&sub->list);
+            bool changed = data_hash != sub->last_sample_hash;
+            if (!sub->suppress_redundant || (sample_due && changed) ||
+                heartbeat_due) {
+                if (subscription_send_update(c, sub) < 0) {
+                    stream_forget(c, sub->stream);
+                    memset(sub, 0, sizeof(*sub));
+                    continue;
+                }
+                sub->last_sample_hash = data_hash;
             }
             sub->last_hash = hash;
-            sub->next_sample_ns = now + sub->sample_interval_ns;
+            if (sample_due)
+                sub->next_sample_ns = now + sub->sample_interval_ns;
+            if (heartbeat_due)
+                sub->next_heartbeat_ns = now + sub->heartbeat_interval_ns;
             continue;
         }
         if (sub->last_hash == hash) continue;
@@ -941,10 +985,20 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
         if (sub->sample_interval_ns &&
             sub->sample_interval_ns < GNMI_SAMPLE_MIN_NS)
             sub->sample_interval_ns = GNMI_SAMPLE_MIN_NS;
+        sub->suppress_redundant = sl->suppress_redundant;
+        sub->heartbeat_interval_ns = sl->heartbeat_interval_ns;
+        if (sub->heartbeat_interval_ns &&
+            sub->heartbeat_interval_ns < GNMI_SAMPLE_MIN_NS)
+            sub->heartbeat_interval_ns = GNMI_SAMPLE_MIN_NS;
         sub->next_sample_ns = sub->sample_interval_ns
                             ? monotonic_time_ns() + sub->sample_interval_ns
                             : 0;
         sub->list = *sl;
+        if (sub->heartbeat_interval_ns)
+            sub->next_heartbeat_ns = monotonic_time_ns() +
+                                     sub->heartbeat_interval_ns;
+        if (sub->sample_interval_ns && sub->suppress_redundant)
+            sub->last_sample_hash = subscription_data_hash(&sub->list);
         return 0;
     }
     return -(int)DANOS_ERR_BACKEND_BUSY;

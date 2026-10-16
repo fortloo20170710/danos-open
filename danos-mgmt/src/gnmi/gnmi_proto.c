@@ -639,6 +639,8 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                 bool have_path_mode = false;
                 bool aggregate_sample_mode = false;
                 uint64_t aggregate_sample_interval = 0;
+                bool aggregate_suppress_redundant = false;
+                uint64_t aggregate_heartbeat_interval = 0;
                 uint32_t lf, lw;
                 while ((lf = gnmi_pbr_tag(&lr, &lw)) != 0) {
                     if (lr.err) return false;
@@ -652,7 +654,9 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 &out->subscribe.subs[out->subscribe.sub_count++];
                             memset(sub, 0, sizeof(*sub));
                             uint64_t sample_interval = 0;
+                            uint64_t heartbeat_interval = 0;
                             uint32_t path_mode = 0;
+                            bool suppress_redundant = false;
                             gnmi_pb_reader_t sr;
                             gnmi_pbr_init(&sr, ld, ln);
                             uint32_t sf, sw;
@@ -674,12 +678,17 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                         sample_interval = gnmi_pbr_varint(&sr);
                                         continue;
                                     }
-                                    /* suppress_redundant and heartbeat are
-                                     * not supported yet. */
-                                    if ((sf == 4 || sf == 5) &&
-                                        gnmi_pbr_varint(&sr) != 0)
-                                        out->subscribe.unsupported_options = true;
-                                    else if (sf != 4 && sf != 5)
+                                    if (sf == 4) {
+                                        suppress_redundant =
+                                            gnmi_pbr_varint(&sr) != 0;
+                                        continue;
+                                    }
+                                    if (sf == 5) {
+                                        heartbeat_interval =
+                                            gnmi_pbr_varint(&sr);
+                                        continue;
+                                    }
+                                    if (sf != 4 && sf != 5)
                                         gnmi_pbr_skip(&sr, sw);
                                 }
                             }
@@ -688,13 +697,22 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 sample_interval = 1000000000ULL;
                             if (!sample_mode && sample_interval != 0)
                                 out->subscribe.unsupported_options = true;
+                            if ((!sample_mode &&
+                                 (suppress_redundant || heartbeat_interval)) ||
+                                (heartbeat_interval && !suppress_redundant) ||
+                                heartbeat_interval > 86400000000000ULL)
+                                out->subscribe.unsupported_options = true;
                             if (!have_path_mode) {
                                 aggregate_sample_mode = sample_mode;
                                 aggregate_sample_interval = sample_interval;
+                                aggregate_suppress_redundant = suppress_redundant;
+                                aggregate_heartbeat_interval = heartbeat_interval;
                                 have_path_mode = true;
                             } else if (aggregate_sample_mode != sample_mode ||
                                        (sample_mode &&
-                                        aggregate_sample_interval != sample_interval)) {
+                                        (aggregate_sample_interval != sample_interval ||
+                                         aggregate_suppress_redundant != suppress_redundant ||
+                                         aggregate_heartbeat_interval != heartbeat_interval))) {
                                 /* Keep one list's delivery contract uniform. */
                                 out->subscribe.unsupported_options = true;
                             }
@@ -704,6 +722,10 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                             out->subscribe.sample_mode = aggregate_sample_mode;
                             out->subscribe.sample_interval_ns =
                                 aggregate_sample_interval;
+                            out->subscribe.suppress_redundant =
+                                aggregate_suppress_redundant;
+                            out->subscribe.heartbeat_interval_ns =
+                                aggregate_heartbeat_interval;
                         }
                         break;
                     case 5:
