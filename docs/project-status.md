@@ -3,12 +3,11 @@
 ## 2026-10-15 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The current source checkpoint adds a gNMI STREAM disconnect/reconnect
+The source checkpoint `af41ef6` adds a gNMI STREAM disconnect/reconnect
 regression; the architecture document was also corrected to distinguish
 FRR's ZAPI input adapter from dataplane backends and to scope OPER/WAL claims.
-CTest is 78/78 PASS. GitHub CI, Coverage and Interop Gate passed on the
-preceding source checkpoint; workflows for the current code change must finish
-before claiming remote CI acceptance. Recent gNMI changes at `90abaa7`,
+CTest is 78/78 PASS. GitHub CI, Coverage and Interop Gate all pass for
+`af41ef6` (runs `38840678456`, `38840678472`, `38840678449`). Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
 options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
 semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking

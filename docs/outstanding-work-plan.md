@@ -9,12 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-15
 
-Source checkpoint: this update adds a gNMI STREAM disconnect/reconnect
-regression; CTest 78/78 passes. GitHub CI/Coverage/Interop Gate passed at the
-preceding source checkpoint; the workflows for this update must complete
-before claiming remote acceptance. The current physical and release evidence
-is summarized in `docs/v0.16-acceptance-matrix.md`. This is still
-`v0.16.0-rc1`, not a final-release PASS.
+Source checkpoint `af41ef6`: gNMI STREAM disconnect/reconnect regression;
+CTest 78/78 PASS. GitHub CI, Coverage and Interop Gate all pass
+(`38840678456`, `38840678472`, `38840678449`), including K4/K5, real VPP
+V1–V5, gnmic I1–I9, sanitizers and concurrency. The current physical and
+release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
+still `v0.16.0-rc1`, not a final-release PASS.
 
 Execution priority, as confirmed on 2026-10-15:
 
@@ -49,8 +49,8 @@ Execution priority, as confirmed on 2026-10-15:
    subscription and proves a subsequent Capabilities RPC succeeds on the same
    connection. A new regression also closes a live STREAM connection and
    verifies a fresh connection can complete Capabilities, guarding against a
-   stuck per-connection handler. CTest 78/78 passes locally; remote workflows
-   for this new regression are pending.
+   stuck per-connection handler. CTest 78/78 and all three remote workflows
+   pass at `af41ef6`.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler
