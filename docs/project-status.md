@@ -50,19 +50,20 @@ TypedValue encoding, and relies on store-event wakeups with a bounded
 200 ms liveness fallback rather than adding an extra sleep. The server
 consumes HTTP/2 RST_STREAM without blocking on a partial frame after a
 zero-time poll. The connection now retains STREAM subscriptions as per-stream
-state and continues polling complete HTTP/2 frames; a regression proves two
-STREAMs can remain active while a Capabilities unary RPC completes on the same
-connection, then verifies cancellation and reconnect. The eight-stream unary
-test remains separate. For subsequent RPCs while a STREAM is active, HEADERS /
-CONTINUATION and gRPC DATA are now assembled incrementally in bounded,
-per-stream state; a regression leaves one stream's HEADERS and gRPC prefix
-incomplete while a different stream completes Capabilities, then resumes the
-first stream. Complete gRPC messages packed in one DATA frame are dispatched
-sequentially without waiting for another frame; a POLL regression verifies
-the initial snapshot and following Poll notification. The initial RPC that
-establishes the first active subscription still uses the legacy blocking
-reader. Full CTest is 78/78, the targeted test passed 20 consecutive runs,
-and ASan/UBSan passed on the preceding revision. External gnmic I1-I9,
+state and enters incremental mode as soon as any request is in flight, before
+the first subscription becomes active. Initial and subsequent RPC
+HEADERS/CONTINUATION and gRPC DATA are assembled incrementally in bounded,
+per-stream state. Regressions leave the first Subscribe request and a later
+stream's HEADERS/gRPC prefix incomplete while Capabilities on another stream
+completes. The legacy blocking gRPC request-body reader is removed. A separate
+regression proves two STREAMs can remain active while a Capabilities unary
+RPC completes on the same connection, then verifies cancellation and
+reconnect; the eight-stream unary test remains separate. Complete gRPC
+messages packed in one DATA frame are dispatched sequentially without waiting
+for another frame; a POLL regression verifies the initial snapshot and
+following Poll notification. Full CTest is 78/78 and the targeted gNMI gRPC
+test passed 20 consecutive runs; sanitizer and remote gate results for this
+revision are pending. Prior external gnmic I1-I9,
 VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. Unsupported
 `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather

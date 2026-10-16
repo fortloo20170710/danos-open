@@ -52,21 +52,24 @@ Execution priority, as confirmed on 2026-10-15:
    stuck per-connection handler. CTest 78/78 and all three remote workflows
    pass at `af41ef6`.
    The blocking subscription loop has been replaced by connection-owned active
-   subscription state. While subscriptions are active, the connection polls
+   subscription state. The connection enters incremental mode as soon as any
+   request is in flight, not only after a subscription is active. It polls
    complete HTTP/2 frames without blocking on partial frames, handles resets,
-   dispatches additional RPCs, and services subscription updates. Subsequent
-   RPC HEADERS/CONTINUATION and DATA are assembled incrementally in bounded
-   per-stream state. A regression deliberately leaves one stream's header
-   block and gRPC prefix incomplete while Capabilities on another stream
-   completes, then resumes the first stream and verifies sync. Two active
+   dispatches additional RPCs, and services subscription updates. Initial and
+   subsequent RPC HEADERS/CONTINUATION and DATA are assembled incrementally
+   in bounded per-stream state. Regressions leave both the first Subscribe
+   request and a later stream's header block/gRPC prefix incomplete while a
+   Capabilities RPC on another stream completes, then resume and verify sync.
+   Two active
    STREAMs, cancellation and reconnect are covered. A single DATA frame may
    contain multiple gRPC messages: after dispatch, the server schedules any
    complete retained message without waiting for another peer frame. A POLL
    regression packs the initial SubscribeRequest and a Poll request into one
-   DATA frame and verifies both notifications. The first RPC that establishes
-   the initial active subscription still uses the legacy blocking reader;
-   broaden reset/cancellation stress before treating the transport as fully
-   hardened.
+   DATA frame and verifies both notifications. The legacy blocking gRPC
+   request-body reader has been removed. The first-request interleaving and
+   all existing gNMI gRPC tests pass, including 20 consecutive targeted runs;
+   full CTest is 78/78. Broaden reset/cancellation stress before treating the
+   transport as fully hardened.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler

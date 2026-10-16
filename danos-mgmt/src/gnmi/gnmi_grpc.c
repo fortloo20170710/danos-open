@@ -1814,86 +1814,6 @@ static bool request_has_complete_message(const h2_request_t *request)
     return need <= MAX_MSG && request->wire_len >= 5 + need;
 }
 
-/* Read a gRPC length-prefixed message from DATA frames of a stream.
- * Returns message length (>=0, may be 0 for an empty message),
- * -2 if the stream ended before any gRPC frame arrived,
- * -1 on error. */
-#define GRPC_READ_NO_MSG (-2)
-static int read_grpc_message(h2_conn_t *c, uint32_t stream,
-                             uint8_t *msg, size_t cap)
-{
-    size_t have = 0;      /* bytes of gRPC frame header collected */
-    uint8_t ghdr[5];
-    bool hdr_done = false;
-    size_t need = 0;
-    size_t got = 0;
-    /* Bytes consumed since the last WINDOW_UPDATE, so we return the credit
-     * in batches instead of a frame per DATA frame. */
-    uint32_t consumed = 0;
-
-    for (;;) {
-        uint8_t ftype, fflags;
-        uint32_t fstream;
-        uint8_t frame[H2_MAX_FRAME_LEN];
-        uint32_t flen = sizeof(frame);
-        int rr = recv_frame(c, &ftype, &fflags, &fstream, frame, &flen);
-        if (rr < 0) return -1;
-        if (rr == 1) continue;
-        uint32_t sid = fstream;
-
-        if (ftype == H2_F_HEADERS) {
-            if (fflags & H2_FLAG_END_STREAM)
-                return hdr_done ? (int)got : GRPC_READ_NO_MSG;
-            continue;
-        }
-        if (ftype == H2_F_GOAWAY || ftype == H2_F_RST) return -1;
-        if (ftype != H2_F_DATA || sid != stream) {
-            pending_push(c, ftype, fflags, sid, frame, flen);
-            continue;
-        }
-
-        const uint8_t *p = frame;
-        uint32_t n = flen;
-        /* Return receive credit for this frame's payload. */
-        if (flen) consumed += flen;
-        if (consumed >= H2_DEFAULT_WINDOW / 2) {
-            send_window_update(c, stream, consumed);
-            consumed = 0;
-        }
-        while (n > 0 || (hdr_done && got == need)) {
-            if (!hdr_done) {
-                if (n == 0) break;
-                ghdr[have++] = *p++;
-                n--;
-                if (have < 5) continue;
-                if (ghdr[0] != 0) return -1;  /* compressed flag */
-                need = ((size_t)ghdr[1] << 24) | ((size_t)ghdr[2] << 16) |
-                       ((size_t)ghdr[3] << 8) | ghdr[4];
-                if (need > cap) return -1;
-                hdr_done = true;
-                got = 0;
-                if (need == 0) return 0;   /* empty message */
-                continue;
-            }
-            if (got == need) {
-                if (consumed) { send_window_update(c, stream, consumed); }
-                return (int)got;
-            }
-            if (n == 0) break;
-            size_t take = need - got;
-            if (take > n) take = n;
-            memcpy(msg + got, p, take);
-            got += take;
-            p += take;
-            n -= take;
-        }
-        if (fflags & H2_FLAG_END_STREAM) {
-            if (consumed) send_window_update(c, stream, consumed);
-            return hdr_done ? (int)got : GRPC_READ_NO_MSG;
-        }
-    }
-}
-
 static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
 {
     h2_conn_t c;
@@ -1932,9 +1852,12 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         bool have_subscription = false;
         for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++)
             have_subscription |= c.subscriptions[i].used;
+        bool multiplex_mode = have_subscription;
+        for (size_t i = 0; i < H2_MAX_INFLIGHT_REQUESTS; i++)
+            multiplex_mode |= requests[i].used;
 
         int rr;
-        if (have_subscription) {
+        if (multiplex_mode) {
             if (pending_pop(&c, &ftype, &fflags, &fstream, frame, &flen)) {
                 rr = 0;
             } else {
@@ -2016,7 +1939,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         bool request_ready = false;
         h2_request_t *request_slot = NULL;
 
-        if (have_subscription && ftype == H2_F_HEADERS &&
+        if (ftype == H2_F_HEADERS &&
             !(fflags & H2_FLAG_END_HEADERS)) {
             request_slot = request_find(requests, fstream, true);
             if (!request_slot || request_slot->headers_pending ||
@@ -2033,7 +1956,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             continue;
         }
 
-        if (have_subscription && ftype == H2_F_CONT) {
+        if (ftype == H2_F_CONT) {
             request_slot = request_find(requests, fstream, false);
             if (!request_slot || !request_slot->headers_pending ||
                 request_append(&request_slot->header_block,
@@ -2065,7 +1988,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             empty_request_body = true;
         }
 
-        if (have_subscription && ftype == H2_F_HEADERS &&
+        if (ftype == H2_F_HEADERS &&
             (fflags & H2_FLAG_END_HEADERS)) {
             request_slot = request_find(requests, fstream, false);
             if (request_slot && request_slot->headers_pending) {
@@ -2075,7 +1998,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             }
         }
 
-        if (have_subscription && ftype == H2_F_DATA) {
+        if (multiplex_mode && ftype == H2_F_DATA) {
             request_slot = request_find(requests, fstream, false);
             if (!request_slot) continue;
             int fr = request_feed_data(&c, request_slot, frame, flen,
@@ -2135,7 +2058,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             atomic_fetch_add_explicit(&g_rpcs_total, 1, memory_order_relaxed);
             end_stream = (fflags & H2_FLAG_END_STREAM) != 0;
             empty_request_body = end_stream;
-            if (have_subscription && !end_stream) {
+            if (!end_stream) {
                 request_slot = request_find(requests, fstream, true);
                 if (!request_slot) {
                     headers_free(&h);
@@ -2145,12 +2068,6 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
                 request_slot->headers = h;
                 memset(&h, 0, sizeof(h));
                 continue;
-            }
-            if (!end_stream) {
-                int n = read_grpc_message(&c, fstream, msg, sizeof(msg));
-                if (n == -1) { headers_free(&h); rc = -1; break; }
-                if (n == GRPC_READ_NO_MSG) { headers_free(&h); continue; }
-                msg_len = (size_t)n;
             }
         }
 

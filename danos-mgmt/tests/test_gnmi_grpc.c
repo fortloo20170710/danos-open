@@ -607,9 +607,63 @@ static int test_subscribe_stream_initial(bool updates_only,
                              "content-type", "application/grpc");
     assert(k > 0); hlen += (size_t)k;
     const uint32_t stream = 101;
-    assert(write_frame_c(conn_fd, 1, 0x4, stream, headers, (uint32_t)hlen) == 0);
+    size_t initial_header_split = hlen / 2;
+    assert(initial_header_split > 0 && initial_header_split < hlen);
+    assert(write_frame_c(conn_fd, 1, 0, stream, headers,
+                         (uint32_t)initial_header_split) == 0);
+    assert(write_frame_c(conn_fd, 9, 0x4, stream,
+                         headers + initial_header_split,
+                         (uint32_t)(hlen - initial_header_split)) == 0);
     uint8_t grpc_header[5] = {0, 0, 0, 0, (uint8_t)w.len};
-    assert(write_frame_c(conn_fd, 0, 0, stream, grpc_header, sizeof(grpc_header)) == 0);
+    assert(write_frame_c(conn_fd, 0, 0, stream, grpc_header, 2) == 0);
+
+    /* Before the first SubscribeRequest body is complete, a unary RPC on a
+     * different stream must still complete. This proves the connection enters
+     * incremental mode as soon as it has an in-flight request, not only after
+     * a STREAM subscription becomes active. */
+    struct timeval initial_timeout = { .tv_sec = 3, .tv_usec = 0 };
+    assert(setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &initial_timeout,
+                      sizeof(initial_timeout)) == 0);
+    uint8_t initial_cap_headers[256];
+    size_t initial_cap_len = 0;
+    k = hpack_encode_literal(initial_cap_headers + initial_cap_len,
+                             sizeof(initial_cap_headers) - initial_cap_len,
+                             ":method", "POST");
+    assert(k > 0); initial_cap_len += (size_t)k;
+    k = hpack_encode_literal(initial_cap_headers + initial_cap_len,
+                             sizeof(initial_cap_headers) - initial_cap_len,
+                             ":scheme", "http");
+    assert(k > 0); initial_cap_len += (size_t)k;
+    k = hpack_encode_literal(initial_cap_headers + initial_cap_len,
+                             sizeof(initial_cap_headers) - initial_cap_len,
+                             ":path", "/gnmi.gNMI/Capabilities");
+    assert(k > 0); initial_cap_len += (size_t)k;
+    k = hpack_encode_literal(initial_cap_headers + initial_cap_len,
+                             sizeof(initial_cap_headers) - initial_cap_len,
+                             "content-type", "application/grpc");
+    assert(k > 0); initial_cap_len += (size_t)k;
+    assert(write_frame_c(conn_fd, 1, 0x4, 103, initial_cap_headers,
+                         (uint32_t)initial_cap_len) == 0);
+    const uint8_t empty_grpc_message[5] = {0, 0, 0, 0, 0};
+    assert(write_frame_c(conn_fd, 0, 0x1, 103, empty_grpc_message,
+                         sizeof(empty_grpc_message)) == 0);
+    bool initial_capabilities_ready = false;
+    uint8_t initial_frame[16384];
+    while (!initial_capabilities_ready) {
+        uint8_t fh[9];
+        assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
+        uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                             ((uint32_t)fh[1] << 8) | fh[2];
+        uint32_t response_stream = ((uint32_t)(fh[5] & 0x7f) << 24) |
+                                   ((uint32_t)fh[6] << 16) |
+                                   ((uint32_t)fh[7] << 8) | fh[8];
+        assert(frame_len <= sizeof(initial_frame));
+        assert(read_full_c(conn_fd, initial_frame, frame_len) == 0);
+        if (fh[3] == 1 && response_stream == 103 && (fh[4] & 0x1))
+            initial_capabilities_ready = true;
+    }
+    assert(initial_capabilities_ready);
+    assert(write_frame_c(conn_fd, 0, 0, stream, grpc_header + 2, 3) == 0);
     assert(write_frame_c(conn_fd, 0, 0x1, stream, req, (uint32_t)w.len) == 0);
 
     int updates = 0;
@@ -738,7 +792,6 @@ static int test_subscribe_stream_initial(bool updates_only,
         assert(k > 0); cap_len += (size_t)k;
         assert(write_frame_c(conn_fd, 1, 0x4, 107,
                              cap_headers, (uint32_t)cap_len) == 0);
-        const uint8_t empty_grpc_message[5] = {0, 0, 0, 0, 0};
         assert(write_frame_c(conn_fd, 0, 0, 107,
                              empty_grpc_message, sizeof(empty_grpc_message)) == 0);
         assert(write_frame_c(conn_fd, 0, 0x1, 107, NULL, 0) == 0);
@@ -834,7 +887,7 @@ static int test_subscribe_stream_initial(bool updates_only,
                                  sizeof(cap_headers) - cap_len,
                                  "content-type", "application/grpc");
         assert(k > 0); cap_len += (size_t)k;
-        assert(write_frame_c(conn_fd, 1, 0x5, 103,
+        assert(write_frame_c(conn_fd, 1, 0x5, 111,
                              cap_headers, (uint32_t)cap_len) == 0);
 
         bool got_capabilities = false;
@@ -848,7 +901,7 @@ static int test_subscribe_stream_initial(bool updates_only,
                                        ((uint32_t)fh[7] << 8) | fh[8];
             assert(frame_len <= sizeof(frame));
             assert(read_full_c(conn_fd, frame, frame_len) == 0);
-            if (fh[3] == 0 && response_stream == 103 && frame_len >= 5) {
+            if (fh[3] == 0 && response_stream == 111 && frame_len >= 5) {
                 got_capabilities = true;
             }
         }
