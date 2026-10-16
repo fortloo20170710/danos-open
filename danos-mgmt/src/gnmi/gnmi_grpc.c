@@ -1715,6 +1715,90 @@ static void headers_free(req_headers_t *h)
     memset(h, 0, sizeof(*h));
 }
 
+#define H2_MAX_INFLIGHT_REQUESTS 32
+typedef struct {
+    bool used;
+    uint32_t stream;
+    req_headers_t headers;
+    bool headers_pending;
+    uint8_t header_flags;
+    uint8_t *header_block;
+    size_t header_len;
+    size_t header_cap;
+    uint8_t *wire;
+    size_t wire_len;
+    size_t wire_cap;
+} h2_request_t;
+
+static h2_request_t *request_find(h2_request_t *requests, uint32_t stream,
+                                  bool create)
+{
+    h2_request_t *free_slot = NULL;
+    for (size_t i = 0; i < H2_MAX_INFLIGHT_REQUESTS; i++) {
+        if (requests[i].used && requests[i].stream == stream)
+            return &requests[i];
+        if (!requests[i].used && !free_slot) free_slot = &requests[i];
+    }
+    if (!create || !free_slot) return NULL;
+    memset(free_slot, 0, sizeof(*free_slot));
+    free_slot->used = true;
+    free_slot->stream = stream;
+    return free_slot;
+}
+
+static void request_clear(h2_request_t *request)
+{
+    if (!request) return;
+    headers_free(&request->headers);
+    free(request->header_block);
+    free(request->wire);
+    memset(request, 0, sizeof(*request));
+}
+
+static int request_append(uint8_t **buffer, size_t *length, size_t *capacity,
+                          const uint8_t *data, size_t len, size_t limit)
+{
+    if (len > limit - *length) return -1;
+    size_t needed = *length + len;
+    if (needed > *capacity) {
+        size_t cap = *capacity ? *capacity : 256;
+        while (cap < needed) cap = cap > limit / 2 ? limit : cap * 2;
+        uint8_t *grown = realloc(*buffer, cap);
+        if (!grown) return -1;
+        *buffer = grown;
+        *capacity = cap;
+    }
+    if (len) memcpy(*buffer + *length, data, len);
+    *length = needed;
+    return 0;
+}
+
+/* Incrementally append one HTTP/2 DATA payload and extract one complete gRPC
+ * message. Returns 1 when a message is ready, 0 while incomplete, -1 on an
+ * invalid/oversized frame. */
+static int request_feed_data(h2_conn_t *c, h2_request_t *request,
+                             const uint8_t *data, size_t len,
+                             uint8_t *message, size_t *message_len)
+{
+    if (request_append(&request->wire, &request->wire_len,
+                       &request->wire_cap, data, len, MAX_MSG + 5) < 0)
+        return -1;
+    if (len) send_window_update(c, request->stream, (uint32_t)len);
+    if (request->wire_len < 5) return 0;
+    if (request->wire[0] != 0) return -1;
+    size_t need = ((size_t)request->wire[1] << 24) |
+                  ((size_t)request->wire[2] << 16) |
+                  ((size_t)request->wire[3] << 8) | request->wire[4];
+    if (need > MAX_MSG) return -1;
+    if (request->wire_len < 5 + need) return 0;
+    if (need) memcpy(message, request->wire + 5, need);
+    *message_len = need;
+    request->wire_len -= 5 + need;
+    if (request->wire_len)
+        memmove(request->wire, request->wire + 5 + need, request->wire_len);
+    return 1;
+}
+
 /* Read a gRPC length-prefixed message from DATA frames of a stream.
  * Returns message length (>=0, may be 0 for an empty message),
  * -2 if the stream ended before any gRPC frame arrived,
@@ -1822,6 +1906,8 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
 
     int rc = 0;
     uint8_t msg[MAX_MSG];
+    h2_request_t requests[H2_MAX_INFLIGHT_REQUESTS];
+    memset(requests, 0, sizeof(requests));
 
     for (;;) {
         uint8_t ftype, fflags;
@@ -1888,12 +1974,14 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
                 if (ftype == H2_F_RST) {
                     h2_active_subscription_t *sub = active_subscription_find(&c, fstream);
                     if (sub) memset(sub, 0, sizeof(*sub));
+                    request_clear(request_find(requests, fstream, false));
                     stream_forget(&c, fstream);
                     poll_stream_drop(fstream);
                     continue;
                 }
                 if (ftype == H2_F_GOAWAY) break;
-                if (ftype != H2_F_HEADERS) {
+                if (ftype != H2_F_HEADERS && ftype != H2_F_DATA &&
+                    ftype != H2_F_CONT) {
                     pending_push(&c, ftype, fflags, fstream, frame, flen);
                     continue;
                 }
@@ -1905,9 +1993,99 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         if (rr < 0) break;
         if (rr == 1) continue;
         if (ftype == H2_F_GOAWAY) break;
-        if (ftype != H2_F_HEADERS) continue;
+        req_headers_t h;
+        memset(&h, 0, sizeof(h));
+        size_t msg_len = 0;
+        bool end_stream = false;
+        bool empty_request_body = false;
+        bool request_ready = false;
+        h2_request_t *request_slot = NULL;
 
-        if (!(fflags & H2_FLAG_END_HEADERS)) {
+        if (have_subscription && ftype == H2_F_HEADERS &&
+            !(fflags & H2_FLAG_END_HEADERS)) {
+            request_slot = request_find(requests, fstream, true);
+            if (!request_slot || request_slot->headers_pending ||
+                request_append(&request_slot->header_block,
+                               &request_slot->header_len,
+                               &request_slot->header_cap, frame, flen,
+                               MAX_HEADERS * 256) < 0) {
+                request_clear(request_slot);
+                stream_forget(&c, fstream);
+                continue;
+            }
+            request_slot->headers_pending = true;
+            request_slot->header_flags = fflags;
+            continue;
+        }
+
+        if (have_subscription && ftype == H2_F_CONT) {
+            request_slot = request_find(requests, fstream, false);
+            if (!request_slot || !request_slot->headers_pending ||
+                request_append(&request_slot->header_block,
+                               &request_slot->header_len,
+                               &request_slot->header_cap, frame, flen,
+                               MAX_HEADERS * 256) < 0) {
+                request_clear(request_slot);
+                stream_forget(&c, fstream);
+                continue;
+            }
+            if (!(fflags & H2_FLAG_END_HEADERS)) continue;
+            if (!hpack_decode(&c.dyn_dec, request_slot->header_block,
+                              request_slot->header_len, header_cb,
+                              &request_slot->headers)) {
+                request_clear(request_slot);
+                stream_forget(&c, fstream);
+                continue;
+            }
+            free(request_slot->header_block);
+            request_slot->header_block = NULL;
+            request_slot->header_len = request_slot->header_cap = 0;
+            request_slot->headers_pending = false;
+            atomic_fetch_add_explicit(&g_rpcs_total, 1, memory_order_relaxed);
+            if (!(request_slot->header_flags & H2_FLAG_END_STREAM)) continue;
+            h = request_slot->headers;
+            memset(&request_slot->headers, 0, sizeof(request_slot->headers));
+            request_ready = true;
+            end_stream = true;
+            empty_request_body = true;
+        }
+
+        if (have_subscription && ftype == H2_F_HEADERS &&
+            (fflags & H2_FLAG_END_HEADERS)) {
+            request_slot = request_find(requests, fstream, false);
+            if (request_slot && request_slot->headers_pending) {
+                request_clear(request_slot);
+                stream_forget(&c, fstream);
+                continue;
+            }
+        }
+
+        if (have_subscription && ftype == H2_F_DATA) {
+            request_slot = request_find(requests, fstream, false);
+            if (!request_slot) continue;
+            int fr = request_feed_data(&c, request_slot, frame, flen,
+                                       msg, &msg_len);
+            if (fr < 0) {
+                request_clear(request_slot);
+                stream_forget(&c, fstream);
+                continue;
+            }
+            if (fr == 0) {
+                if (fflags & H2_FLAG_END_STREAM) {
+                    request_clear(request_slot);
+                    stream_forget(&c, fstream);
+                }
+                continue;
+            }
+            h = request_slot->headers;
+            memset(&request_slot->headers, 0, sizeof(request_slot->headers));
+            end_stream = (fflags & H2_FLAG_END_STREAM) != 0;
+            request_ready = true;
+        } else if (ftype != H2_F_HEADERS) {
+            continue;
+        }
+
+        if (!request_ready && !(fflags & H2_FLAG_END_HEADERS)) {
             /* CONTINUATION frames follow; fold them in */
             for (;;) {
                 uint8_t ctype, cflags;
@@ -1932,23 +2110,33 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             }
         }
 
-        req_headers_t h;
-        memset(&h, 0, sizeof(h));
-        if (!hpack_decode(&c.dyn_dec, frame, flen, header_cb, &h)) {
-            headers_free(&h);
-            rc = -1;
-            break;
-        }
+        if (!request_ready) {
+            if (!hpack_decode(&c.dyn_dec, frame, flen, header_cb, &h)) {
+                headers_free(&h);
+                rc = -1;
+                break;
+            }
 
-        atomic_fetch_add_explicit(&g_rpcs_total, 1, memory_order_relaxed);
-
-        bool end_stream = (fflags & H2_FLAG_END_STREAM) != 0;
-        size_t msg_len = 0;
-        if (!end_stream) {
-            int n = read_grpc_message(&c, fstream, msg, sizeof(msg));
-            if (n == -1) { headers_free(&h); rc = -1; break; }
-            if (n == GRPC_READ_NO_MSG) { headers_free(&h); continue; }
-            msg_len = (size_t)n;
+            atomic_fetch_add_explicit(&g_rpcs_total, 1, memory_order_relaxed);
+            end_stream = (fflags & H2_FLAG_END_STREAM) != 0;
+            empty_request_body = end_stream;
+            if (have_subscription && !end_stream) {
+                request_slot = request_find(requests, fstream, true);
+                if (!request_slot) {
+                    headers_free(&h);
+                    rc = -1;
+                    break;
+                }
+                request_slot->headers = h;
+                memset(&h, 0, sizeof(h));
+                continue;
+            }
+            if (!end_stream) {
+                int n = read_grpc_message(&c, fstream, msg, sizeof(msg));
+                if (n == -1) { headers_free(&h); rc = -1; break; }
+                if (n == GRPC_READ_NO_MSG) { headers_free(&h); continue; }
+                msg_len = (size_t)n;
+            }
         }
 
         /* Authenticate, then authorize.
@@ -1968,6 +2156,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
             if (!authed) {
                 /* grpc-status 16 UNAUTHENTICATED */
                 headers_free(&h);
+                if (request_slot) request_clear(request_slot);
                 uint8_t tbuf[96];
                 size_t tlen = 0;
                 int k = hpack_encode_literal(tbuf, sizeof(tbuf) - tlen,
@@ -1998,6 +2187,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
                                h.path ? h.path : "")) {
             /* grpc-status 7 PERMISSION_DENIED (DANOS_ERR_PERMISSION) */
             headers_free(&h);
+            if (request_slot) request_clear(request_slot);
             uint8_t tbuf[96];
             size_t tlen = 0;
             int k = hpack_encode_literal(tbuf, sizeof(tbuf) - tlen,
@@ -2021,24 +2211,36 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         if (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") == 0) {
             rlen = gnmi_handle_capabilities(msg, msg_len, resp, sizeof(resp));
         } else if (h.path && strcmp(h.path, "/gnmi.gNMI/Get") == 0) {
-            rlen = end_stream ? -1
+            rlen = empty_request_body ? -1
                               : gnmi_handle_get(store_or_default(), msg,
                                                 msg_len, resp, sizeof(resp));
         } else if (h.path && strcmp(h.path, "/gnmi.gNMI/Set") == 0) {
-            rlen = end_stream ? -1
+            rlen = empty_request_body ? -1
                               : gnmi_handle_set(store_or_default(), msg,
                                                 msg_len, resp, sizeof(resp));
         } else if (h.path && strcmp(h.path, "/gnmi.gNMI/Subscribe") == 0) {
-            int sret = end_stream ? -1
+            int sret = empty_request_body ? -1
                        : gnmi_handle_subscribe(&c, fstream, msg, msg_len);
-            if (sret == 0) { headers_free(&h); continue; }  /* stream done */
+            if (sret == 0) {
+                if (request_slot && !end_stream) {
+                    request_slot->headers = h;
+                    memset(&h, 0, sizeof(h));
+                } else if (request_slot) {
+                    request_clear(request_slot);
+                    request_slot = NULL;
+                }
+                headers_free(&h);
+                continue;  /* response sent; stream may remain open */
+            }
             headers_free(&h);
+            if (request_slot) request_clear(request_slot);
             rc = -1;
             break;
         } else {
             /* unknown method: grpc-status 12 (unimplemented);
              * trailers-only responses must still carry :status */
             headers_free(&h);
+            if (request_slot) request_clear(request_slot);
             uint8_t tbuf[96];
             size_t tlen = 0;
             int k = hpack_encode_literal(tbuf, sizeof(tbuf) - tlen,
@@ -2089,12 +2291,15 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
                         fstream, tbuf, tlen);
         }
         headers_free(&h);
+        if (request_slot) request_clear(request_slot);
         /* The response always carries END_STREAM, so the stream is done:
          * release its flow-control slot so a long-lived connection running
          * many sequential RPCs cannot exhaust the table. */
         if (end_stream) stream_forget(&c, fstream);
     }
 out:
+    for (size_t i = 0; i < H2_MAX_INFLIGHT_REQUESTS; i++)
+        request_clear(&requests[i]);
     pending_free_all(&c);
     hpack_dyn_free(&c.dyn_dec);
     return rc;

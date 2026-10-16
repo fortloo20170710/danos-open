@@ -685,16 +685,65 @@ static int test_subscribe_stream_initial(bool updates_only,
     if (reset_stream) {
         /* A second STREAM must be admitted while the first remains active;
          * both initial snapshots and sync responses belong to stream 105. */
-        assert(write_frame_c(conn_fd, 1, 0x4, 105, headers,
-                             (uint32_t)hlen) == 0);
+        size_t header_split = hlen / 2;
+        assert(header_split > 0 && header_split < hlen);
+        assert(write_frame_c(conn_fd, 1, 0, 105, headers,
+                             (uint32_t)header_split) == 0);
+        assert(write_frame_c(conn_fd, 9, 0x4, 105, headers + header_split,
+                             (uint32_t)(hlen - header_split)) == 0);
         uint8_t second_grpc_header[5] = {0, 0, 0, 0, (uint8_t)w.len};
-        assert(write_frame_c(conn_fd, 0, 0, 105, second_grpc_header,
-                             sizeof(second_grpc_header)) == 0);
-        assert(write_frame_c(conn_fd, 0, 0x1, 105, req,
-                             (uint32_t)w.len) == 0);
+        /* Deliberately leave stream 105's gRPC prefix incomplete. The
+         * connection must still finish the complete RPC on stream 107. */
+        assert(write_frame_c(conn_fd, 0, 0, 105, second_grpc_header, 2) == 0);
         struct timeval timeout = { .tv_sec = 3, .tv_usec = 0 };
         assert(setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO,
                           &timeout, sizeof(timeout)) == 0);
+        uint8_t cap_headers[256];
+        size_t cap_len = 0;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":method", "POST");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":scheme", "http");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 ":path", "/gnmi.gNMI/Capabilities");
+        assert(k > 0); cap_len += (size_t)k;
+        k = hpack_encode_literal(cap_headers + cap_len,
+                                 sizeof(cap_headers) - cap_len,
+                                 "content-type", "application/grpc");
+        assert(k > 0); cap_len += (size_t)k;
+        assert(write_frame_c(conn_fd, 1, 0x4, 107,
+                             cap_headers, (uint32_t)cap_len) == 0);
+        const uint8_t empty_grpc_message[5] = {0, 0, 0, 0, 0};
+        assert(write_frame_c(conn_fd, 0, 0, 107,
+                             empty_grpc_message, sizeof(empty_grpc_message)) == 0);
+        assert(write_frame_c(conn_fd, 0, 0x1, 107, NULL, 0) == 0);
+        bool got_concurrent_capabilities = false;
+        while (!got_concurrent_capabilities) {
+            uint8_t fh[9];
+            assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
+            uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                                 ((uint32_t)fh[1] << 8) | fh[2];
+            uint32_t response_stream = ((uint32_t)(fh[5] & 0x7f) << 24) |
+                                       ((uint32_t)fh[6] << 16) |
+                                       ((uint32_t)fh[7] << 8) | fh[8];
+            assert(frame_len <= sizeof(frame));
+            assert(read_full_c(conn_fd, frame, frame_len) == 0);
+            if (fh[3] == 0 && response_stream == 107 && frame_len >= 5)
+                got_concurrent_capabilities = true;
+        }
+        assert(got_concurrent_capabilities);
+
+        uint8_t second_body[256];
+        assert(w.len + 3 <= sizeof(second_body));
+        memcpy(second_body, second_grpc_header + 2, 3);
+        memcpy(second_body + 3, req, w.len);
+        assert(write_frame_c(conn_fd, 0, 0x1, 105, second_body,
+                             (uint32_t)(w.len + 3)) == 0);
         int second_updates = 0;
         bool second_sync = false;
         uint8_t second_accumulated[32768];
@@ -731,48 +780,6 @@ static int test_subscribe_stream_initial(bool updates_only,
             }
         }
         assert(second_sync);
-
-        /* While both STREAMs remain open, a unary Capabilities RPC must also
-         * complete on this HTTP/2 connection. */
-        uint8_t cap_headers[256];
-        size_t cap_len = 0;
-        k = hpack_encode_literal(cap_headers + cap_len,
-                                 sizeof(cap_headers) - cap_len,
-                                 ":method", "POST");
-        assert(k > 0); cap_len += (size_t)k;
-        k = hpack_encode_literal(cap_headers + cap_len,
-                                 sizeof(cap_headers) - cap_len,
-                                 ":scheme", "http");
-        assert(k > 0); cap_len += (size_t)k;
-        k = hpack_encode_literal(cap_headers + cap_len,
-                                 sizeof(cap_headers) - cap_len,
-                                 ":path", "/gnmi.gNMI/Capabilities");
-        assert(k > 0); cap_len += (size_t)k;
-        k = hpack_encode_literal(cap_headers + cap_len,
-                                 sizeof(cap_headers) - cap_len,
-                                 "content-type", "application/grpc");
-        assert(k > 0); cap_len += (size_t)k;
-        assert(write_frame_c(conn_fd, 1, 0x4, 107,
-                             cap_headers, (uint32_t)cap_len) == 0);
-        const uint8_t empty_grpc_message[5] = {0, 0, 0, 0, 0};
-        assert(write_frame_c(conn_fd, 0, 0, 107,
-                             empty_grpc_message, sizeof(empty_grpc_message)) == 0);
-        assert(write_frame_c(conn_fd, 0, 0x1, 107, NULL, 0) == 0);
-        bool got_after_cancel = false;
-        while (!got_after_cancel) {
-            uint8_t fh[9];
-            assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
-            uint32_t frame_len = ((uint32_t)fh[0] << 16) |
-                                 ((uint32_t)fh[1] << 8) | fh[2];
-            uint32_t response_stream = ((uint32_t)(fh[5] & 0x7f) << 24) |
-                                       ((uint32_t)fh[6] << 16) |
-                                       ((uint32_t)fh[7] << 8) | fh[8];
-            assert(frame_len <= sizeof(frame));
-            assert(read_full_c(conn_fd, frame, frame_len) == 0);
-            if (fh[3] == 0 && response_stream == 107 && frame_len >= 5)
-                got_after_cancel = true;
-        }
-        assert(got_after_cancel);
 
         /* Cancel the original long-lived RPC with HTTP/2 RST_STREAM(CANCEL),
          * then prove the same connection can serve another request. */
