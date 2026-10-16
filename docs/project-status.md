@@ -7,7 +7,8 @@ The source checkpoint `af41ef6` adds a gNMI STREAM disconnect/reconnect
 regression; the architecture document was also corrected to distinguish
 FRR's ZAPI input adapter from dataplane backends and to scope OPER/WAL claims.
 CTest is 78/78 PASS. GitHub CI, Coverage and Interop Gate all pass for
-`af41ef6` (runs `38840678456`, `38840678472`, `38840678449`). Recent gNMI changes at `90abaa7`,
+`af41ef6` (runs `38840678456`, `38840678472`, `38840678449`); the following
+documentation checkpoint `0132a66` also passed all three workflows. Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
 options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
 semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking
@@ -47,13 +48,20 @@ TypedValue encoding, and relies on store-event wakeups with a bounded
 200 ms liveness fallback rather than adding an extra sleep. The server
 consumes HTTP/2 RST_STREAM without blocking on a partial frame after a
 zero-time poll. A regression cancels a subscription and proves a subsequent
-Capabilities RPC succeeds on the same connection. Full CTest, external gnmic
+Capabilities RPC succeeds on the same connection after cancellation; this
+does not prove concurrent multiplexing while STREAM remains active. The
+STREAM handler is a blocking per-RPC loop: it parks frames for other stream
+IDs but does not dispatch their HEADERS/DATA until the active STREAM ends.
+Thus later RPCs on that HTTP/2 connection cannot complete concurrently. The
+existing eight-stream test covers a batch of unary requests only. Closing
+this gap requires connection-level incremental frame/message assembly and
+per-stream dispatch, not a test-only adjustment. Full CTest, external gnmic
 I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
 checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather
 than being silently ignored; local CTest remains 78/78 and external gnmic
-I1-I5/I9 passes. Broader cancellation lifecycle tests and implementation of
-supported sampling/heartbeat semantics remain open.
+I1-I5/I9 passes. Same-connection multiplexing and implementation of supported
+sampling/heartbeat semantics remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
