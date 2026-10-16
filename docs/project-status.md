@@ -82,6 +82,9 @@ CTest is 78/78 and targeted gNMI proto/gRPC tests pass 10 consecutive runs.
 CI, Coverage and Interop Gate pass on `85dc16e`, including ASan/UBSan, TSan,
 gnmic I1-I9, real VPP V1-V5 and K4/K5. ON_CHANGE, `use_models`, and
 heterogeneous per-path contracts remain deferred.
+The next uncommitted increment scopes event-driven STREAM change detection to
+each stream's serialized subscription payload, avoiding notifications caused
+solely by unrelated object types; its full CTest run is 78/78.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.

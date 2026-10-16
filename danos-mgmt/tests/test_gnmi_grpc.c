@@ -579,6 +579,20 @@ static uint64_t test_monotonic_ns(void)
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+typedef struct {
+    danos_ifindex_t first_ifindex;
+    bool found;
+} first_iface_ctx_t;
+
+static void find_first_iface(danos_object_entry_t *entry, void *user)
+{
+    first_iface_ctx_t *ctx = user;
+    if (!ctx->found && entry->type == DANOS_OBJ_IFACE) {
+        ctx->first_ifindex = entry->id;
+        ctx->found = true;
+    }
+}
+
 static int test_subscribe_stream_initial(bool updates_only,
                                          gnmi_encoding_t encoding,
                                          bool reset_stream,
@@ -727,12 +741,17 @@ static int test_subscribe_stream_initial(bool updates_only,
     int updates_before_change = updates;
     uint64_t sample_start_ns = test_monotonic_ns();
     if (mutate_store) {
+        first_iface_ctx_t first = {0};
+        danos_object_iterate(g_default_store, find_first_iface, &first);
+        assert(first.found);
         danos_iface_t changed;
         size_t changed_size = sizeof(changed);
-        assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 77,
+        assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE,
+                                 first.first_ifindex,
                                  &changed, &changed_size) == DANOS_OK);
         changed.mtu++;
-        assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 77,
+        assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE,
+                                   first.first_ifindex,
                                    &changed, sizeof(changed)) == DANOS_OK);
     }
     while (updates == updates_before_change) {
@@ -1416,6 +1435,44 @@ static int test_dataplane_operational_path(void)
  * by hashing the same bytes the detector hashes.
  */
 extern uint64_t stream_state_hash_for_test(void);
+extern uint64_t subscription_data_hash_for_test(
+    const gnmi_subscribe_list_t *list);
+
+static int test_subscription_hash_is_path_scoped(void)
+{
+    gnmi_subscribe_list_t list;
+    memset(&list, 0, sizeof(list));
+    list.encoding = GNMI_ENC_JSON_IETF;
+    list.sub_count = 1;
+    assert(gnmi_path_from_str(&list.subs[0].path, "interfaces"));
+    uint64_t interfaces_before = subscription_data_hash_for_test(&list);
+
+    danos_vrf_t vrf;
+    memset(&vrf, 0, sizeof(vrf));
+    vrf.vrf_id = 9001;
+    snprintf(vrf.name, sizeof(vrf.name), "unrelated-vrf");
+    assert(danos_object_create(g_default_store, DANOS_OBJ_VRF, vrf.vrf_id,
+                               &vrf, sizeof(vrf)) == DANOS_OK);
+    assert(subscription_data_hash_for_test(&list) == interfaces_before);
+    assert(danos_object_delete(g_default_store, DANOS_OBJ_VRF, vrf.vrf_id)
+           == DANOS_OK);
+
+    danos_iface_t iface;
+    size_t iface_size = sizeof(iface);
+    assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 1,
+                             &iface, &iface_size) == DANOS_OK);
+    uint16_t original_mtu = iface.mtu;
+    iface.mtu++;
+    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 1,
+                               &iface, sizeof(iface)) == DANOS_OK);
+    assert(subscription_data_hash_for_test(&list) != interfaces_before);
+    iface.mtu = original_mtu;
+    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE, 1,
+                               &iface, sizeof(iface)) == DANOS_OK);
+
+    printf("[PASS] stream hash is scoped to subscribed paths\n");
+    return 0;
+}
 
 static int test_stream_detector_sees_all_fields(void)
 {
@@ -1507,6 +1564,7 @@ int main(void)
 {
     int failed = 0;
     if (seed_store() != 0) return 1;
+    if (test_subscription_hash_is_path_scoped() != 0) return 1;
 
     danos_gnmi_grpc_init(&g_srv, TEST_PORT);
     if (danos_gnmi_grpc_start(&g_srv) != 0) {

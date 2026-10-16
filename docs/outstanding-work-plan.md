@@ -1308,6 +1308,12 @@ Done:
   VRF name or a route prefix, metric or next hop, left the hash identical and
   subscribers were never told. It also copied each type into a fixed array
   (ifaces[64], vrfs[16], routes[32]), so a larger store silently lost objects.
+- An in-progress follow-up hashes the serialized value selected by each
+  subscription instead of comparing every STREAM to the global store hash.
+  This suppresses cross-path wakeups (for example, a VRF mutation does not
+  trigger an interfaces-only STREAM) while preserving relevant notifications.
+  The path-scoped regression and full CTest pass 78/78; remote gates and commit
+  are pending. This does not yet implement ON_CHANGE or per-object deltas.
 
 - Set now applies delete → replace → update in one staging transaction.
   Interface replacement resets omitted modeled fields, preserves identity,

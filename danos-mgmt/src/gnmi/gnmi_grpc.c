@@ -907,9 +907,13 @@ static uint64_t subscription_data_hash(const gnmi_subscribe_list_t *list)
     return hash;
 }
 
+uint64_t subscription_data_hash_for_test(const gnmi_subscribe_list_t *list)
+{
+    return subscription_data_hash(list);
+}
+
 static void subscriptions_service(h2_conn_t *c)
 {
-    uint64_t hash = stream_state_hash();
     uint64_t now = monotonic_time_ns();
     for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
         h2_active_subscription_t *sub = &c->subscriptions[i];
@@ -920,7 +924,8 @@ static void subscriptions_service(h2_conn_t *c)
                                  now >= sub->next_heartbeat_ns;
             if (!sample_due && !heartbeat_due) continue;
             uint64_t data_hash = subscription_data_hash(&sub->list);
-            bool changed = data_hash != sub->last_sample_hash;
+            bool changed = data_hash == UINT64_MAX ||
+                           data_hash != sub->last_sample_hash;
             if (!sub->suppress_redundant || (sample_due && changed) ||
                 heartbeat_due) {
                 if (subscription_send_update(c, sub) < 0) {
@@ -930,27 +935,33 @@ static void subscriptions_service(h2_conn_t *c)
                 }
                 sub->last_sample_hash = data_hash;
             }
-            sub->last_hash = hash;
+            sub->last_hash = data_hash;
             if (sample_due)
                 sub->next_sample_ns = now + sub->sample_interval_ns;
             if (heartbeat_due)
                 sub->next_heartbeat_ns = now + sub->heartbeat_interval_ns;
             continue;
         }
-        if (sub->last_hash == hash) continue;
+        /* A stream is interested only in its requested paths. A mutation to
+         * an unrelated object must not cause a redundant notification on
+         * every other stream sharing this HTTP/2 connection. */
+        uint64_t data_hash = subscription_data_hash(&sub->list);
+        if (data_hash != UINT64_MAX && sub->last_hash == data_hash) continue;
         if (subscription_send_update(c, sub) < 0) {
             stream_forget(c, sub->stream);
             memset(sub, 0, sizeof(*sub));
             continue;
         }
-        sub->last_hash = hash;
+        sub->last_hash = data_hash;
     }
 }
 
 static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
                                   const gnmi_subscribe_list_t *sl)
 {
-    uint64_t last_hash = stream_state_hash();
+    /* Capture before sending the initial snapshot so mutations that race
+     * with snapshot delivery are still observed by the newly active stream. */
+    uint64_t initial_data_hash = subscription_data_hash(sl);
     gnmi_path_t paths[GNMI_MAX_ELEMS];
     uint32_t path_count = 0;
     for (uint32_t i = 0; i < sl->sub_count && path_count < GNMI_MAX_ELEMS; i++)
@@ -979,7 +990,6 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
         if (sub->used) continue;
         sub->used = true;
         sub->stream = stream;
-        sub->last_hash = last_hash;
         sub->sample_interval_ns = sl->sample_mode
                                 ? sl->sample_interval_ns : 0;
         if (sub->sample_interval_ns &&
@@ -994,11 +1004,12 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
                             ? monotonic_time_ns() + sub->sample_interval_ns
                             : 0;
         sub->list = *sl;
+        sub->last_hash = initial_data_hash;
         if (sub->heartbeat_interval_ns)
             sub->next_heartbeat_ns = monotonic_time_ns() +
                                      sub->heartbeat_interval_ns;
         if (sub->sample_interval_ns && sub->suppress_redundant)
-            sub->last_sample_hash = subscription_data_hash(&sub->list);
+            sub->last_sample_hash = initial_data_hash;
         return 0;
     }
     return -(int)DANOS_ERR_BACKEND_BUSY;
