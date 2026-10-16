@@ -35,13 +35,13 @@ extern "C" {
 
 /* Initialise RBAC and the audit log.
  *
- * audit_path may be NULL for the default. If the audit log cannot be opened
- * the module stays uninitialised rather than silently dropping records;
- * authz_ready() then reports false and callers can decide whether to serve.
+ * audit_path may be NULL for the default. The underlying audit module retains
+ * an in-memory ring when its file cannot be opened; ready() does not attest
+ * that audit records are durable.
  * Returns 0 on success. */
 int danos_authz_init(const char *audit_path);
 
-/* True once rbac + audit are usable. */
+/* True once RBAC and the audit module have been initialized. */
 bool danos_authz_ready(void);
 
 /* Release resources (closes the audit log). */
@@ -62,7 +62,7 @@ typedef enum {
  *               refused, because a token that any local user can read is not
  *               a credential. NULL disables token authentication.
  * allow_peercred: accept SO_PEERCRED on a unix socket and map uid 0 to ADMIN
- *               and any other uid to the default (non-admin) role. Ignored for
+ *               and any other uid to VIEWER, independently of the bearer default. Ignored for
  *               TCP listeners, which have no peer credentials.
  *
  * Returns 0 on success, -1 if a token file was configured but unusable - in
@@ -99,6 +99,11 @@ danos_sec_role_t danos_authz_default_role(void);
  * the audit log, so callers only need to handle the boolean. */
 bool danos_authz_check(danos_sec_role_t role, danos_sec_obj_type_t obj,
                        danos_sec_op_t op, const char *detail);
+
+/* As above, with the authenticated identity retained in the audit record. */
+bool danos_authz_check_identity(danos_sec_role_t role, danos_sec_obj_type_t obj,
+                                danos_sec_op_t op, const char *detail,
+                                const char *identity);
 
 /* Map a gRPC method path to the object it touches, for auditing. */
 const char *danos_authz_obj_name(danos_sec_obj_type_t obj);

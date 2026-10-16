@@ -56,6 +56,49 @@ fresh certificate validation. Handshake/read/write operations time out after
 10 seconds; at most 128 connection workers are admitted. Stop shuts down and
 joins all gNMI connection workers before releasing TLS configuration.
 
+## Local peer credentials and identity audit (2026-10-15)
+
+The daemon can serve a local Unix socket instead of the TCP gNMI listener:
+
+```ini
+DANOS_GNMI_UNIX_SOCKET=/run/danos/gnmi.sock
+DANOS_AUTHZ_PEERCRED=1
+DANOS_AUDIT_LOG=/var/log/danos/audit.log
+```
+
+Create the socket directory before startup, owned by the daemon user and
+not writable by other users. Grant the intended local client group directory
+traversal; the socket is created with mode 0660 and the daemon's group.
+Existing paths are never removed at startup. Normal shutdown removes the
+socket; after an unclean exit, the administrator must remove the stale socket.
+This mode opens no TCP gNMI listener and needs neither TLS settings nor
+`DANOS_ALLOW_INSECURE`. Combining Unix mode with TLS settings, or omitting
+`DANOS_AUTHZ_PEERCRED=1`, fails startup. Metrics retains its separate listener.
+
+Linux `SO_PEERCRED` supplies the UID/PID from the accepted Unix connection.
+UID 0 maps to admin; every other UID maps to viewer independently of
+`DANOS_AUTHZ_DEFAULT_ROLE`. Bearer headers cannot override this local identity.
+Peer credentials cannot authenticate TCP connections. When a credential source
+is configured, Capabilities also requires authentication.
+
+For mTLS, authorization audit records retain the full 64-character certificate
+fingerprint, the mapped role in `obj_id`, and the RPC method in `diff`.
+Local records identify `uid:N pid:N`. gRPC Set records transaction begin and
+commit/abort with the same caller identity and transaction ID. Concurrent
+connection workers keep independent identities. Certificate authentication
+continues to use the existing trust chain, validity, purpose, ALPN and explicit
+fingerprint mapping checks described above.
+
+Verification at source base `2afd999` plus these changes: build succeeded and
+full CTest **78/78 passed**. `gnmi_mtls` exercised the actual local daemon with
+ephemeral PKI over TCP and a real Unix socket, including TLS 1.2/1.3, rejected
+credentials, role enforcement, full certificate audit attribution, transaction
+attribution, local bearer-override rejection, socket permissions/cleanup,
+existing-path preservation, and TCP peercred rejection. The local process ran
+as a non-root user, so socket-level tests verified viewer mapping; authz unit
+tests additionally verified UID 0 admin mapping. This run does not qualify a
+new ISO or deploy PKI to physical routers.
+
 ## Service configuration
 
 ### Explicit programming backend (source candidate, 2026-10-12)

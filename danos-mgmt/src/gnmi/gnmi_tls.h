@@ -11,5 +11,5 @@ danos_gnmi_tls_t *danos_gnmi_tls_new(const char *cert, const char *key,
                                    const char *ca, const char *roles);
 void danos_gnmi_tls_free(danos_gnmi_tls_t *tls);
 SSL *danos_gnmi_tls_accept(danos_gnmi_tls_t *tls, int fd,
-                           danos_sec_role_t *role);
+                           danos_sec_role_t *role, char identity[65]);
 #endif

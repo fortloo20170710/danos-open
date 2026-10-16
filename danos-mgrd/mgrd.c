@@ -165,7 +165,13 @@ int main(int argc, char **argv)
      * Production gNMI requires mTLS regardless of this legacy switch.
      * Bearer/peer credentials remain useful for laboratory/local callers. */
     const char *token_file = getenv("DANOS_AUTHZ_TOKEN_FILE");
-    bool peercred = getenv("DANOS_AUTHZ_PEERCRED") != NULL;
+    const char *unix_path = getenv("DANOS_GNMI_UNIX_SOCKET");
+    const char *peercred_env = getenv("DANOS_AUTHZ_PEERCRED");
+    bool peercred = peercred_env && !strcmp(peercred_env, "1");
+    if (unix_path && (!*unix_path || !peercred)) {
+        fprintf(stderr, "mgrd: Unix listener requires a path and DANOS_AUTHZ_PEERCRED=1\n");
+        return 1;
+    }
     if (danos_authz_configure(token_file, peercred) != 0) {
         fprintf(stderr, "mgrd: credential configuration failed\n");
         return 1;
@@ -175,10 +181,14 @@ int main(int argc, char **argv)
     const char *tls_ca = getenv("DANOS_TLS_CLIENT_CA");
     const char *tls_roles = getenv("DANOS_TLS_ROLE_FILE");
     danos_gnmi_tls_t *tls = NULL;
+    if (unix_path && (tls_cert || tls_key || tls_ca || tls_roles)) {
+        fprintf(stderr, "mgrd: select either Unix peer credentials or TCP mTLS\n");
+        return 1;
+    }
     if (tls_cert || tls_key || tls_ca || tls_roles) {
         tls = danos_gnmi_tls_new(tls_cert, tls_key, tls_ca, tls_roles);
         if (!tls) return 1; /* never fall back to plaintext */
-    } else {
+    } else if (!unix_path) {
         const char *lab = getenv("DANOS_ALLOW_INSECURE");
         if (!lab || strcmp(lab, "1")) {
             fprintf(stderr, "mgrd: mTLS required; configure DANOS_TLS_CERT/KEY/"
@@ -310,12 +320,14 @@ int main(int argc, char **argv)
     danos_gnmi_grpc_ctx_t gnmi;
     danos_gnmi_grpc_init(&gnmi, gnmi_port);
     danos_gnmi_grpc_set_tls(&gnmi, tls);
+    gnmi.unix_path = unix_path;
     if (danos_gnmi_grpc_start(&gnmi) != 0) {
         fprintf(stderr, "mgrd: gNMI gRPC server failed on :%u\n", gnmi_port);
         danos_gnmi_tls_free(tls);
         return 1;
     }
-    printf("mgrd: gNMI (%s) on :%u\n", tls ? "mTLS" : "laboratory h2c", gnmi_port);
+    if (unix_path) printf("mgrd: gNMI (Unix peer credentials) on %s\n", unix_path);
+    else printf("mgrd: gNMI (%s) on :%u\n", tls ? "mTLS" : "laboratory h2c", gnmi_port);
 
     /* 4. observability server */
     if (danos_prom_start_server(metrics_port) != 0) {

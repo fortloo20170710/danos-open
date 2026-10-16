@@ -27,6 +27,8 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -34,6 +36,9 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <poll.h>
+
+/* Each connection has a dedicated worker; never share caller identity. */
+static _Thread_local char g_rpc_identity[96];
 
 #define H2_PREFACE "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
 #define H2_PREFACE_LEN 24
@@ -1745,7 +1750,11 @@ int gnmi_handle_set(danos_state_store_t *store, const uint8_t *req, size_t req_l
     if (status == DANOS_OK && desired_store(store ? store : store_or_default()) != g_default_store)
         status = DANOS_ERR_INVALID_ARG;
     danos_tx_t tx = {0};
+    const char *identity = *g_rpc_identity ? g_rpc_identity : "gnmi-set";
     if (status == DANOS_OK) status = danos_tx_begin(&tx, "gnmi-set", NULL);
+    if (status == DANOS_OK)
+        danos_authz_audit_tx(tx.id, DANOS_AUDIT_TX_BEGIN, identity,
+                            DANOS_SEC_OBJ_ALL, "", "gNMI Set");
     for (uint32_t i = 0; i < sr->delete_count && status == DANOS_OK; i++) {
         gnmi_path_t p;
         status = resolve_rpc_path(&sr->prefix, &sr->deletes[i], &p);
@@ -1777,6 +1786,9 @@ int gnmi_handle_set(danos_state_store_t *store, const uint8_t *req, size_t req_l
     if (status == DANOS_OK) status = danos_tx_validate(&tx);
     if (status == DANOS_OK) status = danos_tx_commit(&tx);
     if (status != DANOS_OK && tx.id) danos_tx_abort(&tx);
+    if (tx.id)
+        danos_authz_audit_tx(tx.id, status == DANOS_OK ? DANOS_AUDIT_TX_COMMIT : DANOS_AUDIT_TX_ABORT,
+                            identity, DANOS_SEC_OBJ_ALL, "", "gNMI Set");
     int rc = status == DANOS_OK ? (int)w.len : -(int)status;
     pthread_mutex_unlock(&g_set_lock);
     free(sr); free(out);
@@ -1913,8 +1925,22 @@ static bool request_has_complete_message(const h2_request_t *request)
     return need <= MAX_MSG && request->wire_len >= 5 + need;
 }
 
-static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
+static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
+                            const char *certificate_identity)
 {
+    long uid = -1, pid = -1;
+    struct sockaddr_storage peer;
+    socklen_t peer_len = sizeof(peer);
+    struct ucred cred;
+    socklen_t cred_len = sizeof(cred);
+    if (!ssl && getpeername(fd, (struct sockaddr *)&peer, &peer_len) == 0 &&
+        peer.ss_family == AF_UNIX &&
+        getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &cred_len) == 0 &&
+        cred_len == sizeof(cred)) {
+        uid = cred.uid;
+        pid = cred.pid;
+    }
+    g_rpc_identity[0] = '\0';
     h2_conn_t c;
     memset(&c, 0, sizeof(c));
     c.fd = fd;
@@ -2180,10 +2206,19 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         bool rpc_open = (h.path && strcmp(h.path, "/gnmi.gNMI/Capabilities") == 0);
         danos_sec_role_t role = ssl ? peer_role : danos_authz_default_role();
         bool authed = true;
-        if (!ssl && !rpc_open && danos_authz_configured()) {
-            long uid = -1;
-            authed = (danos_authz_authenticate(h.authorization, uid, -1,
+        snprintf(g_rpc_identity, sizeof(g_rpc_identity), "%s",
+                 ssl ? certificate_identity : "laboratory");
+        if (!ssl && danos_authz_configured()) {
+            /* Kernel credentials take precedence on local connections. */
+            authed = (danos_authz_authenticate(uid >= 0 ? NULL : h.authorization, uid, pid,
                                                &role) == DANOS_AUTH_OK);
+            if (authed) {
+                if (uid >= 0)
+                    snprintf(g_rpc_identity, sizeof(g_rpc_identity), "uid:%ld pid:%ld", uid, pid);
+                else
+                    snprintf(g_rpc_identity, sizeof(g_rpc_identity), "bearer");
+                danos_authz_audit_auth(g_rpc_identity, true, "gRPC authenticated");
+            }
             if (!authed) {
                 /* grpc-status 16 UNAUTHENTICATED */
                 headers_free(&h);
@@ -2211,11 +2246,11 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
          * that can change state to UPDATE; Capabilities is a static
          * description and needs no check. */
         if (!rpc_open &&
-            !danos_authz_check(role, DANOS_SEC_OBJ_ALL,
+            !danos_authz_check_identity(role, DANOS_SEC_OBJ_ALL,
                                (h.path && (strcmp(h.path, "/gnmi.gNMI/Get") == 0 ||
                                            strcmp(h.path, "/gnmi.gNMI/Subscribe") == 0))
                                    ? DANOS_SEC_OP_READ : DANOS_SEC_OP_UPDATE,
-                               h.path ? h.path : "")) {
+                               h.path ? h.path : "", g_rpc_identity)) {
             /* grpc-status 7 PERMISSION_DENIED (DANOS_ERR_PERMISSION) */
             headers_free(&h);
             if (request_slot) request_clear(request_slot);
@@ -2340,7 +2375,9 @@ out:
 
 int danos_gnmi_grpc_serve_fd(int fd)
 {
-    return serve_connection(fd, NULL, DANOS_ROLE_VIEWER);
+    int rc = serve_connection(fd, NULL, DANOS_ROLE_VIEWER, NULL);
+    g_rpc_identity[0] = '\0';
+    return rc;
 }
 
 /* =========================================================================
@@ -2366,8 +2403,10 @@ static void *grpc_conn_thread(void *argp)
 {
     grpc_conn_arg_t *a = argp;
     danos_sec_role_t role = DANOS_ROLE_VIEWER;
-    SSL *ssl = a->ctx->tls ? danos_gnmi_tls_accept(a->ctx->tls, a->fd, &role) : NULL;
-    if (!a->ctx->tls || ssl) serve_connection(a->fd, ssl, role);
+    char identity[65] = {0};
+    SSL *ssl = a->ctx->tls ? danos_gnmi_tls_accept(a->ctx->tls, a->fd, &role, identity) : NULL;
+    if (!a->ctx->tls || ssl) serve_connection(a->fd, ssl, role, identity);
+    g_rpc_identity[0] = '\0';
     SSL_free(ssl);
     pthread_mutex_lock(&g_conn_lock);
     grpc_conn_arg_t **p = &g_connections;
@@ -2448,20 +2487,31 @@ void danos_gnmi_grpc_set_tls(danos_gnmi_grpc_ctx_t *ctx, danos_gnmi_tls_t *tls)
 
 int danos_gnmi_grpc_start(danos_gnmi_grpc_ctx_t *ctx)
 {
-    ctx->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_un local = { .sun_family = AF_UNIX };
+    struct sockaddr_in addr = { .sin_family = AF_INET,
+        .sin_addr.s_addr = htonl(INADDR_ANY), .sin_port = htons(ctx->port) };
+    bool unix_socket = ctx->unix_path != NULL;
+    if (unix_socket && (!*ctx->unix_path || strlen(ctx->unix_path) >= sizeof(local.sun_path)))
+        return -1;
+    if (unix_socket) snprintf(local.sun_path, sizeof(local.sun_path), "%s", ctx->unix_path);
+    ctx->listen_fd = socket(unix_socket ? AF_UNIX : AF_INET, SOCK_STREAM, 0);
     if (ctx->listen_fd < 0) return -1;
     int one = 1;
     setsockopt(ctx->listen_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(ctx->port);
-    if (bind(ctx->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0 ||
-        listen(ctx->listen_fd, 64) < 0) {
+    /* Never unlink an existing pathname. The containing directory must be
+     * private to the daemon owner; chmod grants local group clients access. */
+    int rc = bind(ctx->listen_fd,
+                  unix_socket ? (struct sockaddr *)&local : (struct sockaddr *)&addr,
+                  unix_socket ? sizeof(local) : sizeof(addr));
+    if (rc < 0) {
         close(ctx->listen_fd);
         ctx->listen_fd = -1;
+        return -1;
+    }
+    if ((unix_socket && chmod(ctx->unix_path, 0660) < 0) || listen(ctx->listen_fd, 64) < 0) {
+        close(ctx->listen_fd);
+        ctx->listen_fd = -1;
+        if (unix_socket) unlink(ctx->unix_path);
         return -1;
     }
     ctx->running = true;
@@ -2470,6 +2520,7 @@ int danos_gnmi_grpc_start(danos_gnmi_grpc_ctx_t *ctx)
         close(ctx->listen_fd);
         ctx->listen_fd = -1;
         ctx->running = false;
+        if (ctx->unix_path) unlink(ctx->unix_path);
         return -1;
     }
     return 0;
@@ -2482,6 +2533,7 @@ void danos_gnmi_grpc_stop(danos_gnmi_grpc_ctx_t *ctx)
     shutdown(ctx->listen_fd, SHUT_RDWR);
     close(ctx->listen_fd);
     pthread_join(g_grpc.thread, NULL);
+    if (ctx->unix_path) unlink(ctx->unix_path);
     pthread_mutex_lock(&g_conn_lock);
     for (grpc_conn_arg_t *a = g_connections; a; a = a->next)
         shutdown(a->fd, SHUT_RDWR);

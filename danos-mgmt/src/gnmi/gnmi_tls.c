@@ -109,7 +109,7 @@ void danos_gnmi_tls_free(danos_gnmi_tls_t *t)
     free(t);
 }
 
-SSL *danos_gnmi_tls_accept(danos_gnmi_tls_t *t, int fd, danos_sec_role_t *role)
+SSL *danos_gnmi_tls_accept(danos_gnmi_tls_t *t, int fd, danos_sec_role_t *role, char identity[65])
 {
     SSL *s = SSL_new(t->ctx);
     if (!s) return NULL;
@@ -124,7 +124,6 @@ SSL *danos_gnmi_tls_accept(danos_gnmi_tls_t *t, int fd, danos_sec_role_t *role)
     unsigned char digest[EVP_MAX_MD_SIZE];
     unsigned int n;
     if (!cert || !X509_digest(cert, EVP_sha256(), digest, &n) || n != 32) goto fail;
-    char identity[65];
     for (size_t i = 0; i < 32; i++) snprintf(identity + 2*i, 3, "%02x", digest[i]);
     for (size_t i = 0; i < t->count; i++) {
         if (!memcmp(digest, t->identities[i].digest, 32)) {

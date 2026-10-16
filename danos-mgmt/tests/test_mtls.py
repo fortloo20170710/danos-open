@@ -274,13 +274,13 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 
 @contextlib.contextmanager
 def daemon(root, config, real_vpp=False, program_vpp=False, wal=None):
-    p = port()
+    p = config.get("DANOS_GNMI_UNIX_SOCKET") or port()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
     env.update(config)
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
     with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen([BINARY, *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p), "--metrics-port", str(port()),
+        proc = subprocess.Popen([BINARY, *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p if isinstance(p, int) else port()), "--metrics-port", str(port()),
                                  "--wal", str(wal or root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
@@ -289,7 +289,9 @@ def daemon(root, config, real_vpp=False, program_vpp=False, wal=None):
                     log.seek(0)
                     raise AssertionError("mgrd exited: " + log.read().decode())
                 try:
-                    with socket.create_connection(("127.0.0.1", p), timeout=0.1):
+                    with socket.socket(socket.AF_UNIX if isinstance(p, str) else socket.AF_INET) as probe:
+                        probe.settimeout(0.1)
+                        probe.connect(p if isinstance(p, str) else ("127.0.0.1", p))
                         break
                 except OSError:
                     time.sleep(0.02)
@@ -451,6 +453,54 @@ def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
     idle.close()
     audit = (root / "audit.log").read_text()
     assert "mTLS certificate accepted" in audit and "certificate/identity/ALPN rejected" in audit
+
+    records = [json.loads(line) for line in audit.splitlines()]
+    for line in lines[:3]:
+        fingerprint, role = line.split()
+        own = [r for r in records if r["initiator"] == fingerprint]
+        assert any(r["event"] == "auth_ok" for r in own)
+        assert any(r["event"] == "permit" and r["obj_id"] == role for r in own)
+        if role == "viewer":
+            assert any(r["event"] == "deny" and r["diff"] == "/gnmi.gNMI/Set" for r in own)
+            assert not any(r["event"].startswith("tx_") for r in own)
+        else:
+            assert any(r["event"] == "tx_commit" and r["tx_id"] > 0 for r in own)
+
+    # A local socket needs no PKI or plaintext opt-in, and opens no TCP gNMI listener.
+    local_path = str(root / "gnmi.sock")
+    local_config = {"DANOS_GNMI_UNIX_SOCKET": local_path, "DANOS_AUTHZ_PEERCRED": "1",
+                    "DANOS_AUTHZ_DEFAULT_ROLE": "admin"}
+    with daemon(root, local_config) as path:
+        assert os.stat(path).st_mode & 0o777 == 0o660
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(3)
+            client.connect(path)
+            client.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+            assert rpc(client, "Capabilities", 1) == "0"
+            assert rpc(client, "Get", 3) == "0"
+            assert rpc(client, "Set", 5, "Bearer forged") == ("0" if os.getuid() == 0 else "7")
+    assert not os.path.exists(local_path)
+    local_records = [json.loads(line) for line in (root / "audit.log").read_text().splitlines()
+                     if json.loads(line)["initiator"] == f"uid:{os.getuid()} pid:{os.getpid()}"]
+    assert any(r["event"] == "auth_ok" for r in local_records)
+    assert any(r["event"] == ("permit" if os.getuid() == 0 else "deny")
+               and r["diff"] == "/gnmi.gNMI/Set" for r in local_records)
+    # Peer credentials must never authenticate a TCP client.
+    with daemon(root, {"DANOS_ALLOW_INSECURE": "1", "DANOS_AUTHZ_PEERCRED": "1"}) as p:
+        with socket.create_connection(("127.0.0.1", p), timeout=3) as client:
+            client.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+            assert rpc(client, "Capabilities", 1) == "16"
+            assert rpc(client, "Get", 3) == "16"
+    for extra in ({"DANOS_AUTHZ_PEERCRED": "0"}, {"DANOS_TLS_CERT": str(root / "server.pem")}):
+        result = subprocess.run([BINARY, "--no-vpp"], env=dict(os.environ, **(local_config | extra)),
+                                capture_output=True, timeout=5)
+        assert result.returncode != 0
+    # Existing paths must never be removed to make room for a socket.
+    Path(local_path).write_text("preserve")
+    result = subprocess.run([BINARY, "--no-vpp", "--wal", str(root / "local.wal")],
+                            env=dict(os.environ, **local_config), capture_output=True, timeout=5)
+    assert result.returncode != 0 and Path(local_path).read_text() == "preserve"
+    Path(local_path).unlink()
 
     # Bad configurations are fatal even when lab mode was requested.
     for changes in ({"DANOS_TLS_CLIENT_CA": str(root / "missing")},

@@ -151,7 +151,7 @@ int main(void)
            DANOS_AUTH_BAD);
     unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
 
-    /* Peer credentials: uid 0 is admin, any other uid is the default role. */
+    /* Peer credentials: uid 0 is admin, any other uid is viewer. */
     assert(danos_authz_configure(NULL, true) == 0);
     assert(danos_authz_configured());
     assert(danos_authz_authenticate(NULL, 0, 42, &role) == DANOS_AUTH_OK);
@@ -159,7 +159,10 @@ int main(void)
     setenv("DANOS_AUTHZ_DEFAULT_ROLE", "viewer", 1);
     assert(danos_authz_authenticate(NULL, 1000, 42, &role) == DANOS_AUTH_OK);
     assert(role == DANOS_ROLE_VIEWER);
-    /* And with a token source present, peercred alone is not enough. */
+    setenv("DANOS_AUTHZ_DEFAULT_ROLE", "admin", 1);
+    assert(danos_authz_authenticate(NULL, 1000, 42, &role) == DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_VIEWER);
+    /* Both credential sources may be enabled. */
     assert(danos_authz_configure(tf, true) == 0);
     unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
     assert(danos_authz_configure(NULL, false) == 0);

@@ -34,7 +34,7 @@ typedef enum {
 typedef struct {
     uint64_t            tx_id;       /* Transaction ID */
     danos_audit_event_t event;       /* event type */
-    char                initiator[64]; /* user/service identity */
+    char                initiator[96]; /* user/service identity */
     char                source_ip[46];  /* source IP (IPv6 max 45+1) */
     char                obj_type[32];   /* object type name */
     char                obj_id[64];     /* object identifier */

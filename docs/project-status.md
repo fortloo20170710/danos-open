@@ -2,47 +2,57 @@
 
 ## 2026-10-15 current development summary
 
-The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-Source checkpoint `3457c15` implements connection-owned active subscriptions
-and incremental per-stream HTTP/2/gRPC request assembly; the earlier
-`af41ef6` adds disconnect/reconnect coverage. CTest is 78/78 PASS and the
-ASan gNMI gRPC test passes. GitHub CI, Coverage and Interop Gate pass for
-`3457c15` (runs `38843561284`, `38843561283`, `38843561351`) and the
-preceding documentation checkpoint. The architecture document was also
-corrected to distinguish FRR's ZAPI input adapter from dataplane backends and
-to scope OPER/WAL claims. Recent gNMI changes at `90abaa7`,
-`8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
-options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
-semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking
-on partial HTTP/2 frames. See
-the [acceptance matrix](v0.16-acceptance-matrix.md)
-for scoped evidence and the [open-work inventory](outstanding-work-plan.md)
-for next tasks.
+The **v0.16 minimal L3 NOS loop is approximately 90% landed**. This is an
+implementation-progress estimate, not a release-acceptance score. The project
+remains on `v0.16.0-rc1`; **v0.16.0 is not yet a qualified final release**.
+The [v0.16 acceptance matrix](v0.16-acceptance-matrix.md) defines the evidence
+and limits: FRR/ZAPI → DPA → VPP route lifecycle, ECMP forwarding, persistence
+and scoped restart/replay have functional acceptance evidence.
 
-Current release/qualification gaps:
+**gNMI mTLS implementation and local lab acceptance are complete.** The daemon
+supports server certificates, mandatory client-certificate verification and
+explicit certificate-fingerprint role mapping. Unix `SO_PEERCRED` maps root to
+admin and other local users to viewer. RBAC decisions and Set transaction
+audit records retain the authenticated identity; bearer headers cannot elevate
+certificate or local identities. TCP plaintext remains an explicit lab opt-in.
+The build and full CTest suite pass **78/78**, including actual-daemon TLS
+1.2/1.3, negative credentials, role enforcement, identity audit and Unix-socket
+checks. See [management mTLS](management-mtls.md) for configuration and scope.
+Production PKI provisioning on physical routers remains a deployment gate,
+separate from completion of the mTLS implementation.
 
-- Real PCI/DPDK sustained performance, latency, CPU and line-rate qualification
-  is `ENVIRONMENT-OPEN`. The host route to physical test destinations currently
-  selects R2 P3 `.244` through `enp4s0`; the 2026-10-15 compact 16,384-frame
-  independent-source window passed bounded ECMP functional forwarding with
-  independent R1/R4 NIC deltas. This is not a sustained-load, latency, CPU or
-  throughput qualification and does not replace a qualified traffic generator.
-- Physical rollout is incomplete: R1/R3 have r14 evidence; R2 and R4 report
-  r9. Four-node homogeneous r14 acceptance is open.
-- Physical management is disabled; production PKI/mTLS deployment and live
-  VPP reconnect/recovery are open. Existing QEMU synthetic-neighbor mTLS and
-  restart evidence must not be generalized to those gates.
-- v0.16.0 final release remains undecided pending disposition of the release
-  gates above. BFD, VLAN, VXLAN and EVPN remain deferred.
+Remaining v0.16 acceptance work:
 
-Current execution priority is: (1) physical performance/runner qualification
-and related four-node, live-reconnect and production-PKI closure; (2) gNMI
-Subscribe semantics and event-driven STREAM behavior; (3) actual backend OPER
-readback and desired/programmed/operational truth; (4) NETCONF SSH transport;
-(5) supply-chain and repository hygiene. Physical performance is the only
-item that cannot be measured in the current environment; keep it
-`ENVIRONMENT-OPEN` while advancing the software items in this order. The
-actionable criteria are in [outstanding work](outstanding-work-plan.md).
+- **Performance baselines:** qualified PPS, sustained throughput, timestamped
+  latency, phase-aligned CPU utilization and ECMP bucket-distribution baselines.
+  Bounded functional packet/counter results and low-rate QEMU/VMware numbers
+  do not close these gates; real PCI/DPDK performance is `ENVIRONMENT-OPEN`.
+- **Real PCI DPDK preflight and runner qualification:** bind the release-gate
+  run to the intended hardware BDFs, driver, hugepages, build identity and a
+  qualified traffic source/independent receiver. R3's installed four-I211
+  preflight already passes; the development-host gate's missing target BDF
+  and traffic-runner prerequisites remain open. Preserve that distinction.
+- **Documentation alignment:** reconcile current source/test counts, feature
+  status, artifact identities and scoped evidence across this status, the
+  acceptance matrix, deployment instructions and the open-work inventory.
+  Keep historical snapshots separate from current acceptance claims.
+
+The matrix also retains physical deployment/recovery gates: R1/R3 have r14
+acceptance evidence while R2/R4 report r9, so homogeneous four-node r14
+qualification is open. Physical management remains disabled pending production
+PKI deployment, and live VPP reconnect/recovery remains open. Scoped QEMU
+restart evidence does not close those gates. BFD, VLAN, VXLAN and EVPN remain
+deferred. Final-release disposition depends on the outstanding gates above;
+follow the [open-work inventory](outstanding-work-plan.md) for execution criteria.
+
+### Current gNMI development evidence
+
+Commit `2afd999` scopes event-driven STREAM change detection to each
+subscription's serialized payload. Earlier connection-owned subscriptions,
+incremental HTTP/2/gRPC assembly and reconnect coverage remain in place.
+Local CTest is 78/78 after the mTLS/peercred/audit changes. Historical CI,
+ASan/UBSan, TSan and interop results below apply to their named commits;
+this local result does not assert new remote CI or physical acceptance.
 
 gNMI Subscribe progress at `e6f6cd9`/`4c48393`/`147b7b4`: STREAM now honors
 `updates_only`, sends initial `sync_response`, selects JSON/JSON_IETF
@@ -82,9 +92,9 @@ CTest is 78/78 and targeted gNMI proto/gRPC tests pass 10 consecutive runs.
 CI, Coverage and Interop Gate pass on `85dc16e`, including ASan/UBSan, TSan,
 gnmic I1-I9, real VPP V1-V5 and K4/K5. ON_CHANGE, `use_models`, and
 heterogeneous per-path contracts remain deferred.
-The next uncommitted increment scopes event-driven STREAM change detection to
-each stream's serialized subscription payload, avoiding notifications caused
-solely by unrelated object types; its full CTest run is 78/78.
+Commit `2afd999` scopes event-driven STREAM change detection to each stream's
+serialized subscription payload, avoiding notifications caused solely by
+unrelated object types; its full CTest run is 78/78.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.

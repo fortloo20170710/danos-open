@@ -29,6 +29,7 @@ extern "C" {
 
 typedef struct {
     int      listen_fd;
+    const char *unix_path;      /* optional local-only listener; borrowed */
     uint16_t port;
     _Atomic bool running;
     _Atomic uint64_t rpcs_served;

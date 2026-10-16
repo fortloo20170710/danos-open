@@ -106,7 +106,7 @@ danos_auth_result_t danos_authz_authenticate(const char *authorization,
     if (g_peercred_enabled && peer_uid >= 0) {
         if (role_out) *role_out = (peer_uid == 0)
             ? DANOS_ROLE_ADMIN
-            : danos_authz_default_role();
+            : DANOS_ROLE_VIEWER;
         return DANOS_AUTH_OK;
     }
 
@@ -196,11 +196,19 @@ static void audit_fill(danos_audit_entry_t *e, uint64_t tx_id,
 bool danos_authz_check(danos_sec_role_t role, danos_sec_obj_type_t obj,
                        danos_sec_op_t op, const char *detail)
 {
+    return danos_authz_check_identity(role, obj, op, detail, NULL);
+}
+
+bool danos_authz_check_identity(danos_sec_role_t role, danos_sec_obj_type_t obj,
+                                danos_sec_op_t op, const char *detail,
+                                const char *identity)
+{
     bool allowed = danos_rbac_check(role, obj, op);
     if (!g_ready) return allowed;   /* not initialised: nothing to log to */
     danos_audit_entry_t e;
     audit_fill(&e, 0, allowed ? DANOS_AUDIT_PERMIT : DANOS_AUDIT_DENY,
-               danos_rbac_role_name(role), obj, "", detail);
+               identity ? identity : danos_rbac_role_name(role), obj,
+               danos_rbac_role_name(role), detail);
     (void)danos_audit_log(&e);
     return allowed;
 }
