@@ -121,6 +121,20 @@ def validate(topology: Path, required_count: int) -> dict[str, object]:
     p50 = f"{rtts[math.ceil(len(rtts) * 0.50) - 1]:.2f}" if rtts else ""
     p99 = f"{rtts[math.ceil(len(rtts) * 0.99) - 1]:.2f}" if rtts else ""
 
+    # New fixtures explicitly fix IPv4 ICMP data size and untagged Ethernet
+    # framing. Never infer a historical default from a current VPP version.
+    begin_line = serial[begin.start():].splitlines()[0]
+    frame_size = ""
+    mbps = ""
+    if any(key in begin_line for key in ("packet_size_bytes", "icmp_payload_bytes", "frame_basis")):
+        fields = dict(re.findall(r"([a-z_]+)=([^\s]+)", begin_line))
+        if (fields.get("icmp_payload_bytes") != "56" or
+            fields.get("packet_size_bytes") != "98" or
+            fields.get("frame_basis") != "ethernet-no-fcs"):
+            raise ResultError("invalid or incomplete QEMU frame-size metadata")
+        frame_size = 98
+        mbps = f"{tx * 1000 / duration * frame_size * 8 / 1_000_000:.6f}"
+
     runner_commit = ""
     try:
         runner_commit = subprocess.run(
@@ -144,14 +158,15 @@ def validate(topology: Path, required_count: int) -> dict[str, object]:
         "iso_source_dirty": dirty,
         "runner_commit": runner_commit,
         "iso_sha256": digest,
-        "packet_size_bytes": "",
+        "packet_size_bytes": frame_size,
+        "frame_basis": "ethernet-no-fcs" if frame_size else "unmeasured",
         "flows": flows,
         "packets_tx": tx,
         "packets_rx": rx,
         "loss_pct": f"{loss:.3f}",
         "duration_ms": duration,
         "pps": f"{pps:.2f}",
-        "mbps": "",
+        "mbps": mbps,
         "rtt_p50_us": p50,
         "rtt_p99_us": p99,
         "rtt_sample_count": len(rtts),

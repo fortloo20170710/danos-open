@@ -61,6 +61,22 @@ class RecordQemuEcmpSoakResultTest(unittest.TestCase):
         self.assertEqual(result["mbps"], "")
         self.assertEqual(result["cpu_pct"], "")
 
+    def test_explicit_frame_metadata_computes_throughput(self):
+        log = self.topology / "danos.serial.log"
+        log.write_text(self.serial().replace('interval=0.01',
+            'interval=0.01 icmp_payload_bytes=56 packet_size_bytes=98 frame_basis=ethernet-no-fcs'))
+        result = validate(self.topology, 1000)
+        self.assertEqual(result['packet_size_bytes'], 98)
+        self.assertAlmostEqual(float(result['mbps']), 4000 / 48.73 * 98 * 8 / 1e6, places=6)
+
+    def test_incomplete_or_inconsistent_frame_metadata_rejected(self):
+        for metadata in ('packet_size_bytes=98',
+                         'icmp_payload_bytes=56 packet_size_bytes=64 frame_basis=ethernet-no-fcs'):
+            (self.topology / "danos.serial.log").write_text(
+                self.serial().replace('interval=0.01', 'interval=0.01 ' + metadata))
+            with self.assertRaisesRegex(ResultError, 'frame-size'):
+                validate(self.topology, 1000)
+
     def test_dirty_iso_is_rejected(self):
         (self.topology / "danos.serial.log").write_text(self.serial(dirty="1"))
         with self.assertRaisesRegex(ResultError, "dirty"):

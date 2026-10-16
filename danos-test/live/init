@@ -428,7 +428,7 @@ if test -e /vpp-dpdk.enabled; then
             if test "${VPP_ECMP_SOAK_COUNT:-0}" -gt 0; then
                 soak_count=$VPP_ECMP_SOAK_COUNT
                 soak_interval=${VPP_ECMP_SOAK_INTERVAL:-0.01}
-                say_live "VPP-ECMP-SOAK BEGIN packets_per_flow=$soak_count interval=$soak_interval"
+                say_live "VPP-ECMP-SOAK BEGIN packets_per_flow=$soak_count interval=$soak_interval icmp_payload_bytes=56 packet_size_bytes=98 frame_basis=ethernet-no-fcs"
                 /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if1" > /tmp/vpp-soak-if0-before.log 2>&1 || true
                 /usr/bin/vppctl -s /run/vpp/cli.sock show interface "$vpp_if2" > /tmp/vpp-soak-if1-before.log 2>&1 || true
                 soak_if0_before=$(awk '$1 == "rx" && $2 == "packets" {rx=$3} $1 == "tx" && $2 == "packets" {tx=$3} END {printf "%d %d", rx, tx}' /tmp/vpp-soak-if0-before.log)
@@ -439,7 +439,7 @@ if test -e /vpp-dpdk.enabled; then
                 soak_ok=1
                 for soak_dst in 30.30.30.2 30.30.30.3 30.30.30.4 30.30.30.5; do
                     if /usr/bin/vppctl -s /run/vpp/cli.sock ping "$soak_dst" \
-                        source "$ecmp_source_if" repeat "$soak_count" interval "$soak_interval" \
+                        source "$ecmp_source_if" size 56 repeat "$soak_count" interval "$soak_interval" \
                         > "/tmp/vpp-soak-${soak_dst}.log" 2>&1 \
                         && grep -Fq "Statistics: $soak_count sent, $soak_count received, 0% packet loss" \
                             "/tmp/vpp-soak-${soak_dst}.log"; then

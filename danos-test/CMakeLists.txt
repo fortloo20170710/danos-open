@@ -212,3 +212,6 @@ add_test(NAME performance_baseline_report
 add_test(NAME physical_pci_identity
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_physical_pci_id.py)
 set_tests_properties(performance_baseline_report physical_pci_identity PROPERTIES TIMEOUT 30)
+add_test(NAME virtual_cpu_capture
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_capture_vm_cpu.py)
+set_tests_properties(virtual_cpu_capture PROPERTIES TIMEOUT 30)
