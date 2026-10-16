@@ -72,13 +72,16 @@ Execution priority, as confirmed on 2026-10-15:
    incomplete gRPC prefix, after which the same connection remains usable.
    Broader reset/cancellation stress remains before treating the transport as
    fully hardened.
-   Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
-   suppress-redundant and heartbeat options now produce gRPC
-   `InvalidArgument` instead of being silently ignored. Decoder and handler
-   regressions cover representative list- and subscription-level options.
-   Full CTest is 78/78. Remaining: broaden cancellation/reset/subscription-
-   lifecycle stress, then implement supported sampling/heartbeat behavior
-   only with a documented delivery contract.
+   Per-path SAMPLE is supported for homogeneous STREAM subscription lists:
+   omitted/zero intervals select 1 s, intervals below the 100 ms service
+   cadence are rounded up, and values above 24 h are rejected. Sampling sends
+   the initial snapshot/sync and then periodic snapshots; store changes do not
+   trigger early samples. Mixed per-path modes/intervals, ON_CHANGE,
+   suppress-redundant, heartbeat and `use_models` remain explicitly rejected.
+   An end-to-end test changes the store and proves the next update waits for
+   the requested 250 ms sample interval. Full CTest is 78/78 and the gNMI
+   gRPC test passed 10 consecutive runs. Broaden cancellation/reset and
+   subscription lifecycle stress before adding heartbeat semantics.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The

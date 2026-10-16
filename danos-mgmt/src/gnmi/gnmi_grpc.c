@@ -52,6 +52,8 @@ enum {
 #define MAX_HEADERS 64
 #define MAX_MSG (256 * 1024)
 #define H2_REQUEST_WIRE_MAX (MAX_MSG + MAX_FRAME + 5)
+#define GNMI_SAMPLE_MIN_NS 100000000ULL
+#define GNMI_SAMPLE_MAX_NS 86400000000000ULL
 
 /* Frames read out of order (e.g. another stream's DATA while we are
  * window-blocked on a response) are parked here.
@@ -89,6 +91,8 @@ typedef struct {
     bool used;
     uint32_t stream;
     uint64_t last_hash;
+    uint64_t sample_interval_ns;
+    uint64_t next_sample_ns;
     gnmi_subscribe_list_t list;
 } h2_active_subscription_t;
 
@@ -829,6 +833,13 @@ static uint64_t stream_state_hash(void)
     return h;
 }
 
+static uint64_t monotonic_time_ns(void)
+{
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
 uint64_t stream_state_hash_for_test(void)
 {
     return stream_state_hash();
@@ -867,9 +878,22 @@ static int subscription_send_update(h2_conn_t *c,
 static void subscriptions_service(h2_conn_t *c)
 {
     uint64_t hash = stream_state_hash();
+    uint64_t now = monotonic_time_ns();
     for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
         h2_active_subscription_t *sub = &c->subscriptions[i];
-        if (!sub->used || sub->last_hash == hash) continue;
+        if (!sub->used) continue;
+        if (sub->sample_interval_ns) {
+            if (now < sub->next_sample_ns) continue;
+            if (subscription_send_update(c, sub) < 0) {
+                stream_forget(c, sub->stream);
+                memset(sub, 0, sizeof(*sub));
+                continue;
+            }
+            sub->last_hash = hash;
+            sub->next_sample_ns = now + sub->sample_interval_ns;
+            continue;
+        }
+        if (sub->last_hash == hash) continue;
         if (subscription_send_update(c, sub) < 0) {
             stream_forget(c, sub->stream);
             memset(sub, 0, sizeof(*sub));
@@ -912,6 +936,14 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
         sub->used = true;
         sub->stream = stream;
         sub->last_hash = last_hash;
+        sub->sample_interval_ns = sl->sample_mode
+                                ? sl->sample_interval_ns : 0;
+        if (sub->sample_interval_ns &&
+            sub->sample_interval_ns < GNMI_SAMPLE_MIN_NS)
+            sub->sample_interval_ns = GNMI_SAMPLE_MIN_NS;
+        sub->next_sample_ns = sub->sample_interval_ns
+                            ? monotonic_time_ns() + sub->sample_interval_ns
+                            : 0;
         sub->list = *sl;
         return 0;
     }
@@ -976,7 +1008,9 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
         return -(int)DANOS_ERR_INVALID_ARG;
     if ((sl->encoding != GNMI_ENC_JSON &&
          sl->encoding != GNMI_ENC_JSON_IETF) ||
-        (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM))
+        (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM) ||
+        (sl->sample_mode && (sl->mode != GNMI_SUB_MODE_STREAM ||
+         sl->sample_interval_ns > GNMI_SAMPLE_MAX_NS)))
         return -(int)DANOS_ERR_INVALID_ARG;
 
     if (sl->mode == GNMI_SUB_MODE_ONCE) {

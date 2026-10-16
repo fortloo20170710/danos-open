@@ -636,6 +636,9 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
             {
                 gnmi_pb_reader_t lr;
                 gnmi_pbr_init(&lr, d, n);
+                bool have_path_mode = false;
+                bool aggregate_sample_mode = false;
+                uint64_t aggregate_sample_interval = 0;
                 uint32_t lf, lw;
                 while ((lf = gnmi_pbr_tag(&lr, &lw)) != 0) {
                     if (lr.err) return false;
@@ -648,6 +651,8 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                             gnmi_subscription_t *sub =
                                 &out->subscribe.subs[out->subscribe.sub_count++];
                             memset(sub, 0, sizeof(*sub));
+                            uint64_t sample_interval = 0;
+                            uint32_t path_mode = 0;
                             gnmi_pb_reader_t sr;
                             gnmi_pbr_init(&sr, ld, ln);
                             uint32_t sf, sw;
@@ -658,21 +663,47 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                         return false;
                                 } else {
                                     if (sf == 2) {
-                                        /* Only STREAM per-path mode is
-                                         * implemented; reject ON_CHANGE. */
-                                        if (gnmi_pbr_varint(&sr) != 0)
+                                        path_mode = (uint32_t)gnmi_pbr_varint(&sr);
+                                        /* ON_CHANGE is still deferred until
+                                         * path-scoped change detection exists. */
+                                        if (path_mode == 1 || path_mode > 2)
                                             out->subscribe.unsupported_options = true;
                                         continue;
                                     }
-                                    /* These per-subscription controls are
-                                     * recognized but not implemented. Keep
-                                     * decoding the request so the RPC layer
-                                     * can return InvalidArgument explicitly. */
-                                    if (sf == 3 || sf == 4 || sf == 5)
+                                    if (sf == 3) {
+                                        sample_interval = gnmi_pbr_varint(&sr);
+                                        continue;
+                                    }
+                                    /* suppress_redundant and heartbeat are
+                                     * not supported yet. */
+                                    if ((sf == 4 || sf == 5) &&
+                                        gnmi_pbr_varint(&sr) != 0)
                                         out->subscribe.unsupported_options = true;
-                                    gnmi_pbr_skip(&sr, sw);
+                                    else if (sf != 4 && sf != 5)
+                                        gnmi_pbr_skip(&sr, sw);
                                 }
                             }
+                            bool sample_mode = path_mode == 2;
+                            if (sample_mode && sample_interval == 0)
+                                sample_interval = 1000000000ULL;
+                            if (!sample_mode && sample_interval != 0)
+                                out->subscribe.unsupported_options = true;
+                            if (!have_path_mode) {
+                                aggregate_sample_mode = sample_mode;
+                                aggregate_sample_interval = sample_interval;
+                                have_path_mode = true;
+                            } else if (aggregate_sample_mode != sample_mode ||
+                                       (sample_mode &&
+                                        aggregate_sample_interval != sample_interval)) {
+                                /* Keep one list's delivery contract uniform. */
+                                out->subscribe.unsupported_options = true;
+                            }
+                            if (sample_mode && sample_interval >
+                                86400000000000ULL)
+                                out->subscribe.unsupported_options = true;
+                            out->subscribe.sample_mode = aggregate_sample_mode;
+                            out->subscribe.sample_interval_ns =
+                                aggregate_sample_interval;
                         }
                         break;
                     case 5:

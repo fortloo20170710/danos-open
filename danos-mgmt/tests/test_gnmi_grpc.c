@@ -20,6 +20,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <time.h>
 #include <netinet/in.h>
 
 #define TEST_PORT 59177
@@ -397,7 +398,7 @@ static int test_subscribe_unsupported_options_rejected(void)
         }
         size_t sub = gnmi_pb_begin_nested(&w, 2);
         if (option == 1)
-            gnmi_pb_put_enum(&w, 2, 1); /* ON_CHANGE */
+            gnmi_pb_put_enum(&w, 2, 1); /* ON_CHANGE remains deferred */
         else if (option == 2)
             gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
         else if (option == 3)
@@ -571,9 +572,18 @@ static void inspect_subscribe_response(const uint8_t *data, size_t len,
     }
 }
 
+static uint64_t test_monotonic_ns(void)
+{
+    struct timespec ts;
+    assert(clock_gettime(CLOCK_MONOTONIC, &ts) == 0);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
 static int test_subscribe_stream_initial(bool updates_only,
                                          gnmi_encoding_t encoding,
-                                         bool reset_stream)
+                                         bool reset_stream,
+                                         uint32_t path_mode,
+                                         uint64_t sample_interval_ns)
 {
     if (conn_fd >= 0) close(conn_fd);
     conn_fd = -1;
@@ -587,6 +597,9 @@ static int test_subscribe_stream_initial(bool updates_only,
     gnmi_path_t path;
     assert(gnmi_path_from_str(&path, "interfaces"));
     gnmi_encode_path(&w, 1, &path);
+    if (path_mode) gnmi_pb_put_enum(&w, 2, (int32_t)path_mode);
+    if (sample_interval_ns)
+        gnmi_pb_put_uint64(&w, 3, sample_interval_ns);
     gnmi_pb_end_nested(&w, sub);
     gnmi_pb_put_enum(&w, 8, encoding);
     gnmi_pb_put_bool(&w, 9, updates_only);
@@ -706,6 +719,7 @@ static int test_subscribe_stream_initial(bool updates_only,
     /* Mutate the store after sync_response and require an event-driven update
      * on this same stream, including for updates_only subscriptions. */
     int updates_before_change = updates;
+    uint64_t sample_start_ns = test_monotonic_ns();
     danos_iface_t changed;
     size_t changed_size = sizeof(changed);
     assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, 77,
@@ -738,6 +752,10 @@ static int test_subscribe_stream_initial(bool updates_only,
         }
     }
     assert(updates > updates_before_change);
+    if (sample_interval_ns) {
+        uint64_t elapsed = test_monotonic_ns() - sample_start_ns;
+        assert(elapsed >= sample_interval_ns * 3 / 4);
+    }
 
     if (reset_stream) {
         /* A second STREAM must be admitted while the first remains active;
@@ -1508,9 +1526,11 @@ int main(void)
     if (test_dataplane_operational_path() != 0) failed++;
     if (test_stream_detector_sees_all_fields() != 0) failed++;
 
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false) != 0) failed++;
-    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON, false) != 0) failed++;
-    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false, 0, 0) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON, false, 0, 0) != 0) failed++;
+    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true, 0, 0) != 0) failed++;
+    if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
+                                      2, 250000000ULL) != 0) failed++;
 
     danos_gnmi_grpc_stop(&g_srv);
     close(conn_fd);

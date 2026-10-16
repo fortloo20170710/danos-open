@@ -64,14 +64,18 @@ for another frame; a POLL regression verifies the initial snapshot and
 following Poll notification. Full CTest is 78/78 and the targeted gNMI gRPC
 test passed 20 consecutive runs. RST_STREAM also clears an incomplete gRPC
 request prefix, and the same connection completes a later RPC. ASan/UBSan,
-TSan, scale, and CI pass on `ef7f98e`; Interop Gate is still running. Prior
+TSan, scale, and all remote gates pass on `5264abf`. Prior
 external gnmic I1-I9,
-VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. Unsupported
-`use_models`, per-subscription ON_CHANGE, sample,
-suppress-redundant and heartbeat options now return InvalidArgument rather
-than being silently ignored; local CTest remains 78/78 and external gnmic
-I1-I5/I9 passes. Broader cancellation/reset stress and implementation of
-supported sampling/heartbeat semantics remain open.
+VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. `use_models`,
+per-subscription ON_CHANGE, suppress-redundant and heartbeat options return
+InvalidArgument rather than being silently ignored. Per-path SAMPLE is now
+supported for homogeneous STREAM lists: default/zero interval is 1 s,
+sub-100 ms values are rounded to the 100 ms service cadence, and intervals
+over 24 h or mixed path modes/intervals are rejected. Sampled streams send an
+initial snapshot/sync followed by periodic snapshots and do not emit early on
+store changes. The 250 ms end-to-end timing test passes; full CTest is 78/78
+and the gNMI gRPC test passed 10 consecutive runs. Remote gates for this
+addition are pending. Broader lifecycle stress and heartbeat remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
