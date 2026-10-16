@@ -6,9 +6,9 @@ The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
 Source checkpoint `3457c15` implements connection-owned active subscriptions
 and incremental per-stream HTTP/2/gRPC request assembly; the earlier
 `af41ef6` adds disconnect/reconnect coverage. CTest is 78/78 PASS and the
-ASan gNMI gRPC test passes. GitHub CI, Coverage and Interop Gate have passed
-through `9904e3f` (runs `38841732360`, `38841732317`, `38841732258`); the
-three workflows for `3457c15` are pending. The architecture document was also
+ASan gNMI gRPC test passes. GitHub CI, Coverage and Interop Gate pass for
+`3457c15` (runs `38843561284`, `38843561283`, `38843561351`) and the
+preceding documentation checkpoint. The architecture document was also
 corrected to distinguish FRR's ZAPI input adapter from dataplane backends and
 to scope OPER/WAL claims. Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
@@ -58,9 +58,10 @@ CONTINUATION and gRPC DATA are now assembled incrementally in bounded,
 per-stream state; a regression leaves one stream's HEADERS and gRPC prefix
 incomplete while a different stream completes Capabilities, then resumes the
 first stream. The initial RPC that establishes the first active subscription
-still uses the legacy blocking reader. Full CTest, external gnmic
-I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
-checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
+still uses the legacy blocking reader. Full CTest is 78/78, the targeted test
+passed 20 consecutive runs, and ASan/UBSan passed. External gnmic I1-I9,
+VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. Unsupported
+`use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather
 than being silently ignored; local CTest remains 78/78 and external gnmic
 I1-I5/I9 passes. Broader cancellation/reset stress and implementation of
