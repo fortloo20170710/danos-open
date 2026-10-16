@@ -83,9 +83,11 @@ Execution priority, as confirmed on 2026-10-15:
    SAMPLE. Mixed per-path contracts, ON_CHANGE and `use_models` remain
    explicitly rejected. End-to-end tests cover a changed value waiting for a
    250 ms sample interval and an unchanged value emitted by a 300 ms heartbeat.
-   Full CTest is 78/78; targeted and remote gates for this increment are
-   pending. ON_CHANGE requires event/path-scoped change detection and remains
-   the next subscription-semantic gap.
+   Full CTest is 78/78 and targeted gNMI proto/gRPC tests pass 10 consecutive
+   runs. CI, Coverage and Interop Gate pass at `85dc16e`, including
+   ASan/UBSan, TSan, gnmic I1-I9, real VPP V1-V5 and K4/K5. ON_CHANGE requires
+   event/path-scoped change detection and remains the next subscription-
+   semantic gap.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The
