@@ -80,8 +80,10 @@ Execution priority, as confirmed on 2026-10-15:
    suppress-redundant, heartbeat and `use_models` remain explicitly rejected.
    An end-to-end test changes the store and proves the next update waits for
    the requested 250 ms sample interval. Full CTest is 78/78 and the gNMI
-   gRPC test passed 10 consecutive runs. Broaden cancellation/reset and
-   subscription lifecycle stress before adding heartbeat semantics.
+   gRPC test passed 10 consecutive runs. CI, Coverage and Interop Gate pass at
+   `9efecc9`, including ASan/UBSan, TSan, gnmic I1-I9, VPP V1-V5 and K4/K5.
+   Broaden cancellation/reset and subscription lifecycle stress before adding
+   heartbeat semantics.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The

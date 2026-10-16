@@ -74,8 +74,9 @@ sub-100 ms values are rounded to the 100 ms service cadence, and intervals
 over 24 h or mixed path modes/intervals are rejected. Sampled streams send an
 initial snapshot/sync followed by periodic snapshots and do not emit early on
 store changes. The 250 ms end-to-end timing test passes; full CTest is 78/78
-and the gNMI gRPC test passed 10 consecutive runs. Remote gates for this
-addition are pending. Broader lifecycle stress and heartbeat remain open.
+and the gNMI gRPC test passed 10 consecutive runs. CI, Coverage and Interop
+Gate pass at `9efecc9`, including ASan/UBSan, TSan, gnmic I1-I9, VPP V1-V5 and
+K4/K5. Broader lifecycle stress and heartbeat remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
