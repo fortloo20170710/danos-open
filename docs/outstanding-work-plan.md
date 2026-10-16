@@ -9,12 +9,12 @@ Status legend: `[ ]` open · `[~]` in progress · `[x]` done · `[!]` blocked
 
 ### Current delivery and work inventory — 2026-10-15
 
-Source checkpoint: `8528902`; CTest 78/78 and local external gnmic I1-I5/I9
-pass. GitHub CI/Coverage/Interop Gate all pass at `8528902` (runs
-`38710071870`, `38710072003`, `38710071850`); the documentation checkpoint
-`14d301d` also passed all three. The current physical and
-release evidence is summarized in `docs/v0.16-acceptance-matrix.md`. This is
-still `v0.16.0-rc1`, not a final-release PASS.
+Source checkpoint: this update adds a gNMI STREAM disconnect/reconnect
+regression; CTest 78/78 passes. GitHub CI/Coverage/Interop Gate passed at the
+preceding source checkpoint; the workflows for this update must complete
+before claiming remote acceptance. The current physical and release evidence
+is summarized in `docs/v0.16-acceptance-matrix.md`. This is still
+`v0.16.0-rc1`, not a final-release PASS.
 
 Execution priority, as confirmed on 2026-10-15:
 
@@ -28,14 +28,13 @@ Execution priority, as confirmed on 2026-10-15:
    directions; both port identities and 1 Gbps/full duplex carriers match.
    R4 P3 `.247` now also passes host ping 5/5 each way. All four P3 addresses
    `.244`–`.247` are runtime-only. R2/R4 report r9 (R4 build commit `3f1691c`),
-   while R1/R3 report r14. Keep performance `ENVIRONMENT-OPEN` until
-   independently sourced traffic and receiver measurements are validated. In
-   the development host's independent UDP64 sender is implemented and its
-   guard tests pass, but preflight correctly refused traffic: target lookup
-   currently selects Wi-Fi gateway `10.248.5.1`. Add the temporary specific
-   route via R2 P3 `.244` on `enp4s0` using the exact command in
-   `docs/i211-physical-traffic-runbook.md`, run the sender, and remove that
-   route afterward. In the same physical
+   while R1/R3 report r14. The host route to the test destinations currently
+   selects R2 P3 `.244` on `enp4s0`; the bounded four-node 16,384-frame
+   multi-flow run passed with independent receiver deltas and zero observed
+   DUT/receiver drop deltas. This closes functional path-use only. Keep
+   performance `ENVIRONMENT-OPEN` until a qualified sustained traffic source
+   provides validated loss, latency, CPU and throughput measurements. Do not
+   silently remove the operator-managed host route. In the same physical
    qualification track, roll R2/R4 to r14,
    complete identity-bound four-node checks, test live VPP reconnect/recovery
    with mgrd active, and deploy/verify production PKI/mTLS before enabling
@@ -48,13 +47,16 @@ Execution priority, as confirmed on 2026-10-15:
    HTTP/2 RST_STREAM and only reads a frame after verifying the full frame is
    available, preventing partial-frame stalls. Its test cancels the
    subscription and proves a subsequent Capabilities RPC succeeds on the same
-   connection. CTest 77/77, external gnmic I1-I5/I9 and GitHub workflows pass.
+   connection. A new regression also closes a live STREAM connection and
+   verifies a fresh connection can complete Capabilities, guarding against a
+   stuck per-connection handler. CTest 78/78 passes locally; remote workflows
+   for this new regression are pending.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler
    regressions cover representative list- and subscription-level options.
-   Full CTest is 77/77 and external gnmic I1-I5/I9 passes. Remaining: broaden
-   cancellation/reset and subscription-lifecycle tests, then implement
+   Full CTest is 78/78. Remaining: broaden concurrent-stream, cancellation,
+   reset and subscription-lifecycle tests, then implement
    supported sampling/heartbeat behavior only with a documented delivery
    contract.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend

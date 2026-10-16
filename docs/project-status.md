@@ -3,11 +3,12 @@
 ## 2026-10-15 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The latest source commit is `8528902` (independent host UDP64 sender with
-route and carrier guards), pushed to `origin/main`; CTest is 78/78 PASS.
-GitHub CI, Coverage and Interop Gate all passed for `8528902` (runs
-`38710071870`, `38710072003`, `38710071850`); the documentation checkpoint
-`14d301d` also passed all three workflows. Recent gNMI changes at `90abaa7`,
+The current source checkpoint adds a gNMI STREAM disconnect/reconnect
+regression; the architecture document was also corrected to distinguish
+FRR's ZAPI input adapter from dataplane backends and to scope OPER/WAL claims.
+CTest is 78/78 PASS. GitHub CI, Coverage and Interop Gate passed on the
+preceding source checkpoint; workflows for the current code change must finish
+before claiming remote CI acceptance. Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
 options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
 semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking
@@ -19,10 +20,11 @@ for next tasks.
 Current release/qualification gaps:
 
 - Real PCI/DPDK sustained performance, latency, CPU and line-rate qualification
-  is `ENVIRONMENT-OPEN`. R3 I211 preflight and finite correlated packet runs
-  pass only their stated functional scope. Host↔R2 P3 management reachability
-  is now verified, but this provides neither a qualified traffic-generator
-  path nor a sustained-load measurement.
+  is `ENVIRONMENT-OPEN`. The host route to physical test destinations currently
+  selects R2 P3 `.244` through `enp4s0`; the 2026-10-15 compact 16,384-frame
+  independent-source window passed bounded ECMP functional forwarding with
+  independent R1/R4 NIC deltas. This is not a sustained-load, latency, CPU or
+  throughput qualification and does not replace a qualified traffic generator.
 - Physical rollout is incomplete: R1/R3 have r14 evidence; R2 and R4 report
   r9. Four-node homogeneous r14 acceptance is open.
 - Physical management is disabled; production PKI/mTLS deployment and live
@@ -75,20 +77,20 @@ runtime-only, mgrd remains disabled, and this does not qualify routed transit,
 ECMP, or performance. Keep existing isolated L3 test links intact.
 
 Latest physical traffic replay (2026-10-15): a tightly bracketed four-node
-12,288-frame UDP64 run passed the unified verifier. R2 hardware TX, R3 ingress
-and ECMP egress, and independent R1/R4 NIC RX deltas matched; all per-node
-windows were below 1,800 seconds and relevant drop deltas were zero. This is
-bounded functional forwarding/path-use evidence only. A larger 49,152-frame
-run had exact aggregate counters but remains `OBSERVED` because its R4 window
-exceeded the gate. Latency, phase-aligned forwarding CPU, sustained throughput
-and line rate remain open. Evidence and hashes are in the [physical I211 runbook](i211-physical-traffic-runbook.md).
+16,384-frame UDP64 multi-flow run passed the unified verifier. The 64 distinct
+source-port flows produced R3 P4 RX +16,384, P1/P2 TX +8,192/+8,192, and
+independent R1/R4 NIC RX +8,192/+8,192; relevant drop deltas were zero and all
+host-monotonic windows were below 1,800 seconds. This is bounded functional
+forwarding/path-use evidence only. The larger 49,152-frame run remains
+`OBSERVED` because its R4 window exceeded the gate. Latency, phase-aligned
+forwarding CPU, sustained throughput and line rate remain open. Evidence and
+hashes are in the [physical I211 runbook](i211-physical-traffic-runbook.md).
 
-An independent Linux host UDP64 sender and route-guard test were added to
-avoid relying solely on VPP packet-generator CPU. Its preflight correctly
-refused to send because current target routing selects Wi-Fi gateway
-`10.248.5.1`; no route or packet state was changed. A temporary specific route
-via R2 P3 `.244` on `enp4s0` is required before the independent-source lane can
-run. Full CTest is now 78/78 PASS; real PCI performance remains OPEN.
+The independent Linux host UDP64 sender and route guard are active. The
+current route lookup uses R2 P3 `.244` on `enp4s0`; the compact run has closed
+its bounded forwarding gate. Keep qualified PCI performance
+`ENVIRONMENT-OPEN` until a sustained, independently measured lane provides
+loss, latency, CPU and throughput evidence. Full CTest remains 78/78 PASS.
 
 ## 2026-10-13 development checkpoint (source `b7bff99`)
 

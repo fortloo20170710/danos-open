@@ -733,7 +733,21 @@ static int test_subscribe_stream_initial(bool updates_only,
     shutdown(conn_fd, SHUT_RDWR);
     close(conn_fd);
     conn_fd = -1;
-    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d, event-update, reset=%d)\n",
+    /* Closing a client with a live STREAM must release the per-connection
+     * handler too; otherwise a bounded worker pool can be exhausted even
+     * though RST_STREAM cancellation works. Reconnect and issue a fresh RPC. */
+    assert(client_connect() == 0);
+    uint8_t reconnect_resp[256];
+    client_hdrs_t reconnect_headers;
+    int reconnect_len = client_rpc("/gnmi.gNMI/Capabilities", NULL, 0,
+                                   reconnect_resp, sizeof(reconnect_resp),
+                                   &reconnect_headers, NULL);
+    assert(reconnect_len >= 0);
+    assert(strcmp(reconnect_headers.grpc_status, "0") == 0);
+    shutdown(conn_fd, SHUT_RDWR);
+    close(conn_fd);
+    conn_fd = -1;
+    printf("[PASS] test_subscribe_stream_initial (updates_only=%d, encoding=%d, event-update, reset=%d, disconnect-reconnect)\n",
            updates_only, encoding, reset_stream);
     return 0;
 }
