@@ -195,6 +195,20 @@ class PhysicalUDPWindowTest(unittest.TestCase):
         with self.assertRaisesRegex(WindowError, "aggregate ECMP egress"):
             verify_window(self.paths)
 
+    def test_single_used_ecmp_path_is_observed_not_pass(self):
+        self.values["r3_after"]["interfaces"] = self.values["r3_after"]["interfaces"].replace(
+            "tx packets 2148", "tx packets 100", 1).replace(
+            "tx packets 1124", "tx packets 3172", 1)
+        self.values["r1_after"]["rx_good_packets"] = self.values["r1_before"]["rx_good_packets"]
+        self.values["r4_after"]["rx_good_packets"] = self.values["r4_before"]["rx_good_packets"] + 3072
+        for key in ("r3_after", "r1_after", "r4_after"):
+            self.paths[key].write_text(json.dumps(self.values[key]))
+        result = verify_window(self.paths)
+        self.assertEqual(result["status"], "OBSERVED")
+        self.assertEqual(result["functional_status"], "PASS")
+        self.assertEqual(result["ecmp_status"], "PARTIAL")
+        self.assertEqual(result["ecmp_paths_used"], 1)
+
     def test_independent_host_source_requires_route_guard_and_hardware_counter_correlation(self):
         self.values["source"] = host_source_result()
         self.values["r3_before"]["captured_unix_time"] = 1_000_000
@@ -227,6 +241,30 @@ class PhysicalUDPWindowTest(unittest.TestCase):
         self.paths["source"].write_text(json.dumps(self.values["source"]))
         with self.assertRaisesRegex(WindowError, "guarded routes"):
             verify_window(self.paths)
+
+    def test_independent_source_validates_unique_five_tuple_flow_ports(self):
+        source = host_source_result(count=2)
+        targets = source["targets"]
+        source["flows_per_target"] = 2
+        source["requested_total_frames"] = 16
+        source["sendto_completed"] = 16
+        source["sent_per_target"] = {target: 4 for target in targets}
+        source["flow_source_ports"] = [
+            {"target": target, "flow_index": target_index * 2 + flow_index,
+             "source_udp_port": 20000 + target_index * 2 + flow_index}
+            for target_index, target in enumerate(targets) for flow_index in range(2)]
+        self.values["source"] = source
+        self.paths["source"].write_text(json.dumps(source))
+        # R3 counters are updated to this 16-packet batch, with both buckets used.
+        self.values["r3_after"]["interfaces"] = (
+            self.values["r3_after"]["interfaces"].replace("rx packets 3272", "rx packets 216")
+            .replace("tx packets 1124", "tx packets 108")
+            .replace("tx packets 2148", "tx packets 108"))
+        self.paths["r3_after"].write_text(json.dumps(self.values["r3_after"]))
+        result = verify_window({key: self.paths[key]
+                                for key in ("source", "r3_before", "r3_after")})
+        self.assertEqual(result["status"], "PASS")
+        self.assertEqual(result["generated_frames"], 16)
 
 
 if __name__ == "__main__":

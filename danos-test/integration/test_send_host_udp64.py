@@ -48,6 +48,12 @@ class HostUdp64Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_args("192.168.1.243", "192.168.1.244",
                           ["30.30.30.2"], 100, 1, "../enp4s0")
+        validate_args("192.168.1.243", "192.168.1.244",
+                      ["30.30.30.2"], 1000, 256, "enp4s0", 16)
+        with self.assertRaisesRegex(ValueError, "total frames"):
+            validate_args("192.168.1.243", "192.168.1.244",
+                          ["30.30.30.2", "30.30.30.3"], 1000, 4096,
+                          "enp4s0", 64)
 
     def test_payload_has_64_byte_ethernet_frame_size_without_fcs(self):
         self.assertEqual(len(build_payload(123, 2)), 22)

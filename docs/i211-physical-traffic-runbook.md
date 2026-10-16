@@ -1521,8 +1521,31 @@ clocks have unrelated boot origins and cannot be compared to the development hos
 was invalid. The capture wrappers now record **development-host** monotonic times around each UART
 request/response. The verifier conservatively brackets the source batch between the R3-before
 response and R3-after request, and computes node windows from matching host-side UART envelopes.
-This change is covered by CTest; it still needs a fresh compact physical run with new
-R4/R1/R3 before snapshots, source batch, then R3/R1/R4 after snapshots.
+This change is covered by CTest; the compact multi-flow physical run below now exercises it.
 One attempted R1-before capture was correctly rejected because its observed MAC was not R1's;
 do not reuse it. Confirm the UART target physically before each capture. The temporary host route
 is operator-managed and the sender does not modify or remove it.
+
+### Compact multi-5-tuple ECMP window (PASS)
+
+The sender was extended to use a distinct bound UDP source port per flow. A fresh physical run
+used 16 flows per each of four destinations, 256 frames per flow (16,384 total), requested
+1,000 pps per flow. The host completed 16,384 `sendto` calls in 0.2554 s; this host-side rate
+is **not** a wire-throughput result. The 64 source ports were unique.
+
+The verified host-monotonic windows were R3 5.29 s, R1 232.64 s, R4 400.92 s (all below
+the 1,800 s limit). The source batch fell inside the R3 UART envelope. R3 P4 RX was +16,384;
+R3 P1/P2 TX were +8,192/+8,192; independent R4/R1 NIC RX were +8,192/+8,192; relevant drop
+deltas were zero. Both configured/ resolved FIB paths carried traffic and end-to-end receive
+totals matched. Result: bounded functional ECMP PASS; performance remains ENVIRONMENT-OPEN
+(no latency/line-rate claim).
+
+Machine-readable result: `build/host-udp64-four-node-20261015/end-to-end-window-multiflow.json`
+(SHA256 `9c5042709103cc324960cf02d9a4e0c9987a514a39a27556d00f8fc829b4b9c3`). Source batch
+SHA256 `a1f33c2293f463881dd0ac5cb9505d7cbadd4c8c343a8a243c1e09a42031d5f6`; R3 before/after
+`36d5ec9b7657e38448ebfbef8aa950f272c803829affc3b823c19f71bf7d2acc` /
+`79d14b7cab34e3df82447bc5cdba7006bbf919644fd1f05e0e845ead65a624d7`; R1 before/after
+`4b5b0a26d4f866441940b1988237feeef481e230afe3226e2116810be8afba19` /
+`c907a6b5601a71e76c0b2be77ac6779722d2348fd9bff09f1bb9205ca74cf7b9`; R4 before/after
+`b1991383d019843c88105b34758d82b3e8bb3912c075614b3e61848bb5529bf3` /
+`df284fd76e3eacf6c9bd58885ecf6ffc9728f9bb1802ab2598b561f01df4e887`.

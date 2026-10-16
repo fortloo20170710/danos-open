@@ -19,6 +19,8 @@ import time
 DEFAULT_TARGETS = ("30.30.30.2", "30.30.30.3", "30.30.30.4", "30.30.30.5")
 MAX_COUNT_PER_FLOW = 4096
 MAX_RATE_PER_FLOW = 1000
+MAX_FLOWS_PER_TARGET = 64
+MAX_TOTAL_FRAMES = 16384
 PAYLOAD_BYTES = 22  # 14-byte Ethernet + 20-byte IPv4 + 8-byte UDP + payload = 64.
 
 
@@ -62,7 +64,7 @@ def inspect_routes(targets, *, gateway: str, interface: str, source: str):
     return routes
 
 
-def validate_args(source, gateway, targets, rate, count, interface):
+def validate_args(source, gateway, targets, rate, count, interface, flows_per_target=1):
     source_ip = ipaddress.ip_address(source)
     gateway_ip = ipaddress.ip_address(gateway)
     if source_ip.version != 4 or gateway_ip.version != 4:
@@ -75,6 +77,11 @@ def validate_args(source, gateway, targets, rate, count, interface):
         raise ValueError(f"rate must be 1..{MAX_RATE_PER_FLOW} pps per flow")
     if type(count) is not int or not 1 <= count <= MAX_COUNT_PER_FLOW:
         raise ValueError(f"count must be 1..{MAX_COUNT_PER_FLOW} frames per flow")
+    if (type(flows_per_target) is not int or
+            not 1 <= flows_per_target <= MAX_FLOWS_PER_TARGET):
+        raise ValueError(f"flows per target must be 1..{MAX_FLOWS_PER_TARGET}")
+    if len(targets) * flows_per_target * count > MAX_TOTAL_FRAMES:
+        raise ValueError(f"total frames must not exceed {MAX_TOTAL_FRAMES}")
     if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,15}", interface):
         raise ValueError("interface must be a valid Linux interface name")
 
@@ -91,8 +98,8 @@ def build_payload(sequence: int, flow_index: int) -> bytes:
 
 
 def send_batch(*, source: str, gateway: str, interface: str, targets,
-               rate: int, count: int, output: Path) -> dict:
-    validate_args(source, gateway, targets, rate, count, interface)
+               rate: int, count: int, output: Path, flows_per_target: int = 1) -> dict:
+    validate_args(source, gateway, targets, rate, count, interface, flows_per_target)
     routes = inspect_routes(targets, gateway=gateway, interface=interface,
                             source=source)
     carrier = interface_carrier(interface)
@@ -106,7 +113,8 @@ def send_batch(*, source: str, gateway: str, interface: str, targets,
         "targets": list(targets), "udp_destination_port": 30000,
         "l2_frame_bytes_including_fcs": 64, "udp_payload_bytes": PAYLOAD_BYTES,
         "requested_pps_per_flow": rate, "count_per_flow": count,
-        "requested_total_frames": len(targets) * count,
+        "flows_per_target": flows_per_target,
+        "requested_total_frames": len(targets) * flows_per_target * count,
         "routes": routes, "sent_per_target": {target: 0 for target in targets},
         "performance_status": "ENVIRONMENT-OPEN",
         "limitations": ["sendto completion is not hardware TX proof",
@@ -123,10 +131,17 @@ def send_batch(*, source: str, gateway: str, interface: str, targets,
     else:
         sockets = []
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sockets.append(sock)
-            sock.bind((source, 0))
-            result["source_udp_port"] = sock.getsockname()[1]
+            flow_sockets = []
+            for target_index, target in enumerate(targets):
+                for target_flow in range(flows_per_target):
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    sockets.append(sock)
+                    sock.bind((source, 0))
+                    flow_sockets.append((target, sock, target_index * flows_per_target + target_flow))
+            result["flow_source_ports"] = [
+                {"target": target, "flow_index": flow_index,
+                 "source_udp_port": sock.getsockname()[1]}
+                for target, sock, flow_index in flow_sockets]
             started = time.monotonic()
             result["started_monotonic"] = started
             result["started_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()
@@ -135,7 +150,7 @@ def send_batch(*, source: str, gateway: str, interface: str, targets,
                 delay = deadline - time.monotonic()
                 if delay > 0:
                     time.sleep(delay)
-                for flow_index, target in enumerate(targets):
+                for target, sock, flow_index in flow_sockets:
                     payload = build_payload(sequence, flow_index)
                     sent = sock.sendto(payload, (target, 30000))
                     if sent != PAYLOAD_BYTES:
@@ -168,6 +183,7 @@ def main() -> int:
     parser.add_argument("--target", action="append", dest="targets")
     parser.add_argument("--rate-pps-per-flow", type=int, default=100)
     parser.add_argument("--count-per-flow", type=int, default=256)
+    parser.add_argument("--flows-per-target", type=int, default=1)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     targets = args.targets or DEFAULT_TARGETS
@@ -175,7 +191,8 @@ def main() -> int:
         result = send_batch(source=args.source, gateway=args.gateway,
                             interface=args.interface, targets=targets,
                             rate=args.rate_pps_per_flow,
-                            count=args.count_per_flow, output=args.output)
+                            count=args.count_per_flow, flows_per_target=args.flows_per_target,
+                            output=args.output)
     except ValueError as error:
         parser.error(str(error))
     print(json.dumps({key: result.get(key) for key in

@@ -72,6 +72,7 @@ def validate_host_source(source: dict) -> tuple[int, int]:
     try:
         sender = source["sender"]
         count = source["count_per_flow"]
+        flows_per_target = source.get("flows_per_target", 1)
         rate = source["requested_pps_per_flow"]
         sent = source["sent_per_target"]
         routes = source["routes"]
@@ -80,15 +81,29 @@ def validate_host_source(source: dict) -> tuple[int, int]:
                            "required_gateway": "192.168.1.244", "carrier_up": True}):
             raise ValueError("status, scope, or sender identity mismatch")
         if (type(count) is not int or not 1 <= count <= 4096 or
+                type(flows_per_target) is not int or not 1 <= flows_per_target <= 64 or
                 type(rate) is not int or not 1 <= rate <= 1000 or
                 source.get("targets") != list(HOST_TARGETS) or
                 source.get("udp_destination_port") != 30000 or
                 source.get("l2_frame_bytes_including_fcs") != 64 or
                 source.get("udp_payload_bytes") != 22 or
-                source.get("requested_total_frames") != count * len(HOST_TARGETS) or
-                sent != {target: count for target in HOST_TARGETS} or
-                source.get("sendto_completed") != count * len(HOST_TARGETS)):
+                source.get("requested_total_frames") != count * flows_per_target * len(HOST_TARGETS) or
+                sent != {target: count * flows_per_target for target in HOST_TARGETS} or
+                source.get("sendto_completed") != count * flows_per_target * len(HOST_TARGETS)):
             raise ValueError("target, packet size, or sent-frame totals mismatch")
+        source_ports = source.get("flow_source_ports")
+        if source_ports is not None:
+            expected_flows = {(target, target_index * flows_per_target + index)
+                              for target_index, target in enumerate(HOST_TARGETS)
+                              for index in range(flows_per_target)}
+            observed_flows = {(item.get("target"), item.get("flow_index"))
+                              for item in source_ports if isinstance(item, dict)}
+            ports = [item.get("source_udp_port") for item in source_ports
+                     if isinstance(item, dict)]
+            if (observed_flows != expected_flows or len(ports) != len(expected_flows) or
+                    len(set(ports)) != len(ports) or
+                    any(type(port) is not int or not 1 <= port <= 65535 for port in ports)):
+                raise ValueError("per-flow UDP source-port identity is invalid")
         if set(routes) != set(HOST_TARGETS) or any(
                 route.get("returncode") != 0 or route.get("matches") is not True or
                 not re.search(r"\bvia 192\.168\.1\.244\b.*\bdev enp4s0\b",
@@ -112,7 +127,7 @@ def validate_host_source(source: dict) -> tuple[int, int]:
                 not math.isfinite(started_mono) or not math.isfinite(finished_mono) or
                 finished_mono < started_mono):
             raise ValueError("monotonic source timestamps are invalid")
-        return count * len(HOST_TARGETS), (started, finished, started_mono, finished_mono)
+        return count * flows_per_target * len(HOST_TARGETS), (started, finished, started_mono, finished_mono)
     except (KeyError, TypeError, ValueError, AttributeError) as error:
         raise WindowError(f"independent host source result invalid: {error}") from None
 
@@ -242,12 +257,20 @@ def verify_window(paths: dict[str, Path]) -> dict:
 
     tightly_bracketed = all(0 < seconds <= MAX_BRACKET_SECONDS
                             for seconds in snapshot_windows.values())
-    status = "PASS" if tightly_bracketed else "OBSERVED"
-    if tightly_bracketed:
+    ecmp_paths_used = sum(r3[port]["tx packets"] > 0 for port in (p1, p2))
+    ecmp_status = "PASS" if ecmp_paths_used == 2 else "PARTIAL"
+    status = "PASS" if tightly_bracketed and ecmp_paths_used == 2 else "OBSERVED"
+    if tightly_bracketed and ecmp_paths_used == 2:
         scope = ("bounded physical 64-byte UDP end-to-end functional window" if has_receiver_evidence
                  else "bounded physical 64-byte UDP R2-to-R3 forwarding window")
         performance_limitations = ["latency not measured", "R3 CPU snapshot interval is not phase-aligned",
                                    "window-average rate is not line-rate qualification"]
+    elif tightly_bracketed:
+        scope = "bounded physical single-ECMP-path UDP forwarding observation"
+        performance_limitations = [
+            "only one of two resolved ECMP egress paths carried traffic",
+            "latency not measured", "R3 CPU snapshot interval is not phase-aligned",
+            "window-average rate is not line-rate qualification"]
     else:
         scope = "counter-delta consistency over wide per-node snapshot intervals"
         performance_limitations = [
@@ -260,6 +283,8 @@ def verify_window(paths: dict[str, Path]) -> dict:
     return {
         "schema_version": 1, "status": status,
         "scope": scope,
+        "functional_status": "PASS" if has_receiver_evidence else "R3 forwarding observed",
+        "ecmp_status": ecmp_status, "ecmp_paths_used": ecmp_paths_used,
         "snapshot_windows_seconds": snapshot_windows,
         "snapshot_window_limit_seconds": MAX_BRACKET_SECONDS,
         "performance_status": "ENVIRONMENT-OPEN",

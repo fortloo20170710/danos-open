@@ -1877,7 +1877,13 @@ The host sender route guard now accepts the kernel's `from <source>` route-get
 format. Router-local monotonic values cannot be compared across devices; the
 capture wrappers now record development-host monotonic boundaries around each
 UART request/response, and the verifier brackets the source batch with those
-conservative host-side boundaries. Unit tests and full CTest pass (78/78). A
-fresh physical run with verified UART targets and new compact before/send/after
-snapshots remains required. See
+conservative host-side boundaries. Unit tests and full CTest pass (78/78). See
 `docs/i211-physical-traffic-runbook.md` for exact artifacts and scope.
+
+The subsequent compact multi-flow physical run passes the bounded functional
+ECMP window: 16,384 host UDP64 frames across 64 distinct source ports; R3 P1/P2
+each forwarded 8,192 packets, independent R4/R1 NIC RX each increased 8,192,
+with zero relevant drop deltas and host-monotonic UART windows under 1,800 s.
+This closes the bounded physical ECMP path-use check, not performance
+qualification; latency and line rate remain unmeasured. Evidence and SHA256
+digests are indexed in `docs/i211-physical-traffic-runbook.md`.
