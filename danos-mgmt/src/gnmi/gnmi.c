@@ -142,6 +142,7 @@ static char *handle_set_interface(const char *body)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));
@@ -204,6 +205,7 @@ static char *handle_set_route(const char *body)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));
@@ -297,6 +299,7 @@ static char *handle_set_acl_table(const char *body)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));
@@ -340,6 +343,7 @@ static char *handle_delete_acl_table(const char *path)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));
@@ -426,6 +430,7 @@ static char *handle_set_qos_policy(const char *body)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));
@@ -469,6 +474,7 @@ static char *handle_delete_qos_policy(const char *path)
     if (st == DANOS_OK) st = danos_tx_validate(&tx);
     if (st == DANOS_OK) st = danos_tx_commit(&tx);
     if (st != DANOS_OK) {
+        (void)danos_tx_abort(&tx);
         char *resp = malloc(128);
         if (resp) snprintf(resp, 128, "{\"error\": \"commit failed: %s\"}",
                           danos_status_str(st));

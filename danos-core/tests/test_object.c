@@ -367,6 +367,42 @@ int test_transaction_staging_semantics(void)
     assert(out.vni == 100);
     assert(danos_tx_abort(&final_reader) == DANOS_OK);
 
+    /* Abort is all-or-nothing at every precommit phase, including batches
+     * that mix creates, updates, and deletes. Existing observers see only
+     * committed state before prepare, after validate, and after abort. */
+    for (unsigned phase = 0; phase < 3; phase++) {
+        danos_tx_t setup = {0}, candidate = {0}, observer = {0};
+        danos_tunnel_t removed = value, added = value;
+        removed.id = id + 10 + phase;
+        removed.vni = 700;
+        added.id = id + 20 + phase;
+        added.vni = 800;
+        assert(danos_tx_begin(&setup, "abort-phase-setup", NULL) == DANOS_OK);
+        assert(danos_tunnel_create(&setup, &removed) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&setup) == DANOS_OK);
+        assert(danos_tx_begin(&candidate, "abort-phase-candidate", NULL) == DANOS_OK);
+        assert(danos_tx_begin(&observer, "abort-phase-observer", NULL) == DANOS_OK);
+        value.vni = 900;
+        assert(danos_tunnel_update(&candidate, &value) == DANOS_OK);
+        assert(danos_tunnel_delete(&candidate, removed.id) == DANOS_OK);
+        assert(danos_tunnel_create(&candidate, &added) == DANOS_OK);
+        assert(danos_tunnel_read(&candidate, id, &out) == DANOS_OK && out.vni == 900);
+        assert(danos_tunnel_read(&candidate, removed.id, &out) == DANOS_ERR_NOT_FOUND);
+        assert(danos_tunnel_read(&candidate, added.id, &out) == DANOS_OK && out.vni == 800);
+        if (phase >= 1) assert(danos_tx_prepare(&candidate) == DANOS_OK);
+        if (phase >= 2) assert(danos_tx_validate(&candidate) == DANOS_OK);
+        assert(danos_tunnel_read(&observer, id, &out) == DANOS_OK && out.vni == 100);
+        assert(danos_tunnel_read(&observer, removed.id, &out) == DANOS_OK && out.vni == 700);
+        assert(danos_tunnel_read(&observer, added.id, &out) == DANOS_ERR_NOT_FOUND);
+        assert(danos_tx_abort(&candidate) == DANOS_OK);
+        assert(danos_tx_commit(&candidate) == DANOS_ERR_TX_INVALID);
+        assert(danos_tunnel_create(&candidate, &added) == DANOS_ERR_TX_INVALID);
+        assert(danos_tunnel_read(&observer, id, &out) == DANOS_OK && out.vni == 100);
+        assert(danos_tunnel_read(&observer, removed.id, &out) == DANOS_OK && out.vni == 700);
+        assert(danos_tunnel_read(&observer, added.id, &out) == DANOS_ERR_NOT_FOUND);
+        assert(danos_tx_abort(&observer) == DANOS_OK);
+    }
+
     danos_route_t route = {0};
     route.prefix.addr.af = DANOS_AF_IPV4;
     route.prefix.addr.addr[12] = 10;

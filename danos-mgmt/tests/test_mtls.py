@@ -273,14 +273,14 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 
 
 @contextlib.contextmanager
-def daemon(root, config, real_vpp=False, program_vpp=False, wal=None):
+def daemon(root, config, real_vpp=False, program_vpp=False, wal=None, seed=False):
     p = config.get("DANOS_GNMI_UNIX_SOCKET") or port()
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
     env.update(config)
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
     with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen([BINARY, *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p if isinstance(p, int) else port()), "--metrics-port", str(port()),
+        proc = subprocess.Popen([BINARY, *(["--seed"] if seed else []), *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p if isinstance(p, int) else port()), "--metrics-port", str(port()),
                                  "--wal", str(wal or root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
@@ -501,6 +501,21 @@ def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
                             env=dict(os.environ, **local_config), capture_output=True, timeout=5)
     assert result.returncode != 0 and Path(local_path).read_text() == "preserve"
     Path(local_path).unlink()
+
+    # The bootstrap caller commits its complete staged batch before serving,
+    # and a second daemon recovers the same published interface state.
+    seed_wal = root / "seed.wal"
+    for seed in (True, False):
+        with daemon(root, local_config, wal=seed_wal, seed=seed) as path:
+            with socket.socket(socket.AF_UNIX) as client:
+                client.settimeout(3)
+                client.connect(path)
+                client.sendall(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" + frame(4, 0, 0))
+                response = []
+                assert rpc(client, "Get", responses=response) == "0"
+                payload = b"".join(response)
+                assert b"eth0" in payload and b"eth1" in payload
+                assert b'"mtu":1500' in payload and b'"mtu":9000' in payload
 
     # Bad configurations are fatal even when lab mode was requested.
     for changes in ({"DANOS_TLS_CLIENT_CA": str(root / "missing")},

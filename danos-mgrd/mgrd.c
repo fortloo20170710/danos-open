@@ -98,25 +98,25 @@ static void bind_pipeline_metrics(void)
     }
 }
 
-static void seed_initial_config(void)
+static danos_status_t seed_initial_config(void)
 {
     /* deterministic bootstrap config; survives via the WAL afterwards */
     danos_tx_t tx;
-    if (danos_tx_begin(&tx, "mgrd-seed", NULL) != DANOS_OK) return;
+    danos_status_t st = danos_tx_begin(&tx, "mgrd-seed", NULL);
+    if (st != DANOS_OK) return st;
 
     danos_iface_t ifaces[] = {
         { .ifindex = 1, .name = "eth0", .mtu = 1500, .admin_up = true },
         { .ifindex = 2, .name = "eth1", .mtu = 9000, .admin_up = true },
     };
-    for (size_t i = 0; i < sizeof(ifaces) / sizeof(ifaces[0]); i++)
-        danos_iface_create(&tx, &ifaces[i]);
+    for (size_t i = 0; i < sizeof(ifaces) / sizeof(ifaces[0]) && st == DANOS_OK; i++)
+        st = danos_iface_create(&tx, &ifaces[i]);
 
     danos_vrf_t mgmt = { .vrf_id = 1, .name = "mgmt", .ipv4_active = true };
-    danos_vrf_create(&tx, &mgmt);
-
-    danos_tx_prepare(&tx);
-    danos_tx_validate(&tx);
-    danos_tx_commit(&tx);
+    if (st == DANOS_OK) st = danos_vrf_create(&tx, &mgmt);
+    if (st == DANOS_OK) st = danos_tx_commit_atomic(&tx);
+    if (st != DANOS_OK) (void)danos_tx_abort(&tx);
+    return st;
 }
 
 static void bind_vpp_metrics(void)
@@ -299,7 +299,13 @@ int main(int argc, char **argv)
     int recovered = danos_persist_recover();
     printf("mgrd: persistence %s (%d records recovered)\n", wal, recovered);
     if (recovered == 0 && seed) {
-        seed_initial_config();
+        danos_status_t seed_status = seed_initial_config();
+        if (seed_status != DANOS_OK) {
+            fprintf(stderr, "mgrd: bootstrap transaction failed: %s\n", danos_status_str(seed_status));
+            danos_gnmi_tls_free(tls);
+            danos_persist_disable();
+            return 1;
+        }
         printf("mgrd: seeded bootstrap configuration\n");
     }
     /* Publish/recover the store before creating any reader thread. */
