@@ -63,6 +63,12 @@ class RecordDpdkPerfResultTest(unittest.TestCase):
             proc = subprocess.run(command, text=True, capture_output=True, check=False)
             return proc, output.read_text()
 
+    def test_virtual_nic_cannot_qualify_as_physical(self):
+        for vendor, device in [('0x15ad', '0x07b0'), ('0x8086', '0x100e')]:
+            proc, output = self.run_case(preflight_data=PREFLIGHT.replace('0x8086', vendor).replace('0x1539', device))
+            self.assertEqual(proc.returncode, 1)
+            self.assertIn('virtual', output)
+
     def test_matching_malformed_identity_is_rejected(self):
         digest = "0123456789abcdef" * 4
         for invalid in ("deadbeef", "g" * 64, "0" * 63, "0" * 65):

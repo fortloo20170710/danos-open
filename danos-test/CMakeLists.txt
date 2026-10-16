@@ -206,3 +206,9 @@ set_tests_properties(v016_release_gate_config PROPERTIES TIMEOUT 30)
 add_test(NAME qemu_ecmp_failover_window
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/qemu/test_verify_ecmp_failover_window.py)
 set_tests_properties(qemu_ecmp_failover_window PROPERTIES TIMEOUT 30)
+
+add_test(NAME performance_baseline_report
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_report_baselines.py)
+add_test(NAME physical_pci_identity
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_physical_pci_id.py)
+set_tests_properties(performance_baseline_report physical_pci_identity PROPERTIES TIMEOUT 30)

@@ -52,6 +52,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--vppctl", default="/usr/bin/vppctl")
     parser.add_argument("--cli-socket", default="/run/vpp/cli.sock")
+    parser.add_argument('--command', nargs=argparse.REMAINDER,
+                        help='traffic command to bracket instead of a timed idle sample; duration is its timeout')
     args = parser.parse_args()
     if args.pid <= 0 or not math.isfinite(args.duration) or not 0 < args.duration <= 3600:
         parser.error("positive PID and finite duration in (0,3600] required")
@@ -71,7 +73,12 @@ def main():
         first = parse_stat((proc / "stat").read_text())
         hz = os.sysconf("SC_CLK_TCK")
         before = time.monotonic()
-        time.sleep(args.duration)
+        command_result = None
+        if args.command:
+            command_result = subprocess.run(args.command, capture_output=True, text=True,
+                                            timeout=args.duration, check=False)
+        else:
+            time.sleep(args.duration)
         last = parse_stat((proc / "stat").read_text())
         after = time.monotonic()
         if snapshot_threads() != threads:
@@ -83,6 +90,12 @@ def main():
                       duration_ms=(after-before)*1000,
                       cpu_pct=cpu_percent(first, last, after-before, hz),
                       cpu_basis="one-logical-cpu", performance_status="ENVIRONMENT-OPEN")
+        if command_result is not None:
+            result.update(scope="cpu-command-window", command=args.command,
+                          command_exit_code=command_result.returncode,
+                          command_stdout=command_result.stdout, command_stderr=command_result.stderr)
+            if command_result.returncode != 0:
+                result.update(status="FAIL", failure_reason="traffic command failed")
         result.update(vpp_threads=threads, vpp_thread_count=len(threads),
                       single_dataplane_thread=len(threads) == 1)
     except (OSError, ValueError, IndexError, subprocess.SubprocessError) as exc:

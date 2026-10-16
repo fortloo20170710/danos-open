@@ -1,9 +1,37 @@
 #!/usr/bin/env python3
 import unittest
+import json
+import subprocess
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+import collect_vpp_cpu
 from collect_vpp_cpu import cpu_percent, parse_stat, parse_threads
 
 
 class CpuSampleTests(unittest.TestCase):
+    def test_command_window_records_exit_and_cpu(self):
+        for code in (0, 1):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as temp:
+                output = Path(temp) / 'cpu.json'
+                cli = subprocess.CompletedProcess([], 0, '0 vpp_main 42 0 other\n', '')
+                traffic = subprocess.CompletedProcess([], code, 'packet evidence', '')
+                with patch('sys.argv', ['cpu', '--pid', '42', '--duration', '30',
+                                       '--out', str(output), '--command', 'traffic', '--count', '100']), \
+                     patch.object(Path, 'resolve', return_value=Path('/usr/bin/vpp')), \
+                     patch.object(Path, 'read_text', return_value='stat'), \
+                     patch.object(collect_vpp_cpu, 'parse_stat', side_effect=[(42, 9, 100), (42, 9, 200)]), \
+                     patch.object(collect_vpp_cpu.os, 'sysconf', return_value=100), \
+                     patch.object(collect_vpp_cpu.time, 'monotonic', side_effect=[10, 12]), \
+                     patch.object(collect_vpp_cpu.subprocess, 'run', side_effect=[cli, traffic, cli]), \
+                     patch('builtins.print'):
+                    self.assertEqual(collect_vpp_cpu.main(), code)
+                result = json.loads(output.read_text())
+                self.assertEqual(result['cpu_pct'], 50)
+                self.assertEqual(result['scope'], 'cpu-command-window')
+                self.assertEqual(result['command_exit_code'], code)
+                self.assertEqual(result['performance_status'], 'ENVIRONMENT-OPEN')
+
     def test_real_thread_listing_with_ansi(self):
         raw = "ID Name LWP CPU Sched\n 0\x1b[0m vpp_main 2312 0 other (0)\n"
         self.assertEqual(parse_threads(raw), [dict(index=0, name="vpp_main", lwp=2312, cpu=0)])

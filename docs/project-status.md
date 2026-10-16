@@ -21,6 +21,12 @@ checks. See [management mTLS](management-mtls.md) for configuration and scope.
 Production PKI provisioning on physical routers remains a deployment gate,
 separate from completion of the mTLS implementation.
 
+The [performance baseline lanes](v0.16-performance-baselines.md) now consolidate
+archived QEMU/VMware PPS, RTT and bucket counters with explicit missing CPU
+and throughput fields. The read-only local PCI preflight remains SKIP without
+an explicit target BDF; virtual NIC identities cannot qualify that lane.
+No physical routers were deployed or accessed for this baseline pass.
+
 Remaining v0.16 acceptance work:
 
 - **Performance baselines:** qualified PPS, sustained throughput, timestamped

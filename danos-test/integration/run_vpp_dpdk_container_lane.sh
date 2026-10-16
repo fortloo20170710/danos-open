@@ -44,6 +44,7 @@ finish_result() {
     } > "$RESULT_FILE"
     return "$rc"
 }
+test -z "$RESULT_FILE" || mkdir -p "$(dirname "$RESULT_FILE")"
 trap finish_result EXIT
 skip() { STATUS=SKIP; echo "$1"; exit 2; }
 test -n "$TARGET_BDF" || skip '[SKIP] DPDK_PCI_BDF must identify the NIC under test'
@@ -89,6 +90,11 @@ printf '%s\n' "$PCI" | grep -qx "$TARGET_BDF" || {
 TARGET_VENDOR=$(run "cat /sys/bus/pci/devices/$TARGET_BDF/vendor" 2>/dev/null || true)
 TARGET_DEVICE=$(run "cat /sys/bus/pci/devices/$TARGET_BDF/device" 2>/dev/null || true)
 TARGET_BOUND_DRIVER=$(run "readlink -f /sys/bus/pci/devices/$TARGET_BDF/driver 2>/dev/null | xargs -r basename || true")
+python3 "$ROOT/danos-test/integration/check_physical_pci_id.py" "$TARGET_VENDOR" "$TARGET_DEVICE" || {
+    echo '[SKIP] target is not eligible for the real PCI DPDK lane'
+    STATUS=SKIP
+    exit 2
+}
 test "$TARGET_BOUND_DRIVER" = "$PCI_DRIVER" || {
     skip "[SKIP] $TARGET_BDF bound to ${TARGET_BOUND_DRIVER:-unbound}, expected $PCI_DRIVER"
 }

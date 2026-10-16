@@ -8,6 +8,7 @@ import shlex
 import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from check_physical_pci_id import physical_id
 
 
 METRICS = (
@@ -58,6 +59,10 @@ def validate(preflight: dict[str, str], measured: dict[str, str], args) -> dict[
                 "iso_sha256", "commit", "iso_build_commit", "iso_source_dirty"):
         if not preflight.get(key):
             raise ResultError(f"preflight is missing identity field: {key}")
+    try:
+        physical_id(preflight["pci_vendor_id"], preflight["pci_device_id"])
+    except ValueError as exc:
+        raise ResultError(str(exc)) from exc
     if preflight["commit"] != preflight["iso_build_commit"]:
         raise ResultError("preflight commit does not match embedded ISO build commit")
     if not re.fullmatch(r"[0-9a-f]{7,40}", preflight["iso_build_commit"]):

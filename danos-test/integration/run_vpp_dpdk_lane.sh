@@ -45,6 +45,7 @@ finish_result() {
     } > "$RESULT_FILE"
     return "$rc"
 }
+test -z "$RESULT_FILE" || mkdir -p "$(dirname "$RESULT_FILE")"
 trap finish_result EXIT
 VPP_BIN="${VPP_BIN:-}"
 VPPCTL="${VPPCTL:-}"
@@ -98,6 +99,10 @@ test -d "${TARGET_PATH:-}" || { echo "[SKIP] requested PCI BDF not found or is n
 TARGET_VENDOR=$(cat "$TARGET_PATH/vendor" 2>/dev/null || true)
 TARGET_DEVICE=$(cat "$TARGET_PATH/device" 2>/dev/null || true)
 TARGET_BOUND_DRIVER=$(basename "$(readlink "$TARGET_PATH/driver" 2>/dev/null || echo unbound)")
+python3 "$ROOT/danos-test/integration/check_physical_pci_id.py" "$TARGET_VENDOR" "$TARGET_DEVICE" || {
+    echo '[SKIP] target is not eligible for the real PCI DPDK lane'
+    exit 2
+}
 test "$TARGET_BOUND_DRIVER" = "$PCI_DRIVER" || {
     echo "[SKIP] $TARGET_BDF bound to $TARGET_BOUND_DRIVER, expected $PCI_DRIVER"; exit 2;
 }
