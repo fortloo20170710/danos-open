@@ -51,21 +51,23 @@ Execution priority, as confirmed on 2026-10-15:
    verifies a fresh connection can complete Capabilities, guarding against a
    stuck per-connection handler. CTest 78/78 and all three remote workflows
    pass at `af41ef6`.
-   Important scope correction: neither regression proves another RPC can
-   complete while STREAM remains active. `subscribe_stream_loop()` currently
-   owns the connection read loop, queues frames for other stream IDs, and
-   returns only after cancellation/connection close. The existing eight-RPC
-   test sends unary requests together and therefore does not cover concurrent
-   STREAM multiplexing. A proper fix needs connection-level incremental
-   HTTP/2/gRPC assembly and per-stream dispatch; until then concurrent RPCs
-   during STREAM are unsupported and must not be claimed as accepted.
+   The blocking subscription loop has been replaced by connection-owned active
+   subscription state. While subscriptions are active, the connection polls
+   complete HTTP/2 frames without blocking on a partial frame, handles resets,
+   dispatches additional RPCs, and services subscription updates. Regression
+   coverage opens a second STREAM and completes Capabilities while both
+   streams remain active, then checks cancellation and reconnect. Remaining:
+   `read_grpc_message()` still assembles a request synchronously, parking
+   frames for other streams; a deliberately slow or interleaved request body
+   can head-of-line block dispatch. Replace it with bounded per-stream
+   incremental gRPC message assembly before claiming full HTTP/2 concurrency.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler
    regressions cover representative list- and subscription-level options.
-   Full CTest is 78/78. Remaining: implement and test same-connection
-   multiplexing with an active STREAM (connection-level dispatch), broaden
-   cancellation/reset/subscription-lifecycle tests, then implement
+   Full CTest is 78/78. Remaining: implement and test incremental per-stream
+   gRPC body assembly, broaden cancellation/reset/subscription-lifecycle
+   tests, then implement
    supported sampling/heartbeat behavior only with a documented delivery
    contract.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend

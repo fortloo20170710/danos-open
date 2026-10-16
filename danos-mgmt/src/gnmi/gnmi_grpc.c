@@ -83,6 +83,14 @@ typedef struct {
  * window-blocked must not be able to grow this without limit. */
 #define H2_MAX_PENDING 64
 
+#define H2_MAX_ACTIVE_SUBSCRIPTIONS 32
+typedef struct {
+    bool used;
+    uint32_t stream;
+    uint64_t last_hash;
+    gnmi_subscribe_list_t list;
+} h2_active_subscription_t;
+
 typedef struct {
     int fd;
     SSL *ssl;
@@ -93,6 +101,7 @@ typedef struct {
     uint32_t peer_initial_window;
     pending_frame_t *pending, *pending_tail;
     uint32_t pending_count;
+    h2_active_subscription_t subscriptions[H2_MAX_ACTIVE_SUBSCRIPTIONS];
 } h2_conn_t;
 
 #define H2_DEFAULT_WINDOW 65535
@@ -824,8 +833,53 @@ uint64_t stream_state_hash_for_test(void)
     return stream_state_hash();
 }
 
-static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
-                                 const gnmi_subscribe_list_t *sl)
+static h2_active_subscription_t *active_subscription_find(h2_conn_t *c,
+                                                           uint32_t stream)
+{
+    for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++)
+        if (c->subscriptions[i].used &&
+            c->subscriptions[i].stream == stream)
+            return &c->subscriptions[i];
+    return NULL;
+}
+
+static int subscription_send_update(h2_conn_t *c,
+                                    h2_active_subscription_t *sub)
+{
+    gnmi_path_t paths[GNMI_MAX_ELEMS];
+    uint32_t path_count = 0;
+    for (uint32_t i = 0; i < sub->list.sub_count &&
+                         path_count < GNMI_MAX_ELEMS; i++)
+        paths[path_count++] = sub->list.subs[i].path;
+
+    uint8_t notification[8192], response[16384];
+    int length = build_notification_for_paths(&sub->list, paths, path_count,
+                                              notification,
+                                              sizeof(notification));
+    if (length < 0) return -1;
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, response, sizeof(response));
+    gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
+    return send_stream_message(c, sub->stream, response, w.len);
+}
+
+static void subscriptions_service(h2_conn_t *c)
+{
+    uint64_t hash = stream_state_hash();
+    for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
+        h2_active_subscription_t *sub = &c->subscriptions[i];
+        if (!sub->used || sub->last_hash == hash) continue;
+        if (subscription_send_update(c, sub) < 0) {
+            stream_forget(c, sub->stream);
+            memset(sub, 0, sizeof(*sub));
+            continue;
+        }
+        sub->last_hash = hash;
+    }
+}
+
+static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
+                                  const gnmi_subscribe_list_t *sl)
 {
     uint64_t last_hash = stream_state_hash();
     gnmi_path_t paths[GNMI_MAX_ELEMS];
@@ -851,105 +905,16 @@ static int subscribe_stream_loop(h2_conn_t *c, uint32_t stream,
     gnmi_encode_subscribe_sync(&sync_writer);
     if (send_stream_message(c, stream, sync, sync_writer.len) < 0) return -1;
 
-    for (;;) {
-        /* Check peer liveness and consume HTTP/2 control frames. Merely
-         * peeking at socket bytes left RST_STREAM queued forever, so a
-         * cancelled STREAM kept its connection handler occupied until the
-         * TCP connection itself closed. recv_frame also handles SETTINGS,
-         * PING and WINDOW_UPDATE housekeeping consistently with RPC reads. */
-        struct pollfd pfd = { .fd = c->fd, .events = POLLIN };
-        int ready = c->ssl && SSL_pending(c->ssl)
-                  ? 1 : poll(&pfd, 1, 0);
-        if (ready < 0 && errno != EINTR) return 0;
-        if (ready > 0) {
-            uint8_t type, flags;
-            uint32_t sid, frame_len = H2_MAX_FRAME_LEN;
-            uint8_t frame[H2_MAX_FRAME_LEN];
-            int rr = recv_available_frame(c, &type, &flags, &sid, frame,
-                                          &frame_len);
-            if (rr < 0) return 0;  /* EOF or transport error */
-            if (rr > 0) {
-                if (type == H2_F_RST && sid == stream) {
-                    stream_forget(c, stream);
-                    return 0;
-                }
-                if (type == H2_F_SETTINGS) {
-                    if (!(flags & H2_FLAG_ACK)) {
-                        if (frame_len % 6 == 0) {
-                            for (uint32_t i = 0; i + 6 <= frame_len; i += 6) {
-                                uint16_t id = (uint16_t)((frame[i] << 8) | frame[i + 1]);
-                                uint32_t value = ((uint32_t)frame[i + 2] << 24) |
-                                                 ((uint32_t)frame[i + 3] << 16) |
-                                                 ((uint32_t)frame[i + 4] << 8) | frame[i + 5];
-                                if (id == 0x4) {
-                                    int64_t delta = (int64_t)value -
-                                                    (int64_t)c->peer_initial_window;
-                                    c->peer_initial_window = value;
-                                    for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
-                                        if (c->streams[w].used)
-                                            c->streams[w].window += delta;
-                                }
-                            }
-                        }
-                        (void)write_frame(c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
-                    }
-                } else if (type == H2_F_PING) {
-                    if (!(flags & H2_FLAG_ACK) && frame_len == 8)
-                        (void)write_frame(c, H2_F_PING, H2_FLAG_ACK, 0, frame, frame_len);
-                } else if (type == H2_F_WINDOW && frame_len >= 4) {
-                    uint32_t inc = ((uint32_t)frame[0] << 24) |
-                                   ((uint32_t)frame[1] << 16) |
-                                   ((uint32_t)frame[2] << 8) | frame[3];
-                    if (sid == 0) c->conn_window += inc;
-                    else {
-                        h2_stream_t *s = stream_get(c, sid);
-                        if (s) s->window += inc;
-                    }
-                } else if (sid != stream) {
-                    pending_push(c, type, flags, sid, frame, frame_len);
-                }
-            }
-        }
-
-        /* Change detector.
-         *
-         * The previous version copied each type into a fixed array
-         * (ifaces[64], vrfs[16], routes[32]) and hashed only interface mtu
-         * and ifindex. Two problems: a store holding more interfaces than the
-         * array made the scan silently miss objects, and any change to an
-         * interface name, admin state or address - or to a VRF name or a
-         * route prefix, metric or next hop - did not alter the hash at all,
-         * so a subscriber was never told.
-         *
-         * Hash the raw object bytes instead, streaming through the store so
-         * there is no capacity limit. */
-        uint64_t hash = stream_state_hash();
-
-        /* Wait for a store mutation (or bounded liveness-check timeout). */
-        pthread_mutex_lock(&g_store_ev_lock);
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_nsec += 200000000;
-        if (ts.tv_nsec >= 1000000000) { ts.tv_sec++; ts.tv_nsec -= 1000000000; }
-        pthread_cond_timedwait(&g_store_ev_cond, &g_store_ev_lock, &ts);
-        pthread_mutex_unlock(&g_store_ev_lock);
-        hash = stream_state_hash();
-
-        if (hash != last_hash) {
-            uint8_t msg[8192];
-            int mlen = build_notification_for_paths(sl, paths, path_count,
-                                                    msg, sizeof(msg));
-            if (mlen < 0) return -1;
-
-            uint8_t resp[16384];
-            gnmi_pb_t w;
-            gnmi_pb_init(&w, resp, sizeof(resp));
-            /* SubscribeResponse: field1 = Notification bytes */
-            gnmi_pb_put_len_delim(&w, 1, msg, (size_t)mlen);
-            if (send_stream_message(c, stream, resp, w.len) < 0) return -1;
-            last_hash = hash;
-        }
+    for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
+        h2_active_subscription_t *sub = &c->subscriptions[i];
+        if (sub->used) continue;
+        sub->used = true;
+        sub->stream = stream;
+        sub->last_hash = last_hash;
+        sub->list = *sl;
+        return 0;
     }
+    return -(int)DANOS_ERR_BACKEND_BUSY;
 }
 
 /*
@@ -1104,7 +1069,7 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
         if (send_stream_message(c, stream, sresp, sw.len) < 0) return -1;
         return 0;   /* stream stays open for Poll messages */
     }
-    return subscribe_stream_loop(c, stream, sl);
+    return subscribe_stream_start(c, stream, sl);
 }
 
 int gnmi_handle_capabilities(const uint8_t *req, size_t req_len,
@@ -1863,7 +1828,80 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
         uint32_t fstream;
         uint8_t frame[H2_MAX_FRAME_LEN];
         uint32_t flen = sizeof(frame);
-        int rr = recv_frame(&c, &ftype, &fflags, &fstream, frame, &flen);
+        bool have_subscription = false;
+        for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++)
+            have_subscription |= c.subscriptions[i].used;
+
+        int rr;
+        if (have_subscription) {
+            if (pending_pop(&c, &ftype, &fflags, &fstream, frame, &flen)) {
+                rr = 0;
+            } else {
+                struct pollfd pfd = { .fd = c.fd, .events = POLLIN };
+                int ready = (c.ssl && SSL_pending(c.ssl)) ? 1 : poll(&pfd, 1, 100);
+                if (ready < 0 && errno != EINTR) { rc = -1; break; }
+                subscriptions_service(&c);
+                if (ready <= 0) continue;
+                rr = recv_available_frame(&c, &ftype, &fflags, &fstream,
+                                          frame, &flen);
+                if (rr == 0) continue; /* incomplete frame: resume without blocking */
+            }
+            if (rr > 0) {
+                if (ftype == H2_F_SETTINGS) {
+                    if (!(fflags & H2_FLAG_ACK)) {
+                        if (flen % 6 == 0) {
+                            for (uint32_t i = 0; i + 6 <= flen; i += 6) {
+                                uint16_t id = (uint16_t)((frame[i] << 8) | frame[i + 1]);
+                                uint32_t value = ((uint32_t)frame[i + 2] << 24) |
+                                                 ((uint32_t)frame[i + 3] << 16) |
+                                                 ((uint32_t)frame[i + 4] << 8) | frame[i + 5];
+                                if (id == 0x4) {
+                                    int64_t delta = (int64_t)value -
+                                                    (int64_t)c.peer_initial_window;
+                                    c.peer_initial_window = value;
+                                    for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
+                                        if (c.streams[w].used)
+                                            c.streams[w].window += delta;
+                                }
+                            }
+                        }
+                        (void)write_frame(&c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
+                    }
+                    continue;
+                }
+                if (ftype == H2_F_PING) {
+                    if (!(fflags & H2_FLAG_ACK) && flen == 8)
+                        (void)write_frame(&c, H2_F_PING, H2_FLAG_ACK, 0, frame, flen);
+                    continue;
+                }
+                if (ftype == H2_F_WINDOW && flen >= 4) {
+                    uint32_t inc = ((uint32_t)frame[0] << 24) |
+                                   ((uint32_t)frame[1] << 16) |
+                                   ((uint32_t)frame[2] << 8) | frame[3];
+                    if (!fstream) c.conn_window += inc;
+                    else {
+                        h2_stream_t *s = stream_get(&c, fstream);
+                        if (s) s->window += inc;
+                    }
+                    continue;
+                }
+                if (ftype == H2_F_RST) {
+                    h2_active_subscription_t *sub = active_subscription_find(&c, fstream);
+                    if (sub) memset(sub, 0, sizeof(*sub));
+                    stream_forget(&c, fstream);
+                    poll_stream_drop(fstream);
+                    continue;
+                }
+                if (ftype == H2_F_GOAWAY) break;
+                if (ftype != H2_F_HEADERS) {
+                    pending_push(&c, ftype, fflags, fstream, frame, flen);
+                    continue;
+                }
+                rr = 0; /* recv_available_frame: 1 means complete frame */
+            }
+        } else {
+            rr = recv_frame(&c, &ftype, &fflags, &fstream, frame, &flen);
+        }
         if (rr < 0) break;
         if (rr == 1) continue;
         if (ftype == H2_F_GOAWAY) break;

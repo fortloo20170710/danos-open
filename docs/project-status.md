@@ -47,21 +47,20 @@ gNMI Subscribe progress at `e6f6cd9`/`4c48393`/`147b7b4`: STREAM now honors
 TypedValue encoding, and relies on store-event wakeups with a bounded
 200 ms liveness fallback rather than adding an extra sleep. The server
 consumes HTTP/2 RST_STREAM without blocking on a partial frame after a
-zero-time poll. A regression cancels a subscription and proves a subsequent
-Capabilities RPC succeeds on the same connection after cancellation; this
-does not prove concurrent multiplexing while STREAM remains active. The
-STREAM handler is a blocking per-RPC loop: it parks frames for other stream
-IDs but does not dispatch their HEADERS/DATA until the active STREAM ends.
-Thus later RPCs on that HTTP/2 connection cannot complete concurrently. The
-existing eight-stream test covers a batch of unary requests only. Closing
-this gap requires connection-level incremental frame/message assembly and
-per-stream dispatch, not a test-only adjustment. Full CTest, external gnmic
+zero-time poll. The connection now retains STREAM subscriptions as per-stream
+state and continues polling complete HTTP/2 frames; a regression proves two
+STREAMs can remain active while a Capabilities unary RPC completes on the same
+connection, then verifies cancellation and reconnect. The eight-stream unary
+test remains separate. The request gRPC message reader is still synchronous
+while it assembles one RPC body and queues frames from other stream IDs, so
+slow/interleaved request bodies can still head-of-line block dispatch; full
+incremental per-stream gRPC message assembly remains open. Full CTest, external gnmic
 I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
 checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather
 than being silently ignored; local CTest remains 78/78 and external gnmic
-I1-I5/I9 passes. Same-connection multiplexing and implementation of supported
-sampling/heartbeat semantics remain open.
+I1-I5/I9 passes. Fully incremental per-stream body assembly and implementation
+of supported sampling/heartbeat semantics remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
