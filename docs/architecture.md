@@ -33,7 +33,7 @@ flowchart LR
     subgraph SB["Southbound — Backend Adapters"]
         VPP["VPP (danos-vpp) v0.11\nBinary API + Stat Segment + Mapper"]
         NL["Netlink (danos-netlink) v0.9\nrtnetlink (real/mock)"]
-        FRR["FRR FIB (danos-fib) v0.2\nZAPI (zebra)"]
+        FRR["DANOS FIB adapter (danos-fib)\nFRR zebra ZAPI client"]
         OVS["OVS-DPDK\n(not started)"]
         P4["P4Runtime\n(not started)"]
     end
@@ -52,8 +52,8 @@ flowchart LR
     CLI --> AUTHZ
     GNMI --> AUTHZ
     NETCONF --> AUTHZ
-    AUTHZ --> GNMI & CLI & NETCONF
     MODELS --> TXAPI
+    AUTHZ --> MODELS
 
     %% TX
     TXM --> TXAPI
@@ -72,8 +72,8 @@ flowchart LR
     PIPE --> VPP & NL
 
     %% FRR
-    FRR <--> TXAPI
-    FRR --> DP
+    ZEBRA["FRR zebra"] -->|ZAPI| FRR
+    FRR -->|route/NH transaction| TXAPI
 
     %% EVENTS
     EVENT --> OBS & SEC & TXST & MODELS
@@ -90,24 +90,26 @@ flowchart LR
 ## 关键数据流
 
 1. **配置路径（Northbound → Dataplane）**  
-   CLI/gNMI/NETCONF → AuthZ（RBAC/证书验证） → YANG Models（路径注册 + 路由级联） → Transaction API（begin→prepare→validate） → Staging Engine（暂存，读写视图重叠） → Commit → Atomic Batch Publish（乐观冲突检测 + WAL 写入 + commit marker + 事件发布） → Object Store → State Store（DESIRED/PROGRAMMED/OPER） → Programming Pipeline → 后端适配器（VPP/Netlink） → Dataplane。
+   CLI/gNMI/NETCONF → AuthZ（RBAC/证书验证） → YANG Models（路径注册 + 路由级联） → Transaction API（begin→prepare→validate） → Staging Engine（事务隔离与 read-your-writes） → Commit → Atomic Batch Publish（乐观冲突检测；启用持久化时先落 WAL/commit marker） → Object Store → DESIRED/PROGRAMMED 状态 → Programming Pipeline → VPP/Netlink → Dataplane。OPER 表示运行态视图；后端实际状态读回仍是独立验收项，不应由 DESIRED/PROGRAMMED 推断。
 
 2. **收敛循环（Reconciler）**  
    Reconciler 定时/触发 `run_once()`，快照 DESIRED 并与 PROGRAMMED 对比，通过 Programming Pipeline 下发补救操作。自愈支持退避（backoff）和防抖（antiflap），执行 tombstone sweep 清理过期对象。
 
 3. **外部路由学习（FRR ZAPI）**  
-   FRR zebra 通过 ZAPI 套接字与 `danos-fib` 通信，解析路由/NH/NHGroup 消息，经 Transaction API 写入 Object Store 并在 commit 时持久化到 WAL，由 Programming Pipeline 编程到 VPP/Netlink。
+   FRR zebra 通过 ZAPI 套接字连接 DANOS `danos-fib` 客户端；客户端解析路由/NH/NHGroup 消息并经 Transaction API 写入 Object Store，再由 Programming Pipeline 编程到 VPP/Netlink。它不是直接向数据面写表的 backend。启用持久化时，事务 WAL 与 commit marker 在对象批次发布前按顺序持久化。
 
 4. **可观测性（Observability）**  
    Prometheus `/metrics` 通过 stat_provider 聚合：管道/调谐器/gNMI 计数器 + VPP Stat Segment。Event Bus 向 Observability/Security 等订阅者发布事务/对象/调谐事件。
 
 5. **持久化与恢复（WAL/Persist）**  
-   每笔事务 commit 前将完整事务写入 WAL 并写入 commit marker（fsync 保证顺序），mgrd 启动时调用 `persist_recover()` 回放未提交之前的持久化配置，确保崩溃后可恢复。
+   持久化启用时，事务 commit 将操作与 commit marker 写入并 fsync 后才发布对象批次；启动恢复只回放有有效 commit marker 的事务，未完成事务不会发布。未启用持久化时，不应据此声称磁盘 WAL 保证。
 
 ## 设计要点
 
 - **事务原子性（P0-2 已完成）**：所有 DPA 变更暂存在事务中，提交时一次性批量应用（`danos_object_apply_transaction_batch`），读操作优先返回暂存视图（read-your-writes）。
-- **三态模型**：DESIRED（期望） → PROGRAMMED（已编程到后端） → OPER（实际运行状态），配合 Reconciler 做期望-实际校验。
-- **单写多读**：全局 commit 写锁 + 对象存储读写锁，读路径无阻塞。
-- **后端可插拔**：通过 Backend Ops 抽象支持 VPP、Netlink（rtnetlink）、FRR ZAPI；OVS-DPDK、P4Runtime 预留（未启动）。
-- **安全优先**：gNMI 强制 mTLS（可选实验室明文模式），支持 bearer token、peercred、证书角色映射和 RBAC/audit。
+- **三态模型**：DESIRED（期望） → PROGRAMMED（后端编程账本） → OPER（运行态读回）。Reconciler 驱动期望与已编程状态收敛；完整、可信的后端 OPER readback 仍需按 acceptance matrix 验收，不能把账本状态当成硬件实况。
+- **事务原子性（P0-2）**：DPA 变更暂存于显式事务；暂存视图优先于 committed store（read-your-writes），跨事务隔离；commit 对冲突进行检查，并以 `danos_object_apply_transaction_batch` 一次性发布。abort 丢弃暂存修改。
+- **并发与收敛**：提交路径由全局写锁串行化，对象 store 使用读写锁；不可将其描述成所有读操作都绝不等待。Reconciler 提供 backoff/antiflap 与 tombstone sweep。
+- **后端可插拔**：Programming Pipeline 的 southbound backend 包括 VPP 与 Linux rtnetlink；FRR ZAPI 是路由输入/控制面适配器，经 DPA 事务进入同一编程路径。OVS-DPDK、P4Runtime 预留（未启动）。
+- **安全优先**：gNMI 默认要求 mTLS，证书指纹映射角色并执行 RBAC；明文 h2c 仅能通过显式实验室 opt-in 启用。生产 PKI 部署/轮换与实机管理面启用仍按发布矩阵单独验收。bearer token、peercred 等机制不可替代生产 mTLS 身份验证。
+- **可观测与持久化**：Event Bus 与 Prometheus `/metrics` 提供事件和指标；启用持久化时，WAL 操作与 commit marker 在原子批次发布前 fsync，启动时仅恢复已提交事务。
