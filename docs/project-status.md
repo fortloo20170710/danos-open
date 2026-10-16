@@ -3,12 +3,14 @@
 ## 2026-10-15 current development summary
 
 The project remains on `v0.16.0-rc1`; **do not describe v0.16.0 as released**.
-The source checkpoint `af41ef6` adds a gNMI STREAM disconnect/reconnect
-regression; the architecture document was also corrected to distinguish
-FRR's ZAPI input adapter from dataplane backends and to scope OPER/WAL claims.
-CTest is 78/78 PASS. GitHub CI, Coverage and Interop Gate all pass for
-`af41ef6` (runs `38840678456`, `38840678472`, `38840678449`); the following
-documentation checkpoint `0132a66` also passed all three workflows. Recent gNMI changes at `90abaa7`,
+Source checkpoint `3457c15` implements connection-owned active subscriptions
+and incremental per-stream HTTP/2/gRPC request assembly; the earlier
+`af41ef6` adds disconnect/reconnect coverage. CTest is 78/78 PASS and the
+ASan gNMI gRPC test passes. GitHub CI, Coverage and Interop Gate have passed
+through `9904e3f` (runs `38841732360`, `38841732317`, `38841732258`); the
+three workflows for `3457c15` are pending. The architecture document was also
+corrected to distinguish FRR's ZAPI input adapter from dataplane backends and
+to scope OPER/WAL claims. Recent gNMI changes at `90abaa7`,
 `8f618ed`, and earlier `147b7b4` explicitly reject unsupported Subscribe
 options, avoid blocking on partial HTTP/2 frames, and implement initial-sync
 semantics. The preceding `e6f6cd9` Interop I5 failure was caused by blocking
@@ -51,16 +53,18 @@ zero-time poll. The connection now retains STREAM subscriptions as per-stream
 state and continues polling complete HTTP/2 frames; a regression proves two
 STREAMs can remain active while a Capabilities unary RPC completes on the same
 connection, then verifies cancellation and reconnect. The eight-stream unary
-test remains separate. The request gRPC message reader is still synchronous
-while it assembles one RPC body and queues frames from other stream IDs, so
-slow/interleaved request bodies can still head-of-line block dispatch; full
-incremental per-stream gRPC message assembly remains open. Full CTest, external gnmic
+test remains separate. For subsequent RPCs while a STREAM is active, HEADERS /
+CONTINUATION and gRPC DATA are now assembled incrementally in bounded,
+per-stream state; a regression leaves one stream's HEADERS and gRPC prefix
+incomplete while a different stream completes Capabilities, then resumes the
+first stream. The initial RPC that establishes the first active subscription
+still uses the legacy blocking reader. Full CTest, external gnmic
 I1-I5/I9 and GitHub CI/Coverage/Interop Gate pass at the previous pushed
 checkpoint. Unsupported `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather
 than being silently ignored; local CTest remains 78/78 and external gnmic
-I1-I5/I9 passes. Fully incremental per-stream body assembly and implementation
-of supported sampling/heartbeat semantics remain open.
+I1-I5/I9 passes. Broader cancellation/reset stress and implementation of
+supported sampling/heartbeat semantics remain open.
 
 Physical connectivity update (2026-10-14): the user reports R1–R4 and the
 development host connect to the same five-port router using each node's P3.
