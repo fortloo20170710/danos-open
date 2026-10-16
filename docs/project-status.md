@@ -57,9 +57,12 @@ test remains separate. For subsequent RPCs while a STREAM is active, HEADERS /
 CONTINUATION and gRPC DATA are now assembled incrementally in bounded,
 per-stream state; a regression leaves one stream's HEADERS and gRPC prefix
 incomplete while a different stream completes Capabilities, then resumes the
-first stream. The initial RPC that establishes the first active subscription
-still uses the legacy blocking reader. Full CTest is 78/78, the targeted test
-passed 20 consecutive runs, and ASan/UBSan passed. External gnmic I1-I9,
+first stream. Complete gRPC messages packed in one DATA frame are dispatched
+sequentially without waiting for another frame; a POLL regression verifies
+the initial snapshot and following Poll notification. The initial RPC that
+establishes the first active subscription still uses the legacy blocking
+reader. Full CTest is 78/78, the targeted test passed 20 consecutive runs,
+and ASan/UBSan passed on the preceding revision. External gnmic I1-I9,
 VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. Unsupported
 `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather

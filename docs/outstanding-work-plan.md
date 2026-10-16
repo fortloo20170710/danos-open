@@ -59,19 +59,21 @@ Execution priority, as confirmed on 2026-10-15:
    per-stream state. A regression deliberately leaves one stream's header
    block and gRPC prefix incomplete while Capabilities on another stream
    completes, then resumes the first stream and verifies sync. Two active
-   STREAMs, cancellation and reconnect are covered. The first RPC that
-   establishes the initial active subscription still uses the legacy blocking
-   reader; broaden reset/cancellation stress and cover packed multiple gRPC
-   messages in one DATA frame before treating the transport as fully hardened.
+   STREAMs, cancellation and reconnect are covered. A single DATA frame may
+   contain multiple gRPC messages: after dispatch, the server schedules any
+   complete retained message without waiting for another peer frame. A POLL
+   regression packs the initial SubscribeRequest and a Poll request into one
+   DATA frame and verifies both notifications. The first RPC that establishes
+   the initial active subscription still uses the legacy blocking reader;
+   broaden reset/cancellation stress before treating the transport as fully
+   hardened.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler
    regressions cover representative list- and subscription-level options.
    Full CTest is 78/78. Remaining: broaden cancellation/reset/subscription-
-   lifecycle stress, test packed multiple gRPC messages in a single DATA
-   frame, then implement
-   supported sampling/heartbeat behavior only with a documented delivery
-   contract.
+   lifecycle stress, then implement supported sampling/heartbeat behavior
+   only with a documented delivery contract.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The

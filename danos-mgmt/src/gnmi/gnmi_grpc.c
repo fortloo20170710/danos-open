@@ -51,6 +51,7 @@ enum {
 #define MAX_FRAME 16384
 #define MAX_HEADERS 64
 #define MAX_MSG (256 * 1024)
+#define H2_REQUEST_WIRE_MAX (MAX_MSG + MAX_FRAME + 5)
 
 /* Frames read out of order (e.g. another stream's DATA while we are
  * window-blocked on a response) are parked here.
@@ -1781,7 +1782,8 @@ static int request_feed_data(h2_conn_t *c, h2_request_t *request,
                              uint8_t *message, size_t *message_len)
 {
     if (request_append(&request->wire, &request->wire_len,
-                       &request->wire_cap, data, len, MAX_MSG + 5) < 0)
+                       &request->wire_cap, data, len,
+                       H2_REQUEST_WIRE_MAX) < 0)
         return -1;
     if (len) send_window_update(c, request->stream, (uint32_t)len);
     if (request->wire_len < 5) return 0;
@@ -1797,6 +1799,19 @@ static int request_feed_data(h2_conn_t *c, h2_request_t *request,
     if (request->wire_len)
         memmove(request->wire, request->wire + 5 + need, request->wire_len);
     return 1;
+}
+
+/* A DATA frame can carry more than one gRPC message. Once the caller has
+ * dispatched one, this identifies whether the retained tail is ready without
+ * waiting for another peer frame. */
+static bool request_has_complete_message(const h2_request_t *request)
+{
+    if (!request || request->wire_len < 5 || request->wire[0] != 0)
+        return false;
+    size_t need = ((size_t)request->wire[1] << 24) |
+                  ((size_t)request->wire[2] << 16) |
+                  ((size_t)request->wire[3] << 8) | request->wire[4];
+    return need <= MAX_MSG && request->wire_len >= 5 + need;
 }
 
 /* Read a gRPC length-prefixed message from DATA frames of a stream.
@@ -2225,6 +2240,8 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role)
                 if (request_slot && !end_stream) {
                     request_slot->headers = h;
                     memset(&h, 0, sizeof(h));
+                    if (request_has_complete_message(request_slot))
+                        pending_push(&c, H2_F_DATA, 0, fstream, NULL, 0);
                 } else if (request_slot) {
                     request_clear(request_slot);
                     request_slot = NULL;

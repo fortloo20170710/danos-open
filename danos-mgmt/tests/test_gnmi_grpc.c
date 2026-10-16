@@ -520,7 +520,8 @@ static int test_subscribe_once(void)
 
 static void inspect_subscribe_response(const uint8_t *data, size_t len,
                                       int *updates, bool *sync,
-                                      gnmi_val_kind_t *first_value_kind)
+                                      gnmi_val_kind_t *first_value_kind,
+                                      int *notifications)
 {
     gnmi_pb_reader_t r;
     gnmi_pbr_init(&r, data, len);
@@ -529,6 +530,7 @@ static void inspect_subscribe_response(const uint8_t *data, size_t len,
         const uint8_t *body;
         size_t body_len;
         if (field == 1 && wire == 2 && gnmi_pbr_bytes(&r, &body, &body_len)) {
+            if (notifications) (*notifications)++;
             gnmi_pb_reader_t nr;
             gnmi_pbr_init(&nr, body, body_len);
             uint32_t nf, nw;
@@ -553,7 +555,8 @@ static void inspect_subscribe_response(const uint8_t *data, size_t len,
                         memset(&decoded, 0, sizeof(decoded));
                         assert(gnmi_decode_typed_value(value, value_len,
                                                        &decoded));
-                        if (*first_value_kind == GNMI_VAL_UNSET)
+                        if (first_value_kind &&
+                            *first_value_kind == GNMI_VAL_UNSET)
                             *first_value_kind = decoded.kind;
                     } else {
                         gnmi_pbr_skip(&ur, uw);
@@ -633,7 +636,7 @@ static int test_subscribe_stream_initial(bool updates_only,
                                  accumulated[4];
             if (accumulated_len < 5 + message_len) break;
             inspect_subscribe_response(accumulated + 5, message_len,
-                                       &updates, &sync, &value_kind);
+                                       &updates, &sync, &value_kind, NULL);
             accumulated_len -= 5 + message_len;
             memmove(accumulated, accumulated + 5 + message_len,
                     accumulated_len);
@@ -674,7 +677,7 @@ static int test_subscribe_stream_initial(bool updates_only,
                                  accumulated[4];
             if (accumulated_len < 5 + message_len) break;
             inspect_subscribe_response(accumulated + 5, message_len,
-                                       &updates, &sync, &value_kind);
+                                       &updates, &sync, &value_kind, NULL);
             accumulated_len -= 5 + message_len;
             memmove(accumulated, accumulated + 5 + message_len,
                     accumulated_len);
@@ -691,7 +694,24 @@ static int test_subscribe_stream_initial(bool updates_only,
                              (uint32_t)header_split) == 0);
         assert(write_frame_c(conn_fd, 9, 0x4, 105, headers + header_split,
                              (uint32_t)(hlen - header_split)) == 0);
-        uint8_t second_grpc_header[5] = {0, 0, 0, 0, (uint8_t)w.len};
+        /* Use POLL mode on stream 105, then put a Poll request immediately
+         * after it in the same HTTP/2 DATA frame. This exercises draining a
+         * complete gRPC message retained behind the dispatched message. */
+        uint8_t poll_req[128];
+        gnmi_pb_t poll_writer;
+        gnmi_pb_init(&poll_writer, poll_req, sizeof(poll_req));
+        size_t poll_list = gnmi_pb_begin_nested(&poll_writer, 1);
+        size_t poll_sub = gnmi_pb_begin_nested(&poll_writer, 2);
+        gnmi_encode_path(&poll_writer, 1, &path);
+        gnmi_pb_end_nested(&poll_writer, poll_sub);
+        gnmi_pb_put_enum(&poll_writer, 5, GNMI_SUB_MODE_POLL);
+        gnmi_pb_end_nested(&poll_writer, poll_list);
+        assert(poll_writer.len < 256);
+        uint8_t second_grpc_header[5] = {
+            0, (uint8_t)(poll_writer.len >> 24),
+            (uint8_t)(poll_writer.len >> 16),
+            (uint8_t)(poll_writer.len >> 8), (uint8_t)poll_writer.len
+        };
         /* Deliberately leave stream 105's gRPC prefix incomplete. The
          * connection must still finish the complete RPC on stream 107. */
         assert(write_frame_c(conn_fd, 0, 0, 105, second_grpc_header, 2) == 0);
@@ -739,16 +759,25 @@ static int test_subscribe_stream_initial(bool updates_only,
         assert(got_concurrent_capabilities);
 
         uint8_t second_body[256];
-        assert(w.len + 3 <= sizeof(second_body));
+        assert(poll_writer.len + 10 <= sizeof(second_body));
         memcpy(second_body, second_grpc_header + 2, 3);
-        memcpy(second_body + 3, req, w.len);
-        assert(write_frame_c(conn_fd, 0, 0x1, 105, second_body,
-                             (uint32_t)(w.len + 3)) == 0);
+        memcpy(second_body + 3, poll_req, poll_writer.len);
+        size_t packed_len = 3 + poll_writer.len;
+        second_body[packed_len++] = 0; /* second gRPC message, Poll oneof */
+        second_body[packed_len++] = 0;
+        second_body[packed_len++] = 0;
+        second_body[packed_len++] = 0;
+        second_body[packed_len++] = 2;
+        second_body[packed_len++] = 0x18;
+        second_body[packed_len++] = 0;
+        assert(write_frame_c(conn_fd, 0, 0, 105, second_body,
+                             (uint32_t)packed_len) == 0);
         int second_updates = 0;
+        int second_notifications = 0;
         bool second_sync = false;
         uint8_t second_accumulated[32768];
         size_t second_accumulated_len = 0;
-        while (!second_sync) {
+        while (!second_sync || second_notifications < 2) {
             uint8_t fh[9];
             assert(read_full_c(conn_fd, fh, sizeof(fh)) == 0);
             uint32_t frame_len = ((uint32_t)fh[0] << 16) |
@@ -772,7 +801,8 @@ static int test_subscribe_stream_initial(bool updates_only,
                 if (second_accumulated_len < 5 + message_len) break;
                 inspect_subscribe_response(second_accumulated + 5,
                                            message_len, &second_updates,
-                                           &second_sync, NULL);
+                                           &second_sync, NULL,
+                                           &second_notifications);
                 second_accumulated_len -= 5 + message_len;
                 memmove(second_accumulated,
                         second_accumulated + 5 + message_len,
@@ -780,6 +810,7 @@ static int test_subscribe_stream_initial(bool updates_only,
             }
         }
         assert(second_sync);
+        assert(second_notifications >= 2);
 
         /* Cancel the original long-lived RPC with HTTP/2 RST_STREAM(CANCEL),
          * then prove the same connection can serve another request. */
