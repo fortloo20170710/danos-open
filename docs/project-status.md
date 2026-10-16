@@ -62,8 +62,10 @@ reconnect; the eight-stream unary test remains separate. Complete gRPC
 messages packed in one DATA frame are dispatched sequentially without waiting
 for another frame; a POLL regression verifies the initial snapshot and
 following Poll notification. Full CTest is 78/78 and the targeted gNMI gRPC
-test passed 20 consecutive runs; sanitizer and remote gate results for this
-revision are pending. Prior external gnmic I1-I9,
+test passed 20 consecutive runs. RST_STREAM also clears an incomplete gRPC
+request prefix, and the same connection completes a later RPC. ASan/UBSan,
+TSan, scale, and CI pass on `ef7f98e`; Interop Gate is still running. Prior
+external gnmic I1-I9,
 VPP V1-V5 and K4/K5 netns/ping gates pass at `3457c15`. Unsupported
 `use_models`, per-subscription ON_CHANGE, sample,
 suppress-redundant and heartbeat options now return InvalidArgument rather

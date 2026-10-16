@@ -68,8 +68,10 @@ Execution priority, as confirmed on 2026-10-15:
    DATA frame and verifies both notifications. The legacy blocking gRPC
    request-body reader has been removed. The first-request interleaving and
    all existing gNMI gRPC tests pass, including 20 consecutive targeted runs;
-   full CTest is 78/78. Broaden reset/cancellation stress before treating the
-   transport as fully hardened.
+   full CTest is 78/78. RST_STREAM now also cancels a separate request with an
+   incomplete gRPC prefix, after which the same connection remains usable.
+   Broader reset/cancellation stress remains before treating the transport as
+   fully hardened.
    Unsupported `use_models`, per-subscription ON_CHANGE, sample interval,
    suppress-redundant and heartbeat options now produce gRPC
    `InvalidArgument` instead of being silently ignored. Decoder and handler

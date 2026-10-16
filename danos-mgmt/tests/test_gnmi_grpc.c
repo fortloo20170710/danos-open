@@ -865,9 +865,17 @@ static int test_subscribe_stream_initial(bool updates_only,
         assert(second_sync);
         assert(second_notifications >= 2);
 
+        /* Reset a separate request while its gRPC prefix is incomplete. The
+         * connection must discard only that stream's parser state. */
+        assert(write_frame_c(conn_fd, 1, 0x4, 109, headers,
+                             (uint32_t)hlen) == 0);
+        assert(write_frame_c(conn_fd, 0, 0, 109, second_grpc_header, 2) == 0);
+        const uint8_t cancel[4] = { 0, 0, 0, 8 };
+        assert(write_frame_c(conn_fd, 3, 0, 109,
+                             cancel, sizeof(cancel)) == 0);
+
         /* Cancel the original long-lived RPC with HTTP/2 RST_STREAM(CANCEL),
          * then prove the same connection can serve another request. */
-        const uint8_t cancel[4] = { 0, 0, 0, 8 };
         assert(write_frame_c(conn_fd, 3, 0, 101, cancel, sizeof(cancel)) == 0);
 
         cap_len = 0;
