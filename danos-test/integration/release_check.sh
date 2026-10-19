@@ -11,9 +11,17 @@ set -u
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
-GNMIC="${GNMIC:-}"
-test -n "$GNMIC" || command -v gnmic >/dev/null 2>&1 && GNMIC="${GNMIC:-$(command -v gnmic)}"
-[ -x /tmp/gnmic-bin ] && GNMIC=/tmp/gnmic-bin
+# Explicit selection wins; otherwise locate the independent client used by
+# local builds or CI. Export it so the interop subprocess uses the same binary.
+if test -z "${GNMIC:-}"; then
+    GNMIC=$(command -v gnmic 2>/dev/null || true)
+    if test -z "$GNMIC"; then
+        for candidate in "$BUILD_DIR/gnmic" "$HOME/go/bin/gnmic" /tmp/gnmic-bin; do
+            if test -x "$candidate"; then GNMIC="$candidate"; break; fi
+        done
+    fi
+fi
+export GNMIC
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; NC='\033[0m'
 pass() { echo -e "${GREEN}[PASS]${NC} $1"; }
@@ -27,10 +35,10 @@ echo "=== DANOS-Open release acceptance ==="
     || fail "gate1: ctest"
 
 # --- gate 2: external interop ---------------------------------------------
-if test -x "$GNMIC" && bash "$PROJECT_ROOT/danos-test/integration/run_v0.4_interop.sh" > /tmp/rel-interop.log 2>&1; then
-    pass "gate2: gnmic interop I1-I9"
+if test -x "$GNMIC" && DANOS_REQUIRE_TLS_INTEROP=1 bash "$PROJECT_ROOT/danos-test/integration/run_v0.4_interop.sh" > /tmp/rel-interop.log 2>&1; then
+    pass "gate2: gnmic interop I1-I5/I9"
 elif test ! -x "$GNMIC"; then
-    echo "[SKIP] gate2: gnmic unavailable (environment-open)"
+    fail "gate2: gnmic unavailable; required interop gate is unverified"
 else
     fail "gate2: gnmic interop (see /tmp/rel-interop.log)"; cat /tmp/rel-interop.log
 fi
@@ -45,7 +53,7 @@ sleep 2
 if test -x "$GNMIC" && "$GNMIC" -a 127.0.0.1:59360 --insecure get --path /interfaces 2>&1 | grep -q eth0; then
     pass "gate3a: mgrd gNMI serving seeded config"
 elif test ! -x "$GNMIC"; then
-    echo "[SKIP] gate3a: gnmic unavailable (environment-open)"
+    fail "gate3a: gnmic unavailable; seeded gNMI state is unverified"
 else
     fail "gate3a: mgrd gNMI"
 fi
@@ -66,7 +74,7 @@ sleep 2
 if test -x "$GNMIC" && "$GNMIC" -a 127.0.0.1:59362 --insecure get --path /interfaces 2>&1 | grep -q eth0; then
     pass "gate3c: kill -9 + restart -> config recovered from WAL"
 elif test ! -x "$GNMIC"; then
-    echo "[SKIP] gate3c: gnmic unavailable (environment-open)"
+    fail "gate3c: gnmic unavailable; recovered gNMI state is unverified"
 else
     fail "gate3c: crash recovery"
 fi

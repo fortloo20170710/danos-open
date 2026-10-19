@@ -18,8 +18,10 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
-GNMIC="${GNMIC:-$HOME/go/bin/gnmic}"
-[ -x /tmp/gnmic-bin ] && GNMIC=/tmp/gnmic-bin
+if test -z "${GNMIC:-}"; then
+    GNMIC="$HOME/go/bin/gnmic"
+    [ -x /tmp/gnmic-bin ] && GNMIC=/tmp/gnmic-bin
+fi
 
 PORT="${PORT:-59244}"
 SRV_LOG=$(mktemp)
@@ -118,7 +120,11 @@ if command -v socat >/dev/null && command -v openssl >/dev/null; then
     kill $SOCAT_PID 2>/dev/null
     rm -rf "$TLSDIR"
 else
-    echo "[SKIP] I9: socat/openssl not installed"
+    if test "${DANOS_REQUIRE_TLS_INTEROP:-0}" = 1; then
+        fail "I9: required socat/openssl not installed"
+    else
+        echo "[SKIP] I9: socat/openssl not installed"
+    fi
 fi
 
 # --- V-group: real VPP (opt-in; requires a reachable VPP) -----------------
