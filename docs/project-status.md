@@ -1,5 +1,28 @@
 # DANOS Open Project Status
 
+## 2026-10-19 current pushed checkpoint — `1c93ab5`
+
+GitHub CI (`39249186784`), Coverage (`39249186827`) and Interop Gate
+(`39249186792`) all passed. Interop covered hosted VPP V1–V5, gNMI I1–I9,
+K4/K5 namespace/ping, ASan/UBSan, TSan, scale and fuzz. These are software and
+hosted integration checks; the physical and VMware qualifications below
+remain separate. The deterministic backend contract gate and local CTest
+also passed (DPA 11/11; CTest 81/81).
+
+The accepted QEMU e1000 topology was strictly revalidated and re-recorded:
+4,000/4,000 packets, 81.97 pps, 3,000/1,000 bucket counts, RTT p50/p99
+414.90/3566.20 us; frame-size throughput and CPU remain unmeasured. The
+machine result explicitly keeps `performance_status=ENVIRONMENT-OPEN` for PCI.
+The separate fresh lifecycle topology passed its failover/restart gate but
+does not contain the 1,000-packet-per-flow soak; the artifacts are not mixed.
+
+All four physical P3 management addresses answered bounded host pings, but
+the host route to `30.30.30.0/24` is absent and currently resolves via Wi-Fi;
+no physical traffic test was sent. The serial port remains owned by another
+`picocom` process. VMware has no loaded `vmmon`/`vmnet` or running guest. Thus
+the real R2↔R3 FRR/VPP recovery, physical PCI performance and fresh VMware
+runtime test remain open; v0.16.0 is not yet release-qualified.
+
 ## 2026-10-19 VMware requalification preparation
 
 Clean-source VMware polling-only DANOS and peer LIVE ISOs have been rebuilt

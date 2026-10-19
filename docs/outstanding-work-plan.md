@@ -1,5 +1,34 @@
 # Outstanding work plan
 
+### 2026-10-19 pushed verification and next physical/VMware gates
+
+- `1c93ab5` is pushed to `origin/main`; CI `39249186784`, Coverage
+  `39249186827` and Interop Gate `39249186792` all pass. Local CTest is
+  81/81 and the deterministic backend contract gate passes DPA 11/11 plus
+  programming-pipeline and composite Route/NH/NHGroup lifecycle checks.
+- QEMU evidence is split by identity: the strict accepted long-soak topology
+  passes 4,000/4,000 with buckets 3,000/1,000; the newer topology passes
+  FRR/VPP lifecycle and an 800-probe failover window but is not a 1,000-per-
+  flow soak. The standardized QEMU result leaves PCI performance OPEN and
+  leaves frame size/Mbps/CPU blank. See the acceptance matrix for hashes.
+- Physical prerequisites are not satisfied: host route lookup for
+  `30.30.30.2` selects Wi-Fi, not R2 P3; do not send test traffic until the
+  temporary route is restored and verified. R2 P3 itself and R1/R3/R4 P3
+  management addresses are reachable. The UART is still held by another
+  process; coordinate its release before collecting router counters or
+  changing the R2 P1/R3 P4 path. Do not touch that session.
+- VMware execution still requires authorized loading of the kernel-matched
+  `vmmon` and `vmnet` modules. The clean DANOS/peer ISO pair is built, but no
+  VM runtime or fresh serial evidence exists.
+- Next sequence: restore/verify the host test route; when UART is free,
+  inspect R2 P1 and R3 P4 identity/carrier/ARP, then run the bounded physical
+  traffic window and FRR route add/withdraw/recovery checks; separately load
+  VMware modules and run the strict VMXNET3 pair verifier. Only a properly
+  correlated independent-generator/receiver measurement can close PCI
+  performance. Keep the uncommitted testpmd draft out of acceptance until
+  its VPP transit attribution, counters, elapsed-time PPS and CPU sampling
+  are corrected and tested.
+
 ### 2026-10-19 VMware runner requalification
 
 - Rebuilt the polling-only DANOS VMXNET3 image and a matching Linux peer LIVE
