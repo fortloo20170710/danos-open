@@ -2,6 +2,14 @@
 
 ### 2026-10-19 pushed verification and next physical/VMware gates
 
+- R2 reboot management recheck passed 5/5 host pings to `192.168.1.244` with
+  the expected P3 MAC. The source-generated physical profiles had a safety
+  defect: they shut down P3 as an unused port. The renderer now explicitly
+  keeps management P3 up and excludes it from shutdown for all four roles;
+  seven focused profile tests and full CTest 81/81 pass. This does not rewrite
+  existing on-box profiles or qualify transit. Before updating a deployed
+  profile, inspect its hash and use an identity-checked serial session.
+
 - `1c93ab5` is pushed to `origin/main`; CI `39249186784`, Coverage
   `39249186827` and Interop Gate `39249186792` all pass. Local CTest is
   81/81 and the deterministic backend contract gate passes DPA 11/11 plus

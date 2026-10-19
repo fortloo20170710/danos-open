@@ -21,7 +21,13 @@ def render(role):
         if role != "R2":
             lines += ["create loopback interface instance 0", "set interface state loop0 up"]
             lines += [f"set interface ip address loop0 30.30.30.{i}/32" for i in range(2, 6)]
-    unused = (3,) if role == "R3" else (2, 3, 4)
+    # P3 is the out-of-band management port on every physical runner. Keep it
+    # administratively up even when the selected data-plane topology does not
+    # use it; taking it down can strand remote recovery/configuration access.
+    lines.append("set interface state GigabitEthernet3/0/0 up")
+    transit_ports = {"R1": (1,), "R2": (1,), "R3": (1, 2, 4), "R4": (1,)}[role]
+    unused = tuple(port for port in range(1, 5)
+                   if port not in transit_ports and port != 3)
     lines += [f"set interface state GigabitEthernet{port}/0/0 down" for port in unused]
     return "\n".join(lines) + "\n"
 

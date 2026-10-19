@@ -1,5 +1,22 @@
 # I211 physical LIVE traffic qualification runbook
 
+## R2 P3 management reachability recheck and profile safety — 2026-10-19
+
+After the reported R2 reboot, the development host rechecked the management
+port: `192.168.1.244` replied to 5/5 pings from source `192.168.1.243` on
+`enp4s0`; neighbor MAC was the expected R2 P3 `00:1f:7a:69:f5:ee`. The
+address is already active, so no remote address change was needed. UART was
+owned by another session and was not accessed. This confirms management
+reachability only, not persistence, transit, or FRR/VPP recovery.
+
+Review found that the generated physical lab profiles previously marked
+`GigabitEthernet3/0/0` down as an unused port. P3 is the out-of-band
+management port on every lab node. The renderer now explicitly keeps P3 up
+and excludes it from the unused-port shutdown list; regression tests cover all
+four roles. Existing on-box profile files are not rewritten by this source
+change. Before deploying an updated profile, inspect its existing hash and
+apply it through a coordinated, identity-checked serial session.
+
 ## R2 post-boot P1 peer-resolution probe — 2026-10-19 (FAIL, bounded)
 
 After confirming R2 P3 management reachability, the serial session verified

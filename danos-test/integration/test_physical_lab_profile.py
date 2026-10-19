@@ -30,6 +30,27 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("30.30.30.0/24 via 10.10.0.1", text)
         self.assertNotIn("loopback", text)
 
+    def test_management_p3_is_never_disabled(self):
+        for role in ("R1", "R2", "R3", "R4"):
+            with self.subTest(role=role):
+                text = render(role)
+                self.assertIn("set interface state GigabitEthernet3/0/0 up", text)
+                self.assertNotIn("set interface state GigabitEthernet3/0/0 down", text)
+
+    def test_only_unused_non_management_ports_are_disabled(self):
+        expected_down = {
+            "R1": {2, 4},
+            "R2": {2, 4},
+            "R3": (),
+            "R4": {2, 4},
+        }
+        for role, ports in expected_down.items():
+            with self.subTest(role=role):
+                text = render(role)
+                actual = {port for port in range(1, 5)
+                          if f"set interface state GigabitEthernet{port}/0/0 down" in text}
+                self.assertEqual(actual, set(ports))
+
     def test_no_implicit_host_mutations(self):
         for role in ("R1", "R2", "R3", "R4"):
             text = render(role)

@@ -13,6 +13,13 @@ The accepted QEMU e1000 topology was strictly revalidated and re-recorded:
 4,000/4,000 packets, 81.97 pps, 3,000/1,000 bucket counts, RTT p50/p99
 414.90/3566.20 us; frame-size throughput and CPU remain unmeasured. The
 machine result explicitly keeps `performance_status=ENVIRONMENT-OPEN` for PCI.
+
+The R2 management address was rechecked after the reported reboot: host
+`192.168.1.243` reached R2 P3 `192.168.1.244` with 5/5 replies and the
+expected I211 MAC. A review also corrected the physical lab profile renderer
+to keep every node's management P3 administratively up; seven profile tests
+pass. This source fix does not modify existing node profiles, and management
+reachability still does not establish inter-router or dynamic-route recovery.
 The separate fresh lifecycle topology passed its failover/restart gate but
 does not contain the 1,000-packet-per-flow soak; the artifacts are not mixed.
 
