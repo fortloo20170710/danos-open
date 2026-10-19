@@ -31,9 +31,11 @@ Full evidence is in
 The same post-boot R2 serial audit found P1 `10.10.0.2/24` up at 1 Gbps and
 the `30.30.30.0/24 via 10.10.0.1` FIB route present, but no ARP neighbor for
 `10.10.0.1`; five low-rate VPP probes returned 0/5 and the P1 drop counter
-rose by five. No configuration/cabling was changed. R2→R3 adjacency and
-post-reboot transit therefore remain unverified pending inspection of R3 P4
-and the physical link.
+rose by five. A second 5-probe window after warming R2's R3 P3 neighbor also
+returned 0/5, with no P1 ARP neighbor and drops at 10. Separately, warm-neighbor
+R2 P3→R3 P3 VPP ping passed 5/5. No configuration/cabling was changed.
+R2→R3 P1/P4 adjacency and post-reboot transit remain unverified pending
+inspection of R3 P4 and the physical link.
 R2's FRR 10.3 service and zserv socket are active, but FRR's route table is
 empty; bgpd/ospfd and mgrd are not active. The VPP route is present but not
 FRR-learned. Thus the physical ZAPI→DPA→VPP dynamic route loop did not recover

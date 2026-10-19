@@ -18,10 +18,11 @@
   5/5. Earlier commands by other actors were not audited, so automatic
   persistence/replay is unproven; this is not transit/performance evidence.
 - The same R2 post-boot audit found its P1 interface/FIB route present, but no
-  ARP neighbor at `10.10.0.1`; five VPP probes returned 0/5 with P1 drop +5.
-  Next hardware-recovery check is R3 P4 admin/link/address and the R2.P1↔R3.P4
-  cable; no configuration or cabling was changed in this audit. Until then,
-  do not count the post-reboot inter-router path as recovered.
+  ARP neighbor at `10.10.0.1`; two VPP probe windows returned 0/5 each, with
+  P1 drop +10. A warm-neighbor R2 P3→R3 P3 VPP check passed 5/5, isolating the
+  remaining failure to the P1/P4 path. Next recovery check is R3 P4
+  admin/link/address and the R2.P1↔R3.P4 cable; no config/cabling was changed.
+  Until then, do not count the post-reboot inter-router path as recovered.
 - R2 FRR 10.3 and `/run/frr/zserv.api` are active, but its route table is empty
   and bgpd/ospfd/mgrd are inactive; the VPP static lab route is not dynamic
   FRR evidence. Full FRR→DPA→VPP restart replay remains open and needs a

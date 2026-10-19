@@ -25,6 +25,19 @@ R3 management ping artifact `build/r3-p3-reachability-20261019.host-ping.log`
 SHA256 `5d71f49069536093e1c3fd25d74948eb29702dc4a9019176e092e1201cd0623f`.
 Management P3 passing does not promote this data-plane check to PASS.
 
+Follow-up on the same boot warmed R2's ARP entry for R3 P3 (`192.168.1.246`,
+MAC `00:1f:7a:69:f7:4e`): the first VPP probe was 4/5 and the immediate
+warm-neighbor repeat was 5/5 with zero loss. A second R2 P1 probe after that
+warm-up still returned 0/5; the neighbor table still had no `10.10.0.1`, and
+P1 TX/drop counters reached 10/10. This rules out only a one-time startup
+delay on the R2 side; R3 P4/cabling remains unchecked. P3 transcripts:
+`build/r2-vpp-p3-to-r3-p3-20261019.serial.log` SHA256
+`1f68510513c075f073efcc8647285d8e2452a568f2a0ea30871fb8f42f5dd1f6`;
+warm repeat `build/r2-vpp-p3-to-r3-p3-warm-20261019.serial.log` SHA256
+`ef79a96aa818e6dce9db4df819c45c530b6a9a1d064b6c1c24d068e81d4ba362`;
+P1 repeat `build/r2-p1-peer-reprobe-20261019.serial.log` SHA256
+`dd97fa44c90255e9bbb8787194b9104a5d2058065a2f452ec4beda9621687cb2`.
+
 FRR/ZAPI read-only audit on the same R2 boot found `frr.service` active with
 zebra, mgmtd and staticd; `bgpd` and `ospfd` were inactive. `/run/frr/zserv.api`
 exists and is listening, but `vtysh show ip route summary` reported zero
