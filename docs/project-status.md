@@ -15,12 +15,16 @@ TSan and fuzz jobs. This addendum records evidence only; it does not certify
 later uncommitted source changes. These checks do not replace the unified
 QEMU/VMware/release gate or real PCI performance acceptance.
 
-After an R2 reboot, the VPP service was found inactive. It was started through
-the serial console, all four I211 devices passed the runtime PCI bind preflight,
-and P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
-`192.168.1.244/24`. Bidirectional host reachability passed 5/5. This address
-remains runtime-only; transit, FRR/DPA programming, and performance were not
-tested in this recovery action. Full evidence is in
+After an earlier R2 reboot, the VPP service was found inactive; it was started
+through the serial console, all four I211 devices passed the runtime PCI bind
+preflight, and P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored
+to `192.168.1.244/24`. On a later reboot observed 2026-10-19, VPP was already
+active and P3 already had `.244/24` before any configuration command; no
+address change was made, and host ping again passed 5/5. This proves the
+address was present across that reboot, but its persistence/replay source has
+not been identified and should not yet be treated as a durable config
+guarantee. Transit, FRR/DPA programming, and performance were not tested in
+this recovery action. Full evidence is in
 [`i211-physical-traffic-runbook.md`](i211-physical-traffic-runbook.md).
 
 An uncommitted testpmd draft exists in the shared worktree, but it is not an
@@ -39,6 +43,15 @@ options](https://doc.dpdk.org/guides-24.07/testpmd_app_ug/run_app.html) and
 Keep PCI performance `ENVIRONMENT-OPEN` until a corrected runner binds
 source, DUT, independent receiver, counters, timing, and build identity in
 one verifiable result.
+
+The 2026-10-19 virtual-lane replay now distinguishes missing VMware replay
+inputs from a failed archived result: it validated the archived QEMU
+4,000/4,000 ECMP soak and emitted a structured VMware `ENVIRONMENT-OPEN`
+record because the configured rc1 ISO is absent. VMware fields remain null;
+the old acceptance artifact is not overwritten. Python unit tests and CTest
+passed 81/81. This tooling/reporting correction does not close VMware or PCI
+performance acceptance; exact artifact hashes are in
+[`v0.16-performance-baselines.md`](v0.16-performance-baselines.md).
 
 ## 2026-10-15 current development summary
 

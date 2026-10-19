@@ -21,10 +21,25 @@ def baseline(path):
         if len(parsed) > 1:
             raise ValueError('multiple field values')
         values[key] = parsed[0] if parsed else ''
-    if values.get('status') != 'PASS':
-        raise ValueError('functional lane must have a PASS result')
     if values.get('lane') not in ('qemu-e1000', 'vmware-vmxnet3-polling'):
         raise ValueError('only archived virtual functional lanes are supported')
+    if values.get('status') == 'ENVIRONMENT-OPEN':
+        reason = values.get('reason', '').strip()
+        if not reason:
+            raise ValueError('ENVIRONMENT-OPEN lane requires a reason')
+        return dict(lane=values['lane'], status='ENVIRONMENT-OPEN',
+                    physical_performance_accepted=False, source=str(path),
+                    source_sha256=hashlib.sha256(raw).hexdigest(),
+                    source_commit=None, iso_sha256=None, recorded_utc=None,
+                    scope=None, packets_tx=None, packets_rx=None,
+                    duration_ms=None, tx_pps=None, rx_pps=None,
+                    mac_frame_mbps=None, packet_size_bytes=None,
+                    rtt_p50_us=None, rtt_p99_us=None, cpu_pct=None,
+                    legacy_unqualified_cpu_pct=None,
+                    ecmp_bucket_packets=None, ecmp_bucket_share_pct=None,
+                    ecmp_counter_coverage_pct=None, missing=[reason])
+    if values.get('status') != 'PASS':
+        raise ValueError('functional lane must have PASS or ENVIRONMENT-OPEN status')
 
     def number(key, optional=False):
         if not values.get(key) and optional:
@@ -85,7 +100,10 @@ def main():
             raise ValueError('duplicate lane')
     except (ValueError, KeyError, OSError) as exc:
         parser.error(str(exc))
-    result = dict(schema_version=1, status='PARTIAL-BASELINE', lanes=lanes,
+    overall = ('ENVIRONMENT-OPEN' if any(lane['status'] == 'ENVIRONMENT-OPEN'
+                                         for lane in lanes)
+               else 'PARTIAL-BASELINE')
+    result = dict(schema_version=1, status=overall, lanes=lanes,
                   pci_performance_status='ENVIRONMENT-OPEN')
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')

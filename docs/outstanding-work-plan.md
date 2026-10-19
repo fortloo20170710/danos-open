@@ -13,8 +13,10 @@
   performance or full release-gate items below.
 - R2 P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
   `192.168.1.244/24` after reboot by starting the inactive VPP service and
-  applying the runtime CLI config. Bidirectional host reachability passed
-  5/5; this is not transit/performance evidence and does not survive reboot.
+  applying the runtime CLI config. On a later reboot, VPP was active and that
+  address was already present without a new command; host ping passed 5/5.
+  The persistence/replay source is not yet identified, so do not treat this as
+  a durable-config guarantee or transit/performance evidence.
 - Highest-priority remaining lane is a trustworthy real-PCI measurement. The
   shared-worktree testpmd draft is not acceptance-ready: it does not establish
   VPP transit or ECMP attribution, parses a nonstandard stats format, infers
@@ -24,6 +26,15 @@
   TX, DUT ingress/egress, independent receiver, monotonic duration, CPU
   samples, errors/loss, and artifact identity are correlated. See the official
   [DPDK 24.07 application guide](https://doc.dpdk.org/guides-24.07/testpmd_app_ug/run_app.html).
+- The virtual evidence wrapper now emits a schema-valid `ENVIRONMENT-OPEN`
+  result with null VMware metrics when its original ISO or serial evidence is
+  missing, preserves the legacy VMware PASS artifact, and fails closed for an
+  invalid present artifact. The 2026-10-19 default-path replay validated the
+  archived QEMU 4,000/4,000 functional result but could not revalidate VMware
+  because the rc1 ISO is absent. Focused report tests passed and CTest passed
+  81/81. See `docs/v0.16-performance-baselines.md` for hashes. This improves
+  evidence classification only; VMware, PCI performance, and release gates
+  remain open.
 - Next safe implementation step: replace the draft methodology with a
   verifier-backed, independently observed measurement flow, without stopping
   VPP or changing physical cabling until a coordinated maintenance window is

@@ -1,5 +1,24 @@
 # I211 physical LIVE traffic qualification runbook
 
+## R2 P3 observed after reboot — 2026-10-19 (read-only)
+
+On the later reboot, the serial console identified `danos-dpdk-runner`; VPP
+was active, `danos-mgrd` inactive, and P3 was already up at
+`192.168.1.244/24` before any configuration command. The hardware identity
+was `GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`, PCI `0000:03:00.0`
+(`8086:1539`), 1 Gbps/full duplex. Host `.243` pinged R2 `.244` 5/5 with
+0% loss. No device configuration was changed in this observation. The
+presence across this reboot is verified, but the address replay/persistence
+source is unresolved: `/etc/danos/physical-lab.cli` does not contain `.244`
+and the `vpp.service` lab replay is not the identified source. Do not infer a
+durable config contract from one reboot.
+
+Evidence: `build/r2-reboot-p3-state-20261019.serial.log` SHA256
+`24e36d557156a979e1cacd0e4bd26c6ce69730531e55bc06ff8a490b98df05f1`;
+`build/r2-reboot-p3-state-20261019.host-ping.log` SHA256
+`8ba00149f1b206fba80dde6d96265759c6874c9c8086af0c0421dd883075fe54`.
+This is management-L2 reachability only, not transit or performance evidence.
+
 ## R2 P3 runtime address restored after reboot — 2026-10-19
 
 The R2 serial console was identified by the four I211 PCI functions and the
@@ -15,9 +34,10 @@ address; R2→development-host `192.168.1.243` ping passed 5/5, and the host→R
 `.244` ping passed 5/5 with 0% loss. The serial transcript is
 `build/r2-p3-reconfig-20261019.serial.log`, SHA256
 `c62ff89a008e5096881bd48450ecd7145a4cd82326b02b5865291f7c404599f7`.
-This is management-L2 reachability only. The address was applied through the
-runtime VPP CLI and is not persistent across reboot; no transit or performance
-qualification is implied.
+This was management-L2 reachability only. At the time the address was applied
+through runtime VPP CLI; a later reboot showed it present without an explicit
+address command, but the source remains unresolved (see the read-only
+observation above). No transit or performance qualification is implied.
 
 更新时间：2026-10-15
 

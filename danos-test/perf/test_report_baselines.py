@@ -41,6 +41,18 @@ class Baselines(unittest.TestCase):
         self.assertAlmostEqual(result['mac_frame_mbps'], 0.06272)
         self.assertAlmostEqual(result['ecmp_counter_coverage_pct'], 25.225)
 
+    def test_missing_lane_evidence_is_open_not_pass_or_fail(self):
+        result = self.read('status=ENVIRONMENT-OPEN\nlane=vmware-vmxnet3-polling\n'
+                           "reason='original ISO unavailable'\n")
+        self.assertEqual(result['status'], 'ENVIRONMENT-OPEN')
+        self.assertEqual(result['missing'], ['original ISO unavailable'])
+        self.assertIsNone(result['packets_tx'])
+        self.assertFalse(result['physical_performance_accepted'])
+
+    def test_open_lane_requires_reason(self):
+        with self.assertRaisesRegex(ValueError, 'requires a reason'):
+            self.read('status=ENVIRONMENT-OPEN\nlane=vmware-vmxnet3-polling\n')
+
     def test_reject_inconsistent_nonfinite_and_duplicate_data(self):
         for data in (SAMPLE.replace('pps=80', 'pps=nan'), SAMPLE.replace('pps=80', 'pps=100'),
                      SAMPLE.replace('packets_rx=4000', 'packets_rx=4001'),
