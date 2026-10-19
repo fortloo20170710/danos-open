@@ -8,13 +8,15 @@
 ## Current v0.16 status
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
-release has not been qualified. The latest documented source checkpoint
-passes CTest 77/77 and the software/backend contract gates. QEMU, VMware and
-physical I211 evidence demonstrates scoped functional forwarding and recovery,
-but does not qualify sustained PCI throughput, latency, CPU cost or line rate.
-The R3 I211 runner preflight passes; measured PCI performance remains
-`ENVIRONMENT-OPEN` because a qualified sustained-load and independent
-measurement setup is unavailable.
+release has not been qualified. Source checkpoint `515e581` was locally
+verified with CTest 81/81 and the deterministic backend contract gate; its
+docs-only descendant `a4638c7` passed GitHub CI, Coverage and Interop Gate.
+The full unified QEMU/VMware release gate was not rerun on that checkpoint.
+QEMU, VMware and physical I211 evidence demonstrates scoped functional
+forwarding and recovery, but does not qualify sustained PCI throughput,
+latency, CPU cost or line rate. Measured PCI performance remains
+`ENVIRONMENT-OPEN` until a verified sustained-load test includes an
+independent receiver.
 R2/R4 rollout, uniform four-node qualification, live VPP reconnect recovery,
 and production PKI/mTLS deployment also remain open. BFD, VLAN, VXLAN and EVPN
 remain deferred until the v0.16 release decision.
@@ -58,8 +60,9 @@ ctest --output-on-failure
 ./build/danos-test/conformance_test
 ```
 
-Expected output: 34 ctest suites pass, including the v0.3 vertical
-stack suites:
+Expected: CTest reports 100% tests passed. The registered test count varies
+by build configuration; the current local source checkpoint reports 81/81.
+The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
 gnmi_proto    — gNMI protobuf wire format (exact-byte tests)

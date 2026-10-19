@@ -18,9 +18,12 @@
 - Highest-priority remaining lane is a trustworthy real-PCI measurement. The
   shared-worktree testpmd draft is not acceptance-ready: it does not establish
   VPP transit or ECMP attribution, parses a nonstandard stats format, infers
-  PPS from configured sleep, and hard-codes CPU. Keep performance OPEN until
-  source TX, DUT ingress/egress, independent receiver, monotonic duration,
-  CPU samples, errors/loss, and artifact identity are correlated.
+  PPS from configured sleep, and hard-codes CPU; it also passes the command
+  file incorrectly instead of using DPDK's `--cmdline-file`, and quotes a
+  10x-inflated 1 Gbps minimum-frame rate. Keep performance OPEN until source
+  TX, DUT ingress/egress, independent receiver, monotonic duration, CPU
+  samples, errors/loss, and artifact identity are correlated. See the official
+  [DPDK 24.07 application guide](https://doc.dpdk.org/guides-24.07/testpmd_app_ug/run_app.html).
 - Next safe implementation step: replace the draft methodology with a
   verifier-backed, independently observed measurement flow, without stopping
   VPP or changing physical cabling until a coordinated maintenance window is

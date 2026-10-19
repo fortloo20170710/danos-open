@@ -28,9 +28,17 @@ accepted VPP/ECMP or performance lane: the TX scripts do not establish a
 verified VPP transit path, the ECMP script only separates port-local traffic,
 the parser's expected stats format does not match normal testpmd output, PPS
 is inferred from a configured sleep rather than measured elapsed time, and
-CPU is hard-coded. Keep PCI performance `ENVIRONMENT-OPEN` until a corrected
-runner binds source, DUT, independent receiver, counters, timing, and build
-identity in one verifiable result.
+CPU is hard-coded. The launcher supplies its command file as a positional
+argument after `--`, whereas DPDK 24.07 documents `--cmdline-file`; it also
+sets each local port MAC rather than specifying the peer MAC via `set eth-peer`.
+The draft's 14.88 Mpps at 1 Gbps claim is 10x too high (minimum-frame 1 Gbps
+wire rate is about 1.49 Mpps, with exact accounting dependent on whether the
+configured packet size includes FCS). See the [DPDK 24.07 application
+options](https://doc.dpdk.org/guides-24.07/testpmd_app_ug/run_app.html) and
+[runtime functions](https://doc.dpdk.org/guides-24.07/testpmd_app_ug/testpmd_funcs.html).
+Keep PCI performance `ENVIRONMENT-OPEN` until a corrected runner binds
+source, DUT, independent receiver, counters, timing, and build identity in
+one verifiable result.
 
 ## 2026-10-15 current development summary
 
