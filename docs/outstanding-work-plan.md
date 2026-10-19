@@ -2,7 +2,9 @@
 
 ### 2026-10-19 current execution checkpoint
 
-- Current pushed source checkpoint is `bc55bee` (`main == origin/main`).
+- Verification source checkpoint is `bc55bee`; this status synchronization is
+  committed on the same main line. The verification details below refer to
+  that source checkpoint, not to the documentation-only follow-up commit.
   Parallel testpmd/release files remain uncommitted in the shared worktree and
   are excluded from this checkpoint and release evidence. Fresh `build-test`
   CTest passed 81/81 and the three-stage deterministic backend contract gate

@@ -2,7 +2,9 @@
 
 ## 2026-10-19 current checkout and physical recovery checkpoint
 
-Verification source checkpoint: pushed `bc55bee` (`main == origin/main`).
+Verification source checkpoint: `bc55bee`; this status synchronization is a
+documentation-only follow-up on `main`. The test and workflow evidence below
+belongs to the stated source checkpoint.
 Parallel testpmd/release files remain uncommitted in the shared worktree and
 are excluded from this source checkpoint and release evidence. Fresh local
 `build-test` passed CTest **81/81**; the deterministic three-stage backend
