@@ -1,5 +1,30 @@
 # I211 physical LIVE traffic qualification runbook
 
+## R2 post-boot P1 peer-resolution probe — 2026-10-19 (FAIL, bounded)
+
+After confirming R2 P3 management reachability, the serial session verified
+P1 `GigabitEthernet1/0/0`, MAC `00:1f:7a:69:f5:ec`, PCI `0000:01:00.0`,
+carrier up at 1 Gbps/full duplex, and `10.10.0.2/24`. The `30.30.30.0/24`
+FIB entry exists via `10.10.0.1` on P1. However, VPP `show ip neighbors`
+contained only the P3 host `.243` entry and no `10.10.0.1`; a bounded
+`ping 10.10.0.1 source GigabitEthernet1/0/0 repeat 5` returned 5 sent / 0
+received, and P1 TX/drop counters each increased by five. Thus startup
+restored the local route/interface state, but the R2↔R3 P1/P4 adjacency is
+not currently proven. Likely causes include peer P4 admin/link/address state
+or cabling; the exact cause is unverified. No config or cabling was changed.
+The development host's R3 P3 management probe to `.246` passed 5/5, but
+SSH/22 timed out, so this did not reveal R3 P4 state.
+
+Evidence: `build/r2-postboot-p1-probe-20261019.serial.log` SHA256
+`894018c1108d6c948eb3c1002cccd4eaabeee72df1cfa2ba5a8768bcb302ad84`;
+`build/r2-postboot-p1-neighbor-20261019.serial.log` SHA256
+`28021efd150391ff7f7d5689ac7721ef5b1f64ec768657956bd90de8b0f90f71`;
+`build/r2-postboot-route-audit-20261019.serial.log` SHA256
+`c61738e91ece4b043eafe8398dff6268119a3119341e8e77557cc8102dd23f31`.
+R3 management ping artifact `build/r3-p3-reachability-20261019.host-ping.log`
+SHA256 `5d71f49069536093e1c3fd25d74948eb29702dc4a9019176e092e1201cd0623f`.
+Management P3 passing does not promote this data-plane check to PASS.
+
 ## R2 P3 observed after reboot — 2026-10-19 (read-only)
 
 On the later reboot, the serial console identified `danos-dpdk-runner`; VPP

@@ -17,6 +17,11 @@
   address was present before commands from this session; host ping passed
   5/5. Earlier commands by other actors were not audited, so automatic
   persistence/replay is unproven; this is not transit/performance evidence.
+- The same R2 post-boot audit found its P1 interface/FIB route present, but no
+  ARP neighbor at `10.10.0.1`; five VPP probes returned 0/5 with P1 drop +5.
+  Next hardware-recovery check is R3 P4 admin/link/address and the R2.P1↔R3.P4
+  cable; no configuration or cabling was changed in this audit. Until then,
+  do not count the post-reboot inter-router path as recovered.
 - Highest-priority remaining lane is a trustworthy real-PCI measurement. The
   shared-worktree testpmd draft is not acceptance-ready: it does not establish
   VPP transit or ECMP attribution, parses a nonstandard stats format, infers

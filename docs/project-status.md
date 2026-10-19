@@ -28,6 +28,13 @@ FRR/DPA programming, and performance were not tested in this recovery action.
 Full evidence is in
 [`i211-physical-traffic-runbook.md`](i211-physical-traffic-runbook.md).
 
+The same post-boot R2 serial audit found P1 `10.10.0.2/24` up at 1 Gbps and
+the `30.30.30.0/24 via 10.10.0.1` FIB route present, but no ARP neighbor for
+`10.10.0.1`; five low-rate VPP probes returned 0/5 and the P1 drop counter
+rose by five. No configuration/cabling was changed. R2→R3 adjacency and
+post-reboot transit therefore remain unverified pending inspection of R3 P4
+and the physical link.
+
 An uncommitted testpmd draft exists in the shared worktree, but it is not an
 accepted VPP/ECMP or performance lane: the TX scripts do not establish a
 verified VPP transit path, the ECMP script only separates port-local traffic,
