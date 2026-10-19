@@ -2,18 +2,17 @@
 
 ## 2026-10-19 current checkout and physical recovery checkpoint
 
-Verification source checkpoint: `515e581`; at capture, `main` was four
-commits ahead of `origin/main` and parallel-work changes were uncommitted. Do
-not treat that dirty source snapshot as a release artifact. Its fresh local
-build tree (`build-test`) passed CTest **81/81**; the deterministic three-stage
-backend contract gate also passed (DPA conformance 11/11, programming pipeline,
-and composite Route/NH/NHGroup lifecycle). After pushing `c5ea4ec`, GitHub CI,
-Coverage and Interop Gate all completed successfully (runs `39238792391`,
-`39238792051`, `39238792061`). CI included x86_64/aarch64 build and tests plus
-DPA conformance; Interop included real VPP V1–V5, gnmic I1–I9, K4/K5, ASan/UBSan,
-TSan and fuzz jobs. This addendum records evidence only; it does not certify
-later uncommitted source changes. These checks do not replace the unified
-QEMU/VMware/release gate or real PCI performance acceptance.
+Verification source checkpoint: pushed `bc55bee` (`main == origin/main`).
+Parallel testpmd/release files remain uncommitted in the shared worktree and
+are excluded from this source checkpoint and release evidence. Fresh local
+`build-test` passed CTest **81/81**; the deterministic three-stage backend
+contract gate also passed (DPA conformance 11/11, programming pipeline, and
+composite Route/NH/NHGroup lifecycle). GitHub CI, Coverage and Interop Gate
+completed successfully on this commit (runs `39242721964`, `39242721925`,
+`39242721951`). CI included x86_64/aarch64 builds/tests and DPA conformance;
+Interop included hosted VPP V1–V5, gnmic I1–I9, K4/K5, ASan/UBSan, TSan and
+fuzz jobs. These checks do not replace the unified QEMU/VMware/release gate or
+real PCI performance acceptance.
 
 After an earlier R2 reboot, the VPP service was found inactive; it was started
 through the serial console, all four I211 devices passed the runtime PCI bind

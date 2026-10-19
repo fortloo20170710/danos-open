@@ -2,15 +2,17 @@
 
 ### 2026-10-19 current execution checkpoint
 
-- Verification checkpoint `515e581` was four commits ahead of origin and had
-  uncommitted parallel edits; preserve those edits and do not use that state
-  as a release artifact. Fresh `build-test` CTest passed 81/81 and the
-  three-stage deterministic backend contract gate passed.
-- Documentation/recovery record pushed as `c5ea4ec`. Its GitHub CI,
-  Coverage and Interop Gate all passed (runs `39238792391`, `39238792051`,
-  `39238792061`), including x86_64/aarch64, DPA conformance, real VPP V1–V5,
-  gnmic I1–I9, K4/K5 and sanitizer/fuzz jobs. This does not close the physical
-  performance or full release-gate items below.
+- Current pushed source checkpoint is `bc55bee` (`main == origin/main`).
+  Parallel testpmd/release files remain uncommitted in the shared worktree and
+  are excluded from this checkpoint and release evidence. Fresh `build-test`
+  CTest passed 81/81 and the three-stage deterministic backend contract gate
+  passed (DPA conformance 11/11, programming pipeline, composite
+  Route/NH/NHGroup lifecycle).
+- GitHub CI, Coverage and Interop Gate all passed on `bc55bee` (runs
+  `39242721964`, `39242721925`, `39242721951`), including x86_64/aarch64,
+  DPA conformance, hosted VPP V1–V5, gnmic I1–I9, K4/K5 and sanitizer/fuzz
+  jobs. These hosted checks do not close the physical performance or unified
+  release-gate items below.
 - R2 P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
   `192.168.1.244/24` after reboot by starting the inactive VPP service and
   applying the runtime CLI config. On a later boot, VPP was active and the
