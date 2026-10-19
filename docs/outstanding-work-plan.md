@@ -67,8 +67,10 @@ Execution priority, as confirmed on 2026-10-15:
    five-port router via P3. Host `.243`↔R2 P3 `.244` passed bounded ping, and
    host `.243`↔R1 P3 `.245` and `.243`↔R3 P3 `.246` passed 5/5 in both
    directions; both port identities and 1 Gbps/full duplex carriers match.
-   R4 P3 `.247` now also passes host ping 5/5 each way. All four P3 addresses
-   `.244`–`.247` are runtime-only. R2/R4 report r9 (R4 build commit `3f1691c`),
+   R4 P3 `.247` now also passes host ping 5/5 each way. R1/R3/R4 addresses
+   `.245`–`.247` were applied at runtime; R2 `.244` has been observed after a
+   later boot, but the source is untraced and automatic replay is unproven.
+   Treat all four as persistence-unqualified. R2/R4 report r9 (R4 build commit `3f1691c`),
    while R1/R3 report r14. The host route to the test destinations currently
    selects R2 P3 `.244` on `enp4s0`; the bounded four-node 16,384-frame
    multi-flow run passed with independent receiver deltas and zero observed
