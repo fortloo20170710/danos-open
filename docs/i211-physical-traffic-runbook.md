@@ -14,7 +14,7 @@ Verification: VPP reports the service active and P3 up with the expected
 address; R2→development-host `192.168.1.243` ping passed 5/5, and the host→R2
 `.244` ping passed 5/5 with 0% loss. The serial transcript is
 `build/r2-p3-reconfig-20261019.serial.log`, SHA256
-`8434ce63a3132532f5d85f76df21657b64988d6b16342ee551e8854eb52a9315`.
+`c62ff89a008e5096881bd48450ecd7145a4cd82326b02b5865291f7c404599f7`.
 This is management-L2 reachability only. The address was applied through the
 runtime VPP CLI and is not persistent across reboot; no transit or performance
 qualification is implied.
