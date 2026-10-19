@@ -1,5 +1,24 @@
 # I211 physical LIVE traffic qualification runbook
 
+## R2 P3 runtime address restored after reboot — 2026-10-19
+
+The R2 serial console was identified by the four I211 PCI functions and the
+P1 MAC `00:1f:7a:69:f5:ec`; P3 was confirmed as
+`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`. After reboot, VPP was
+inactive, so the VPP CLI socket did not exist. Starting the enabled
+`vpp.service` passed PCI binding for all four I211 functions and restored the
+VPP CLI/API/stat sockets. P3 was then administratively enabled and assigned
+`192.168.1.244/24`.
+
+Verification: VPP reports the service active and P3 up with the expected
+address; R2→development-host `192.168.1.243` ping passed 5/5, and the host→R2
+`.244` ping passed 5/5 with 0% loss. The serial transcript is
+`build/r2-p3-reconfig-20261019.serial.log`, SHA256
+`8434ce63a3132532f5d85f76df21657b64988d6b16342ee551e8854eb52a9315`.
+This is management-L2 reachability only. The address was applied through the
+runtime VPP CLI and is not persistent across reboot; no transit or performance
+qualification is implied.
+
 更新时间：2026-10-15
 
 ## Independent host sender route preflight — 2026-10-15 (ENVIRONMENT-OPEN)

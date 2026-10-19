@@ -1,5 +1,33 @@
 # DANOS Open Project Status
 
+## 2026-10-19 current checkout and physical recovery checkpoint
+
+Verification source checkpoint: `515e581`; at capture, `main` was four
+commits ahead of `origin/main` and parallel-work changes were uncommitted. Do
+not treat that dirty source snapshot as a release artifact. Its fresh local
+build tree (`build-test`) passed CTest **81/81**; the deterministic three-stage
+backend contract gate also passed (DPA conformance 11/11, programming pipeline,
+and composite Route/NH/NHGroup lifecycle). This addendum records evidence only;
+it does not certify later uncommitted source changes. These checks do not
+replace the unified QEMU/VMware/release gate or real PCI performance acceptance.
+
+After an R2 reboot, the VPP service was found inactive. It was started through
+the serial console, all four I211 devices passed the runtime PCI bind preflight,
+and P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
+`192.168.1.244/24`. Bidirectional host reachability passed 5/5. This address
+remains runtime-only; transit, FRR/DPA programming, and performance were not
+tested in this recovery action. Full evidence is in
+[`i211-physical-traffic-runbook.md`](i211-physical-traffic-runbook.md).
+
+An uncommitted testpmd draft exists in the shared worktree, but it is not an
+accepted VPP/ECMP or performance lane: the TX scripts do not establish a
+verified VPP transit path, the ECMP script only separates port-local traffic,
+the parser's expected stats format does not match normal testpmd output, PPS
+is inferred from a configured sleep rather than measured elapsed time, and
+CPU is hard-coded. Keep PCI performance `ENVIRONMENT-OPEN` until a corrected
+runner binds source, DUT, independent receiver, counters, timing, and build
+identity in one verifiable result.
+
 ## 2026-10-15 current development summary
 
 The **v0.16 minimal L3 NOS loop is approximately 90% landed**. This is an

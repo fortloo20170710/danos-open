@@ -1,5 +1,27 @@
 # Outstanding work plan
 
+### 2026-10-19 current execution checkpoint
+
+- Verification checkpoint `515e581` was four commits ahead of origin and had
+  uncommitted parallel edits; preserve those edits and do not use that state
+  as a release artifact. Fresh `build-test` CTest passed 81/81 and the
+  three-stage deterministic backend contract gate passed.
+- R2 P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
+  `192.168.1.244/24` after reboot by starting the inactive VPP service and
+  applying the runtime CLI config. Bidirectional host reachability passed
+  5/5; this is not transit/performance evidence and does not survive reboot.
+- Highest-priority remaining lane is a trustworthy real-PCI measurement. The
+  shared-worktree testpmd draft is not acceptance-ready: it does not establish
+  VPP transit or ECMP attribution, parses a nonstandard stats format, infers
+  PPS from configured sleep, and hard-codes CPU. Keep performance OPEN until
+  source TX, DUT ingress/egress, independent receiver, monotonic duration,
+  CPU samples, errors/loss, and artifact identity are correlated.
+- Next safe implementation step: replace the draft methodology with a
+  verifier-backed, independently observed measurement flow, without stopping
+  VPP or changing physical cabling until a coordinated maintenance window is
+  explicitly underway. Then repeat uniform-r14/recovery and production-PKI
+  gates; only after those and performance disposition revisit v0.16.0 release.
+
 Derived from the v1.0 architecture review and the 2026-10-04 hardening pass
 (`docs/security-and-correctness-hardening-2026-10-04.md`). Ordered by
 dependency, not by severity: several items below are blocked on the two items
