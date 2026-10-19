@@ -1,5 +1,18 @@
 # DANOS Open Project Status
 
+## 2026-10-19 VMware requalification preparation
+
+Clean-source VMware polling-only DANOS and peer LIVE ISOs have been rebuilt
+from pushed commit `963aea4`; their hashes and embedded profile are indexed in
+[`v0.16-acceptance-matrix.md`](v0.16-acceptance-matrix.md). This confirms
+artifact construction, not runtime acceptance. The peer image is configured
+to send 1,000 probes on each of the two independent VMXNET3 networks. Workstation
+currently has no running guests and the host's `vmmon`/`vmnet` modules are not
+loaded. Their local `.ko` files match the running kernel, but noninteractive
+sudo denied module insertion. October 2 serial logs belong to a different
+image and are not valid evidence for the new image. VMware boot/traffic and
+real PCI sustained performance remain open.
+
 ## 2026-10-19 QEMU recovery gate update
 
 A clean-source QEMU e1000 two-port image built from `2bc6842` passed the full

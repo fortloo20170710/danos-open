@@ -1,5 +1,22 @@
 # Outstanding work plan
 
+### 2026-10-19 VMware runner requalification
+
+- Rebuilt the polling-only DANOS VMXNET3 image and a matching Linux peer LIVE
+  image from clean pushed commit `963aea4`. The DANOS profile embeds both
+  VMXNET3 BDFs, independent `/24` networks, VPP 26.10 and polling-only mode;
+  the peer profile sends finite 1,000-packet probes on both networks. Hashes
+  are in `docs/v0.16-acceptance-matrix.md`.
+- Do not reuse the October 2 serial logs for these images: their boot commit
+  and ISO identity differ. A fresh VMware run is not yet possible because
+  `vmmon` and `vmnet` are not loaded and the current sudoers policy rejects
+  module insertion. The module files' vermagic matches the running kernel.
+  After authorized module load, boot the isolated pair, retain new serial
+  logs, and run the strict VMXNET3 verifier; keep the historical 2,000-packet
+  result separate.
+- This does not close sustained PCI/DPDK performance or the physical R2
+  P1↔R3 P4/zserv recovery gap.
+
 ### 2026-10-19 QEMU recovery follow-up
 
 - Clean-source QEMU image `2bc6842` now passes the full two-FRR/VPP topology
