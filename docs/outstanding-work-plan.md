@@ -22,6 +22,10 @@
   Next hardware-recovery check is R3 P4 admin/link/address and the R2.P1↔R3.P4
   cable; no configuration or cabling was changed in this audit. Until then,
   do not count the post-reboot inter-router path as recovered.
+- R2 FRR 10.3 and `/run/frr/zserv.api` are active, but its route table is empty
+  and bgpd/ospfd/mgrd are inactive; the VPP static lab route is not dynamic
+  FRR evidence. Full FRR→DPA→VPP restart replay remains open and needs a
+  controlled topology/daemon configuration after R3 P4 reachability is fixed.
 - Highest-priority remaining lane is a trustworthy real-PCI measurement. The
   shared-worktree testpmd draft is not acceptance-ready: it does not establish
   VPP transit or ECMP attribution, parses a nonstandard stats format, infers

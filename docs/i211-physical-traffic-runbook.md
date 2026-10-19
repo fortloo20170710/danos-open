@@ -25,6 +25,17 @@ R3 management ping artifact `build/r3-p3-reachability-20261019.host-ping.log`
 SHA256 `5d71f49069536093e1c3fd25d74948eb29702dc4a9019176e092e1201cd0623f`.
 Management P3 passing does not promote this data-plane check to PASS.
 
+FRR/ZAPI read-only audit on the same R2 boot found `frr.service` active with
+zebra, mgmtd and staticd; `bgpd` and `ospfd` were inactive. `/run/frr/zserv.api`
+exists and is listening, but `vtysh show ip route summary` reported zero
+routes and `show ip route 30.30.30.0/24` returned “Network not in table”.
+The VPP FIB route is therefore not evidence of a FRR-learned dynamic route;
+mgrd is inactive and no ZAPI-to-DPA bridge was observed. Transcript:
+`build/r2-postboot-frr-zapi-audit-20261019.serial.log` SHA256
+`3fddb5875994950e127bf9a892fd4c0ecb4d68fd61f2e8beb40c1e065fdc62e9`;
+process/service audit SHA256
+`269bae4547f09fc6f5f4ea8f4ffecefe7831c841aae840d53d602c1c42c60205`.
+
 ## R2 P3 observed after reboot — 2026-10-19 (read-only)
 
 On the later reboot, the serial console identified `danos-dpdk-runner`; VPP

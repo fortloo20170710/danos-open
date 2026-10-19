@@ -34,6 +34,10 @@ the `30.30.30.0/24 via 10.10.0.1` FIB route present, but no ARP neighbor for
 rose by five. No configuration/cabling was changed. R2→R3 adjacency and
 post-reboot transit therefore remain unverified pending inspection of R3 P4
 and the physical link.
+R2's FRR 10.3 service and zserv socket are active, but FRR's route table is
+empty; bgpd/ospfd and mgrd are not active. The VPP route is present but not
+FRR-learned. Thus the physical ZAPI→DPA→VPP dynamic route loop did not recover
+on this node; see the runbook's read-only zserv audit.
 
 An uncommitted testpmd draft exists in the shared worktree, but it is not an
 accepted VPP/ECMP or performance lane: the TX scripts do not establish a
