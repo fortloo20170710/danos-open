@@ -19,12 +19,13 @@ After an earlier R2 reboot, the VPP service was found inactive; it was started
 through the serial console, all four I211 devices passed the runtime PCI bind
 preflight, and P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored
 to `192.168.1.244/24`. On a later reboot observed 2026-10-19, VPP was already
-active and P3 already had `.244/24` before any configuration command; no
-address change was made, and host ping again passed 5/5. This proves the
-address was present across that reboot, but its persistence/replay source has
-not been identified and should not yet be treated as a durable config
-guarantee. Transit, FRR/DPA programming, and performance were not tested in
-this recovery action. Full evidence is in
+active and P3 already had `.244/24` before any command from this session; no
+address change was made, and host ping again passed 5/5. This is a post-boot
+state observation, not proof of automatic persistence: commands run by other
+actors earlier in this boot were not audited, and the replay source has not
+been identified. Do not treat it as a durable config guarantee. Transit,
+FRR/DPA programming, and performance were not tested in this recovery action.
+Full evidence is in
 [`i211-physical-traffic-runbook.md`](i211-physical-traffic-runbook.md).
 
 An uncommitted testpmd draft exists in the shared worktree, but it is not an

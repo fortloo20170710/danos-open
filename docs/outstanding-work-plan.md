@@ -13,10 +13,10 @@
   performance or full release-gate items below.
 - R2 P3 (`GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`) was restored to
   `192.168.1.244/24` after reboot by starting the inactive VPP service and
-  applying the runtime CLI config. On a later reboot, VPP was active and that
-  address was already present without a new command; host ping passed 5/5.
-  The persistence/replay source is not yet identified, so do not treat this as
-  a durable-config guarantee or transit/performance evidence.
+  applying the runtime CLI config. On a later boot, VPP was active and the
+  address was present before commands from this session; host ping passed
+  5/5. Earlier commands by other actors were not audited, so automatic
+  persistence/replay is unproven; this is not transit/performance evidence.
 - Highest-priority remaining lane is a trustworthy real-PCI measurement. The
   shared-worktree testpmd draft is not acceptance-ready: it does not establish
   VPP transit or ECMP attribution, parses a nonstandard stats format, infers

@@ -4,14 +4,15 @@
 
 On the later reboot, the serial console identified `danos-dpdk-runner`; VPP
 was active, `danos-mgrd` inactive, and P3 was already up at
-`192.168.1.244/24` before any configuration command. The hardware identity
+`192.168.1.244/24` before any configuration command from this session. The hardware identity
 was `GigabitEthernet3/0/0`, MAC `00:1f:7a:69:f5:ee`, PCI `0000:03:00.0`
 (`8086:1539`), 1 Gbps/full duplex. Host `.243` pinged R2 `.244` 5/5 with
 0% loss. No device configuration was changed in this observation. The
-presence across this reboot is verified, but the address replay/persistence
-source is unresolved: `/etc/danos/physical-lab.cli` does not contain `.244`
-and the `vpp.service` lab replay is not the identified source. Do not infer a
-durable config contract from one reboot.
+post-boot state is verified, but automatic persistence is not: commands from
+other actors earlier in this boot were not audited. The replay source is
+unresolved: `/etc/danos/physical-lab.cli` does not contain `.244` and the
+`vpp.service` lab replay is not the identified source. Do not infer a durable
+config contract from this observation.
 
 Evidence: `build/r2-reboot-p3-state-20261019.serial.log` SHA256
 `24e36d557156a979e1cacd0e4bd26c6ce69730531e55bc06ff8a490b98df05f1`;
