@@ -87,6 +87,21 @@ require 'withdraw-rc=0' "$FRR_LOG" 'FRR route withdraw'
 require 'restore-rc=0' "$FRR_LOG" 'FRR route restore'
 require 'cycle-done' "$FRR_LOG" 'FRR cycle completion'
 require 'FRR-RESTART-TEST PASS' "$FRR_LOG" 'FRR daemon restart and zserv recovery'
+recovery_timeout="${QEMU_FRR_RECOVERY_TIMEOUT:-90}"
+if ! [[ "$recovery_timeout" =~ ^[0-9]+$ ]] || (( recovery_timeout < 1 )); then
+    echo "[FAIL] invalid QEMU_FRR_RECOVERY_TIMEOUT: $recovery_timeout" >&2
+    exit 2
+fi
+recovery_deadline=$((SECONDS + recovery_timeout))
+while ! python3 "$ROOT/danos-test/qemu/verify_frr_recovery.py" \
+    "$FRR_LOG" "$DANOS_LOG" >/dev/null 2>&1; do
+    if (( SECONDS >= recovery_deadline )); then
+        python3 "$ROOT/danos-test/qemu/verify_frr_recovery.py" \
+            "$FRR_LOG" "$DANOS_LOG"
+        exit 1
+    fi
+    sleep 1
+done
 python3 "$ROOT/danos-test/qemu/verify_frr_recovery.py" "$FRR_LOG" "$DANOS_LOG"
 if rg -q '^frr_shared_peer_l2=1$' "$T/run-manifest.env"; then
     python3 "$ROOT/danos-test/qemu/run_learned_route_cycle.py" --topology "$T"

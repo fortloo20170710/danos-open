@@ -11,6 +11,8 @@ GATE = ROOT / "danos-test/integration/run_v016_release_gate.sh"
 GATE_TEXT = GATE.read_text()
 VMWARE_VERIFIER = ROOT / "danos-test/vmware/verify_vmxnet3_packet_baseline.sh"
 VMWARE_VERIFIER_TEXT = VMWARE_VERIFIER.read_text()
+QEMU_TOPOLOGY_VERIFIER = ROOT / "danos-test/qemu/verify_frr_vpp_topology.sh"
+QEMU_TOPOLOGY_VERIFIER_TEXT = QEMU_TOPOLOGY_VERIFIER.read_text()
 
 
 def check_rejected(name: str, value: str, expected: str) -> None:
@@ -116,6 +118,15 @@ def check_default_qemu_topology_is_latest_accepted_lifecycle() -> None:
     assert 'run_learned_route_cycle.py" --topology "$QEMU_TOPOLOGY_DIR"' in GATE_TEXT
 
 
+def check_frr_recovery_gate_waits_for_async_zebra_registration() -> None:
+    assert 'QEMU_FRR_RECOVERY_TIMEOUT:-90' in QEMU_TOPOLOGY_VERIFIER_TEXT
+    assert 'while ! python3 "$ROOT/danos-test/qemu/verify_frr_recovery.py"' in QEMU_TOPOLOGY_VERIFIER_TEXT
+    assert 'if (( SECONDS >= recovery_deadline )); then' in QEMU_TOPOLOGY_VERIFIER_TEXT
+    assert 'zebra reconnect' not in QEMU_TOPOLOGY_VERIFIER_TEXT, (
+        "the shell gate must defer recovery truth to the strict log verifier"
+    )
+
+
 def check_vmware_verifier_defaults_match_accepted_clean_baseline() -> None:
     expected_defaults = (
         "build/vmware-vmxnet3-test/peer-clean.serial.log",
@@ -150,6 +161,7 @@ def main() -> None:
     check_open_lane_blocks()
     check_default_i211_traffic_iso_is_current_clean_profile()
     check_default_qemu_topology_is_latest_accepted_lifecycle()
+    check_frr_recovery_gate_waits_for_async_zebra_registration()
     check_vmware_verifier_defaults_match_accepted_clean_baseline()
     print(
         "PASS: release gate rejects disabled, undersized and invalid ECMP soak "

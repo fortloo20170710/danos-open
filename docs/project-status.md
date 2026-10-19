@@ -1,5 +1,23 @@
 # DANOS Open Project Status
 
+## 2026-10-19 QEMU recovery gate update
+
+A clean-source QEMU e1000 two-port image built from `2bc6842` passed the full
+FRR/VPP topology verifier after the verifier was made tolerant of the
+asynchronous zebra re-registration interval. Evidence includes BGP route
+add/withdraw, OSPF adjacency, dual-path and ECMP packet forwarding, ECMP
+next-hop withdrawal/restore, VPP restart with peer probes and replay, and
+FRR/zserv restart followed by zebra re-registration and positive VPP replay.
+The failover interval was 785/800 delivered (1.88% loss; 15% configured
+maximum), so this is functional recovery evidence only. The pinned ISO,
+manifest, serial-log and verifier-output hashes are indexed in
+[`v0.16-acceptance-matrix.md`](v0.16-acceptance-matrix.md). A subsequent local
+CTest run after the gate-wait regression test passed 81/81.
+
+This virtual result does not close physical PCI performance, VMware re-run,
+or the R2 physical dynamic FRR/zserv-to-DPA recovery gap. The pending shared
+testpmd draft remains excluded from acceptance.
+
 ## 2026-10-19 current checkout and physical recovery checkpoint
 
 Verification source checkpoint: `bc55bee`; this status synchronization is a

@@ -1,5 +1,23 @@
 # Outstanding work plan
 
+### 2026-10-19 QEMU recovery follow-up
+
+- Clean-source QEMU image `2bc6842` now passes the full two-FRR/VPP topology
+  gate, including BGP add/withdraw, OSPF, dual-path ECMP, next-hop withdraw/
+  restore, VPP restart/replay and FRR/zserv restart with zebra re-registration
+  and positive backend replay. Failover received 785/800 probes (1.88%, under
+  the explicit 15% window budget); this remains functional evidence, not a
+  throughput qualification. Exact identities and hashes are in
+  `docs/v0.16-acceptance-matrix.md`.
+- The first gate attempt raced FRR's service PASS marker against the later
+  zebra reconnect. `verify_frr_vpp_topology.sh` now waits up to 90 seconds by
+  default for the strict recovery evidence validator, then emits its final
+  diagnostic if the evidence never arrives. The full gate passes on the
+  captured run; CTest passes 81/81 with the new gate regression check.
+- Still open: physical R2 P1/P4 route/neighbor recovery and FRR/DPA integration,
+  VMware replay with its clean rc1 artifacts, and accepted real-PCI sustained
+  performance. Do not promote QEMU functional results into those lanes.
+
 ### 2026-10-19 current execution checkpoint
 
 - Verification source checkpoint is `bc55bee`; this status synchronization is
