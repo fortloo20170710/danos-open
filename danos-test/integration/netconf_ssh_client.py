@@ -45,8 +45,8 @@ class Session:
             "-o", "BatchMode=yes",
             "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=10",
-            "-s", "netconf",
-            "%s@%s" % (user, host),
+            "-s", "%s@%s" % (user, host),
+            "netconf",
         ]
         self.proc = subprocess.Popen(
             argv,
