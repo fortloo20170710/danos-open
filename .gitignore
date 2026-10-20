@@ -1,5 +1,7 @@
 # Build artifacts
 build/
+build-test/
+build_testpmd/
 build-tsan/
 build-fuzz/
 build-asan/
