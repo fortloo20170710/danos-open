@@ -20,6 +20,14 @@ target_link_libraries(netconf_framing_test PRIVATE danos-mgmt pthread)
 target_compile_options(netconf_framing_test PRIVATE -UNDEBUG)
 add_test(NAME netconf_framing COMMAND netconf_framing_test)
 
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_test(NAME netconf_subsystem COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_netconf_subsystem.py
+    $<TARGET_FILE:danos-netconf-subsystem>)
+  set_tests_properties(netconf_subsystem PROPERTIES TIMEOUT 60)
+endif()
+
 add_executable(gnmi_proto_test test_gnmi_proto.c)
 target_link_libraries(gnmi_proto_test PRIVATE danos-mgmt danos-dpa pthread)
 target_compile_options(gnmi_proto_test PRIVATE -UNDEBUG)

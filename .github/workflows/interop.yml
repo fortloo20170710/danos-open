@@ -41,6 +41,28 @@ jobs:
           export GNMIC=/usr/local/bin/gnmic
           bash danos-test/integration/run_v0.4_interop.sh
 
+  netconf-ssh:
+    name: NETCONF over SSH (RFC 6242)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libssl-dev openssh-server python3
+      - name: Configure & build
+        run: |
+          cmake -B build-netconf -DCMAKE_BUILD_TYPE=Release -DDANOS_BUILD_TESTS=ON
+          cmake --build build-netconf -j$(nproc)
+      - name: Test subsystem framing
+        run: |
+          cd build-netconf
+          ctest -R 'netconf' --output-on-failure
+      - name: Test over a loopback sshd
+        run: |
+          sudo bash danos-test/integration/run_netconf_ssh.sh \
+            "$PWD/build-netconf/danos-mgmt/danos-netconf-subsystem"
+
   sanitizers:
     name: ASAN + UBSAN (full suite + fuzz)
     runs-on: ubuntu-24.04
@@ -94,7 +116,7 @@ jobs:
       - name: Build
         run: |
           cmake --build build-fuzz -j$(nproc) --target fuzz_decoders
-          cmake --build build-fuzz -j$(nproc) --target fuzz_gnmi_pb fuzz_hpack fuzz_h2_header fuzz_tls
+          cmake --build build-fuzz -j$(nproc) --target fuzz_gnmi_pb fuzz_hpack fuzz_h2_header fuzz_tls fuzz_netconf_framing
       - name: Fuzz smoke
         run: |
           ./build-fuzz/danos-test/fuzz_decoders -runs=1000
@@ -102,6 +124,7 @@ jobs:
           ./build-fuzz/danos-test/fuzz_hpack -runs=10000
           ./build-fuzz/danos-test/fuzz_h2_header -runs=10000
           ./build-fuzz/danos-test/fuzz_tls -runs=10000 danos-test/fuzz/corpus_tls
+          ./build-fuzz/danos-test/fuzz_netconf_framing -runs=10000
 
   concurrent-scale:
     name: Scale (32 concurrent gNMI connections)

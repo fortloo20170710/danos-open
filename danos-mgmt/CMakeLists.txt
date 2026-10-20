@@ -17,6 +17,12 @@ add_library(danos-mgmt STATIC
 target_include_directories(danos-mgmt PUBLIC src)
 target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core danos-security OpenSSL::SSL OpenSSL::Crypto)
 
+# NETCONF over SSH. OpenSSH spawns this as `Subsystem netconf`; it speaks
+# RFC 6242 framing on stdin/stdout.
+add_executable(danos-netconf-subsystem src/netconf/netconf_subsystem.c)
+target_link_libraries(danos-netconf-subsystem PRIVATE danos-mgmt)
+install(TARGETS danos-netconf-subsystem RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
+
 # Legacy gNMI-like HTTP/JSON server (E2). It predates the gRPC stack, has
 # no TLS or per-object authorization, and is not started by mgrd. Keep it
 # out of the daemon link (and out of its attack surface); only its own
