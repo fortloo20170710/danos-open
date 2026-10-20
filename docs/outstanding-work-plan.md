@@ -295,9 +295,14 @@ Execution priority, as confirmed on 2026-10-15:
    copy, and turning OPER differences into verification failures. The
    reentrant diff callback fix is done; the reconciler's diff callback still
    only counts differences and is not hardware readback.
-4. **NETCONF SSH transport.** Implement and qualify SSH transport and RFC 6242
-   framing only after the higher-priority items; align advertised capabilities
-   with implemented behavior.
+4. **NETCONF SSH transport.** Done. OpenSSH provides transport and
+   authentication; `danos-netconf-subsystem` implements RFC 6242 end-of-message
+   and chunked framing, negotiates base 1.1, and maps the SSH user plus
+   `DANOS_NETCONF_ROLE` into RBAC. Advertised capabilities now match behavior
+   (`commit`, `discard-changes`, `lock`, `unlock`, `kill-session` answer
+   `operation-not-supported`), and `edit-config` applies every interface block
+   atomically. See `docs/management-netconf-ssh.md`. The Interop workflow runs
+   the subsystem over a loopback `sshd`.
 5. **Supply-chain and repository hygiene.** Pin remaining dependencies and
    base images, add SBOM and artifact provenance/signing, and decide separately
    whether to rewrite history to remove the tracked large document.
@@ -576,12 +581,22 @@ Still open:
 - BYTES/PROTO/ASCII encodings and scalar/decimal TypedValues remain outside
   the advertised encoding set; JSON and JSON_IETF are the supported forms.
 
-### [ ] 8. NETCONF has no transport
+### [x] 8. NETCONF has no transport
 
-Message layer only (~250 LOC): no socket, no SSH, no RFC 6242 framing. It
-advertises `candidate`, `running`, `rollback-on-error` capabilities that are not
-implemented. XML parsing is `strstr`, so two `<interface>` blocks yield only the
-first. `session-id` is hardcoded to 1.
+Done. `danos-netconf-subsystem` runs as an OpenSSH `Subsystem netconf` and
+speaks RFC 6242 framing on stdio. Base 1.0 end-of-message and base 1.1 chunked
+framing are both implemented, with an 8 MiB message and 4 MiB chunk bound; the
+server sends its hello first and switches to chunked only when the client
+advertises base 1.1. Session IDs are generated per connection instead of
+hardcoded. Capabilities now list only base 1.0/1.1, writable-running and
+`urn:danos:yang:1.0`; unimplemented candidate-only RPCs return
+`operation-not-supported`. `edit-config` applies all `<interface>` blocks in
+one transaction. The SSH user is the authenticated identity, mapped to RBAC by
+`DANOS_NETCONF_ROLE`.
+
+Remaining scope is the datastore surface, not the transport: no candidate or
+startup datastore, no RPC locking, and `edit-config` still covers only the
+interface `mtu`/`enabled` leaves.
 
 ### [x] 9. FRR nexthop types and protocol mapping
 

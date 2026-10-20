@@ -65,7 +65,7 @@
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
-- [ ] NETCONF over SSH(RFC 6242 传输层)
+- [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）

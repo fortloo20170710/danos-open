@@ -19,8 +19,9 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
 - Virtual QEMU e1000 and VMware VMXNET3 evidence validation, baseline reporting,
   explicit frame-size metadata for new QEMU soak runs, and VM CPU capture.
 - Real PCI preflight checks that reject virtual or ambiguous NIC identities.
-- libFuzzer targets for gNMI protobuf decoding, HPACK, HTTP/2 frame headers and
-  the mTLS role map (with a seed corpus), wired into the Interop workflow.
+- libFuzzer targets for gNMI protobuf decoding, HPACK, HTTP/2 frame headers,
+  the mTLS role map and NETCONF RFC 6242 framing (with a seed corpus), wired
+  into the Interop workflow.
 - A documented per-connection resource budget for the gNMI listener
   (`docs/management-resource-limits.md`), covering admission, frame, queue and
   message limits.
@@ -34,6 +35,15 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   snapshot, netlink interface state via `RTM_GETLINK`
   (`IFLA_OPERSTATE`/`IFLA_MTU`), and gNMI/CLI state reads that prefer the
   device-reported value with a desired-state fallback.
+- NETCONF over SSH: a `danos-netconf-subsystem` binary for OpenSSH's
+  `Subsystem netconf`, RFC 6242 end-of-message and chunked framing with an
+  8 MiB message / 4 MiB chunk bound, negotiated base 1.1, real session IDs,
+  SSH user identity and `DANOS_NETCONF_ROLE` mapped to RBAC, and an Interop
+  job that exercises the protocol over a loopback `sshd`. Advertised
+  capabilities now match implemented behavior; `commit`, `discard-changes`,
+  `lock`, `unlock` and `kill-session` return `operation-not-supported`, and a
+  multi-interface `edit-config` applies atomically instead of dropping every
+  block after the first.
 
 ### Fixed
 
