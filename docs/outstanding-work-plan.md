@@ -351,8 +351,10 @@ audit ring and reconciler/metrics shutdown races exposed by TSan.
 Deployment instructions and explicit limits: [management mTLS](management-mtls.md).
 Local acceptance: Debug, ASan/UBSan/LSan and TSan each pass CTest 39/39.
 This closes gNMI's transport/identity gap, **not all deployment security**:
-metrics still require isolation/TLS proxy; NETCONF-over-SSH, online rotation
-and CRL/OCSP are not included. Certificates/roles/CA reload on restart.
+metrics still require isolation/TLS proxy; online certificate rotation and
+CRL/OCSP are not included. NETCONF transport is separate and covered by
+[management NETCONF over SSH](management-netconf-ssh.md). Certificates/roles/CA
+reload on restart.
 No production certificate or private key is committed.
 
 ### [x] 2. Transaction engine provides staged atomicity
