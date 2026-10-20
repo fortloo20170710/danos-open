@@ -206,9 +206,12 @@ int main(int argc, char **argv)
     if (tls) {
         printf("mgrd: authentication required (mTLS certificate role map)\n");
     } else if (danos_authz_configured()) {
-        printf("mgrd: authentication required (%s%s)\n",
-               token_file ? "bearer-token" : "",
-               (token_file && peercred) ? "+" : (peercred ? "peer-cred" : ""));
+        if (token_file)
+            printf("mgrd: authentication required (bearer-token, role %s%s)\n",
+                   danos_rbac_role_name(danos_authz_token_role()),
+                   peercred ? "+peer-cred" : "");
+        else
+            printf("mgrd: authentication required (peer-cred)\n");
     } else {
         printf("mgrd: WARNING no credential source configured - the "
                "management interface accepts unauthenticated requests\n");

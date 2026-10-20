@@ -16,15 +16,51 @@ static bool g_ready;
 static char    *g_token;          /* bearer token, NUL-terminated */
 static size_t   g_token_len;
 static bool     g_peercred_enabled;
+static danos_sec_role_t g_token_role;   /* explicit role granted to the token */
+
+/* Read a role name from `env`. Returns 1 when set and valid, 0 when unset,
+ * -1 when set but unknown (already reported). */
+static int role_from_env(const char *env, danos_sec_role_t *out)
+{
+    const char *v = getenv(env);
+    if (!v || !*v) return 0;
+    if (danos_rbac_role_by_name(v, out) != 0) {
+        fprintf(stderr, "authz: unknown %s '%s'\n", env, v);
+        return -1;
+    }
+    return 1;
+}
+
+/* A bearer token authenticates a client but carries no role. Resolve one
+ * explicitly: DANOS_AUTHZ_TOKEN_ROLE wins, DANOS_AUTHZ_DEFAULT_ROLE is the
+ * compatible fallback. Without either, configuring a token is refused rather
+ * than granting the laboratory default (ADMIN) to every token holder. */
+static int resolve_token_role(danos_sec_role_t *out)
+{
+    int rc = role_from_env("DANOS_AUTHZ_TOKEN_ROLE", out);
+    if (rc < 0) return -1;
+    if (rc == 1) return 0;
+    rc = role_from_env("DANOS_AUTHZ_DEFAULT_ROLE", out);
+    if (rc < 0) return -1;
+    if (rc == 1) return 0;
+    fprintf(stderr,
+            "authz: bearer token configured without a role; set "
+            "DANOS_AUTHZ_TOKEN_ROLE (or DANOS_AUTHZ_DEFAULT_ROLE)\n");
+    return -1;
+}
 
 int danos_authz_configure(const char *token_file, bool allow_peercred)
 {
     free(g_token);
     g_token = NULL;
     g_token_len = 0;
+    g_token_role = 0;
     g_peercred_enabled = allow_peercred;
 
     if (!token_file || !*token_file) return 0;   /* tokens disabled */
+
+    danos_sec_role_t token_role;
+    if (resolve_token_role(&token_role) != 0) return -1;
 
     /* A token any local user can read is not a credential. Refuse rather
      * than warn: serving with a readable token is worse than not serving. */
@@ -59,12 +95,18 @@ int danos_authz_configure(const char *token_file, bool allow_peercred)
     g_token = strdup(line);
     if (!g_token) return -1;
     g_token_len = n;
+    g_token_role = token_role;
     return 0;
 }
 
 bool danos_authz_configured(void)
 {
     return g_token != NULL || g_peercred_enabled;
+}
+
+danos_sec_role_t danos_authz_token_role(void)
+{
+    return g_token_role;
 }
 
 /* Length-independent, content-constant-time compare. */
@@ -97,9 +139,9 @@ danos_auth_result_t danos_authz_authenticate(const char *authorization,
         if (!g_token) return DANOS_AUTH_BAD;      /* no token source: reject */
         if (!token_equal(tok, strlen(tok), g_token, g_token_len))
             return DANOS_AUTH_BAD;
-        /* A token authenticates the client but carries no role of its own,
-         * so it gets the configured default - which may be lowered. */
-        if (role_out) *role_out = danos_authz_default_role();
+        /* A token authenticates the client but carries no role of its own;
+         * the role was fixed when the token was configured. */
+        if (role_out) *role_out = g_token_role;
         return DANOS_AUTH_OK;
     }
 
@@ -151,7 +193,9 @@ danos_sec_role_t danos_authz_default_role(void)
     if (env && *env) {
         danos_sec_role_t r;
         if (danos_rbac_role_by_name(env, &r) == 0) return r;
-        fprintf(stderr, "authz: unknown DANOS_AUTHZ_DEFAULT_ROLE '%s'\n", env);
+        fprintf(stderr, "authz: unknown DANOS_AUTHZ_DEFAULT_ROLE '%s'; "
+                        "falling back to viewer\n", env);
+        return DANOS_ROLE_VIEWER;
     }
     return DANOS_ROLE_ADMIN;
 }

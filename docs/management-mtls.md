@@ -81,6 +81,25 @@ UID 0 maps to admin; every other UID maps to viewer independently of
 Peer credentials cannot authenticate TCP connections. When a credential source
 is configured, Capabilities also requires authentication.
 
+## Bearer tokens (laboratory and local use)
+
+```ini
+DANOS_AUTHZ_TOKEN_FILE=/run/danos/token
+DANOS_AUTHZ_TOKEN_ROLE=viewer
+```
+
+The token file's first line is the token; the file must be mode 0600 or
+stricter, and group/other access is refused at startup. A bearer token
+authenticates the request but carries no role of its own. The role is fixed
+when the token is configured: `DANOS_AUTHZ_TOKEN_ROLE` wins, and
+`DANOS_AUTHZ_DEFAULT_ROLE` is accepted as a fallback when the token-specific
+variable is unset. If neither variable names a valid role, startup fails; the
+laboratory default (admin) is never granted to token holders by accident.
+Unknown role names fail configuration for bearer tokens, and an unrecognised
+`DANOS_AUTHZ_DEFAULT_ROLE` falls back to viewer for unauthenticated paths.
+Bearer tokens remain unavailable on TCP listeners that use mTLS: certificate
+roles stay authoritative there.
+
 For mTLS, authorization audit records retain the full 64-character certificate
 fingerprint, the mapped role in `obj_id`, and the RPC method in `diff`.
 Local records identify `uid:N pid:N`. gRPC Set records transaction begin and

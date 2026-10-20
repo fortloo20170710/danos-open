@@ -61,6 +61,10 @@ typedef enum {
  *               mode 0600 or stricter; a world-readable token file is
  *               refused, because a token that any local user can read is not
  *               a credential. NULL disables token authentication.
+ *               A token carries no role of its own: DANOS_AUTHZ_TOKEN_ROLE
+ *               (or, as a compatible fallback, DANOS_AUTHZ_DEFAULT_ROLE)
+ *               must name one. With neither set the call fails rather than
+ *               granting the laboratory default.
  * allow_peercred: accept SO_PEERCRED on a unix socket and map uid 0 to ADMIN
  *               and any other uid to VIEWER, independently of the bearer default. Ignored for
  *               TCP listeners, which have no peer credentials.
@@ -72,6 +76,10 @@ int danos_authz_configure(const char *token_file, bool allow_peercred);
 /* True once a credential source is configured. When false, callers should
  * refuse service rather than accept unauthenticated requests. */
 bool danos_authz_configured(void);
+
+/* Role granted to a successfully authenticated bearer token, fixed when the
+ * token was configured. 0 when no token source is configured. */
+danos_sec_role_t danos_authz_token_role(void);
 
 /* Authenticate one request.
  *
@@ -92,7 +100,7 @@ danos_sec_role_t danos_authz_role_for_peer(const char *peer_addr);
 /* Role assumed for peers with no authenticated identity. Defaults to ADMIN
  * so existing behaviour is unchanged; set DANOS_AUTHZ_DEFAULT_ROLE in the
  * environment to "operator" or "viewer" to lock the daemon down without an
- * identity source. */
+ * identity source. An unrecognised value falls back to VIEWER. */
 danos_sec_role_t danos_authz_default_role(void);
 
 /* Check one operation. Returns true when allowed. A denial is recorded in

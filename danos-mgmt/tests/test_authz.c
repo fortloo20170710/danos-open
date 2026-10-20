@@ -67,7 +67,7 @@ int main(void)
 
     /* An unknown role name must not silently grant access. */
     setenv("DANOS_AUTHZ_DEFAULT_ROLE", "superuser", 1);
-    assert(danos_authz_default_role() == DANOS_ROLE_ADMIN);
+    assert(danos_authz_default_role() == DANOS_ROLE_VIEWER);
 
     /* --- the audit log records what authz_check decided ------------------ */
     unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
@@ -114,17 +114,32 @@ int main(void)
     assert(write(lfd, "s3cret-token\n", 12) == 12);
     close(lfd);
     assert(chmod(loose, 0644) == 0);
+    /* Give the token an explicit role so this exercises the mode check. */
+    setenv("DANOS_AUTHZ_TOKEN_ROLE", "viewer", 1);
     assert(danos_authz_configure(loose, false) == -1);
     assert(!danos_authz_configured());   /* not silently enabled */
     unlink(loose);
 
-    /* A properly restricted token file is accepted and enforced. */
+    /* A properly restricted token file is accepted, but only together with
+     * an explicit role: a bearer token is not a role source. */
     char tf[] = "/tmp/danos-authz-tok-XXXXXX";
     int tfd = mkstemp(tf);
     assert(tfd >= 0);
     assert(write(tfd, "s3cret-token\n", 12) == 12);
     close(tfd);
     assert(chmod(tf, 0600) == 0);
+
+    unsetenv("DANOS_AUTHZ_TOKEN_ROLE");
+    unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
+    assert(danos_authz_configure(tf, false) == -1);
+    assert(!danos_authz_configured());
+
+    /* An unknown role is refused at configuration time. */
+    setenv("DANOS_AUTHZ_TOKEN_ROLE", "superuser", 1);
+    assert(danos_authz_configure(tf, false) == -1);
+    assert(!danos_authz_configured());
+
+    setenv("DANOS_AUTHZ_TOKEN_ROLE", "viewer", 1);
     assert(danos_authz_configure(tf, false) == 0);
     assert(danos_authz_configured());
 
@@ -135,11 +150,10 @@ int main(void)
            DANOS_AUTH_BAD);
     assert(danos_authz_authenticate("Basic s3cret-token", -1, -1, &role) ==
            DANOS_AUTH_BAD);
-    /* A correct token authenticates, and takes the configured role. */
-    setenv("DANOS_AUTHZ_DEFAULT_ROLE", "operator", 1);
+    /* A correct token authenticates with the role fixed at configuration. */
     assert(danos_authz_authenticate("Bearer s3cret-token", -1, -1, &role) ==
            DANOS_AUTH_OK);
-    assert(role == DANOS_ROLE_OPERATOR);
+    assert(role == DANOS_ROLE_VIEWER);
     /* The scheme is case-insensitive per RFC 7235. */
     assert(danos_authz_authenticate("bearer s3cret-token", -1, -1, &role) ==
            DANOS_AUTH_OK);
@@ -149,6 +163,23 @@ int main(void)
     /* Nor the token with trailing junk. */
     assert(danos_authz_authenticate("Bearer s3cret-tokenX", -1, -1, &role) ==
            DANOS_AUTH_BAD);
+
+    /* DANOS_AUTHZ_DEFAULT_ROLE is the compatible fallback. */
+    unsetenv("DANOS_AUTHZ_TOKEN_ROLE");
+    setenv("DANOS_AUTHZ_DEFAULT_ROLE", "operator", 1);
+    assert(danos_authz_configure(tf, false) == 0);
+    assert(danos_authz_authenticate("Bearer s3cret-token", -1, -1, &role) ==
+           DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_OPERATOR);
+
+    /* The token-specific role wins over the general default. */
+    setenv("DANOS_AUTHZ_TOKEN_ROLE", "admin", 1);
+    assert(danos_authz_configure(tf, false) == 0);
+    assert(danos_authz_authenticate("Bearer s3cret-token", -1, -1, &role) ==
+           DANOS_AUTH_OK);
+    assert(role == DANOS_ROLE_ADMIN);
+
+    unsetenv("DANOS_AUTHZ_TOKEN_ROLE");
     unsetenv("DANOS_AUTHZ_DEFAULT_ROLE");
 
     /* Peer credentials: uid 0 is admin, any other uid is viewer. */
