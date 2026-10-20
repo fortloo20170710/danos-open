@@ -54,8 +54,7 @@ UsePAM no
 StrictModes no
 LogLevel VERBOSE
 SetEnv DANOS_NETCONF_ROLE=admin
-SetEnv DANOS_NETCONF_STARTUP=$tmp/startup.db
-Subsystem netconf $binary
+Subsystem netconf $binary --startup $tmp/startup.db
 EOF
 
 "$sshd_bin" -f "$tmp/sshd_config" -E "$tmp/sshd.log"

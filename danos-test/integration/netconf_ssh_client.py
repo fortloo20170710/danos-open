@@ -62,7 +62,7 @@ class Session:
             argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=None,    # keep subsystem diagnostics visible in CI logs
         )
         self.buf = b""
 
@@ -77,8 +77,7 @@ class Session:
                 continue
             data = os.read(self.proc.stdout.fileno(), 4096)
             if not data:
-                err = self.proc.stderr.read().decode("utf-8", "replace")
-                raise AssertionError("ssh session closed early: %s" % err)
+                raise AssertionError("ssh session closed early")
             self.buf += data
             return
 
@@ -114,8 +113,7 @@ class Session:
     def finish(self):
         self.proc.stdin.close()
         rc = self.proc.wait(timeout=15)
-        err = self.proc.stderr.read().decode("utf-8", "replace")
-        assert rc == 0, "ssh exited %d: %s" % (rc, err)
+        assert rc == 0, "ssh exited %d" % rc
 
 
 def run(host, port, key, user, base11):

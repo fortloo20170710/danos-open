@@ -35,9 +35,9 @@ def chunked(msg):
 
 
 class Session:
-    def __init__(self, binary, env):
+    def __init__(self, binary, env, args=()):
         self.proc = subprocess.Popen(
-            [binary],
+            [binary, *args],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -165,7 +165,7 @@ def test_unknown_rpc(binary):
 
 
 def test_datastores(binary, startup_path):
-    s = Session(binary, env_for(startup_path=startup_path))
+    s = Session(binary, env_for(), ["--startup", startup_path])
     s.read_eom()
 
     # commit and discard with no candidate edits are successful no-ops.

@@ -99,8 +99,9 @@ snapshot, after which the next read or edit starts from running again.
 
 The startup datastore lives in a versioned file with a CRC32 per record. The
 default path is `/var/lib/danos/netconf-startup.db`; set
-`DANOS_NETCONF_STARTUP` to override it. Writes use a temporary file, `fsync`
-and `rename`, so a crash leaves either the old or the new snapshot. A missing
+`DANOS_NETCONF_STARTUP`, or pass `--startup <path>` to the subsystem, to
+override it. Writes use a temporary file, `fsync` and `rename`, so a crash
+leaves either the old or the new snapshot. A missing
 file is an empty startup datastore. A corrupt file is reported as
 `invalid-value`; `delete-config` on startup replaces it with a valid empty
 file.

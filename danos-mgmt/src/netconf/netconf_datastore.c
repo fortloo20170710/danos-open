@@ -268,7 +268,10 @@ static int startup_save(danos_object_store_t *store)
 
     if (rc == 0 && rename(tmp, g_ds.path) != 0) rc = -1;
     if (rc != 0) {
+        int err = errno;
         unlink(tmp);
+        fprintf(stderr, "netconf: cannot write startup file %s: %s\n",
+                g_ds.path, strerror(err));
         return -1;
     }
     fsync_parent_dir(g_ds.path);

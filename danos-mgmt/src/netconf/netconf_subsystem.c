@@ -12,6 +12,7 @@
  */
 
 #include "netconf.h"
+#include "netconf_datastore.h"
 #include "netconf_framing.h"
 #include "../authz/authz.h"
 
@@ -116,10 +117,24 @@ static void set_session_identity(netconf_ctx_t *ctx)
     if (!ctx->role) ctx->role = danos_authz_default_role();
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    const char *startup_path = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--startup") == 0 && i + 1 < argc) {
+            startup_path = argv[++i];
+        } else {
+            fprintf(stderr, "usage: %s [--startup <path>]\n", argv[0]);
+            return 2;
+        }
+    }
+
     signal(SIGPIPE, SIG_IGN);
     (void)danos_authz_init(NULL);
+
+    /* An explicit --startup wins over DANOS_NETCONF_STARTUP and the
+     * compiled-in default; netconf_init's later init call is a no-op. */
+    netconf_ds_init(startup_path);
 
     netconf_ctx_t ctx;
     netconf_init(&ctx, 830);
