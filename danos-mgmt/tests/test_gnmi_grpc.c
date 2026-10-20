@@ -12,6 +12,7 @@
 #include "../src/gnmi/gnmi_proto.h"
 #include "../src/gnmi/hpack.h"
 #include <danos/dpa.h>
+#include <danos/core/backend_ops.h>
 #include <danos/core/state_store.h>
 #include <stdio.h>
 #include <string.h>
@@ -1636,6 +1637,150 @@ static int test_model_leaf_get_set(void)
     return 0;
 }
 
+/* ---- v0.16: operational reads come from the backend -------------------- */
+
+/* Minimal backend: programming succeeds, and readback reports every
+ * interface with the link up. */
+static danos_status_t fake_iface_up(danos_ifindex_t ifindex, bool up, void *user)
+{
+    (void)ifindex; (void)up; (void)user;
+    return DANOS_OK;
+}
+
+static danos_status_t fake_iface_addr(const danos_iface_t *iface, void *user)
+{
+    (void)iface; (void)user;
+    return DANOS_OK;
+}
+
+static danos_status_t fake_route(const danos_resolved_route_t *route, void *user)
+{
+    (void)route; (void)user;
+    return DANOS_OK;
+}
+
+static danos_status_t fake_vrf(const danos_vrf_t *vrf, void *user)
+{
+    (void)vrf; (void)user;
+    return DANOS_OK;
+}
+
+static danos_status_t fake_vrf_del(danos_vrf_id_t vrf_id, void *user)
+{
+    (void)vrf_id; (void)user;
+    return DANOS_OK;
+}
+
+static danos_status_t fake_readback(danos_obj_type_t type, danos_obj_id_t id,
+                                    const void *desired, size_t size,
+                                    void *out, void *user)
+{
+    (void)id; (void)user;
+    if (type != DANOS_OBJ_IFACE) return DANOS_ERR_NOT_SUPPORTED;
+    if (!desired || !out || size < sizeof(danos_iface_t))
+        return DANOS_ERR_INVALID_ARG;
+    memcpy(out, desired, sizeof(danos_iface_t));
+    ((danos_iface_t *)out)->link_up = true;
+    return DANOS_OK;
+}
+
+/* Decode a single-update Get response and return its bool leaf. */
+static bool get_bool_leaf(const char *path_str, bool *out)
+{
+    uint8_t req[256], resp[4096];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    gnmi_path_t p;
+    assert(gnmi_path_from_str(&p, path_str));
+    gnmi_encode_path(&w, 2, &p);
+    int n = gnmi_handle_get(NULL, req, w.len, resp, sizeof(resp));
+    assert(n > 0);
+
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, resp, (size_t)n);
+    uint32_t f, wire;
+    while ((f = gnmi_pbr_tag(&r, &wire)) != 0) {
+        const uint8_t *d; size_t dn;
+        if (f == 1 && wire == 2 && gnmi_pbr_bytes(&r, &d, &dn)) {
+            gnmi_pb_reader_t nr;
+            gnmi_pbr_init(&nr, d, dn);
+            uint32_t nf, nw;
+            while ((nf = gnmi_pbr_tag(&nr, &nw)) != 0) {
+                const uint8_t *nd; size_t nn;
+                if (nf == 4 && gnmi_pbr_bytes(&nr, &nd, &nn)) {
+                    gnmi_pb_reader_t ur;
+                    gnmi_pbr_init(&ur, nd, nn);
+                    uint32_t uf, uw;
+                    while ((uf = gnmi_pbr_tag(&ur, &uw)) != 0) {
+                        const uint8_t *ud; size_t un;
+                        if (uf == 3 && gnmi_pbr_bytes(&ur, &ud, &un)) {
+                            gnmi_typed_value_t v;
+                            if (gnmi_decode_typed_value(ud, un, &v) &&
+                                v.kind == GNMI_VAL_BOOL) {
+                                *out = v.b;
+                                return true;
+                            }
+                        } else gnmi_pbr_skip(&ur, uw);
+                    }
+                } else gnmi_pbr_skip(&nr, nw);
+            }
+        } else gnmi_pbr_skip(&r, wire);
+    }
+    return false;
+}
+
+static int test_state_leaf_from_oper(void)
+{
+    bool up = true;
+    assert(get_bool_leaf("/interfaces/interface[name=eth0]/state/link-up", &up));
+    assert(!up);                    /* no readback yet: desired copy */
+
+    danos_backend_ops_t ops;
+    memset(&ops, 0, sizeof(ops));
+    ops.name = "fake-oper";
+    ops.iface_up = fake_iface_up;
+    ops.iface_addr_set = fake_iface_addr;
+    ops.iface_addr_del = fake_iface_addr;
+    ops.route_add = fake_route;
+    ops.route_del = fake_route;
+    ops.vrf_add = fake_vrf;
+    ops.vrf_del = fake_vrf_del;
+    ops.readback = fake_readback;
+    danos_backend_ops_set(&ops);
+
+    uint64_t attempted = 0, failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+
+    up = false;
+    assert(get_bool_leaf("/interfaces/interface[name=eth0]/state/link-up", &up));
+    assert(up);
+
+    /* The state container carries the read-only link state. */
+    uint8_t req[128], resp[4096];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    gnmi_path_t p;
+    assert(gnmi_path_from_str(&p, "/interfaces/interface[name=eth0]/state"));
+    gnmi_encode_path(&w, 2, &p);
+    int n = gnmi_handle_get(NULL, req, w.len, resp, sizeof(resp));
+    assert(n > 0);
+    bool saw_link = false;
+    for (int i = 0; i + 14 <= n; i++)
+        if (memcmp(resp + i, "\"link_up\":true", 14) == 0) saw_link = true;
+    assert(saw_link);
+
+    /* Reset returns reads to the desired copy instead of a stale value. */
+    danos_oper_reset();
+    danos_backend_ops_set(NULL);
+    up = true;
+    assert(get_bool_leaf("/interfaces/interface[name=eth0]/state/link-up", &up));
+    assert(!up);
+
+    printf("[PASS] test_state_leaf_from_oper (link-up from readback, "
+           "desired fallback)\n");
+    return 0;
+}
+
 static int test_model_unknown_path(void)
 {
     /* Get on an unmodeled path must fail, not silently return empty */
@@ -2006,6 +2151,7 @@ int main(void)
     if (test_settings_max_frame_size() != 0) failed++;
     if (test_pending_queue_overflow() != 0) failed++;
     if (test_model_leaf_get_set() != 0) failed++;
+    if (test_state_leaf_from_oper() != 0) failed++;
     if (test_model_unknown_path() != 0) failed++;
 
     /* Kept last: test_set_max_operations creates and deletes interfaces,

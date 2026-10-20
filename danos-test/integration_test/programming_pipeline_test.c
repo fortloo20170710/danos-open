@@ -204,6 +204,53 @@ static int test_retry_backoff_and_limit(void)
     return 0;
 }
 
+/* OPER truth (v0.16): the programming pass refreshes a readback snapshot,
+ * including for objects already in sync, so a carrier change reaches the
+ * management plane without a desired-state change. */
+static void test_oper_readback(void)
+{
+    danos_iface_t oper;
+    size_t n = sizeof(oper);
+    uint64_t attempted = 0, failed = 0;
+
+    assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n) == DANOS_OK);
+    assert(n == sizeof(oper));
+    assert(oper.link_up);                    /* admin up, no carrier override */
+    assert(danos_oper_count(DANOS_OBJ_IFACE) == 1);
+
+    /* Routes have no readback binding: no OPER copy is invented. */
+    n = sizeof(oper);
+    assert(danos_oper_read(DANOS_OBJ_ROUTE, 1, &oper, &n)
+           == DANOS_ERR_NOT_FOUND);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 0);
+
+    /* Carrier down with an unchanged desired object. The next pass returns
+     * 0 newly programmed objects but must still refresh OPER. */
+    danos_netlink_mock_set_link(5, false);
+    assert(danos_programming_run(&attempted, &failed) == 0);
+    assert(attempted == 0);
+    n = sizeof(oper);
+    assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n) == DANOS_OK);
+    assert(!oper.link_up);
+
+    danos_netlink_mock_set_link(5, true);
+    (void)danos_programming_run(&attempted, &failed);
+    n = sizeof(oper);
+    assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n) == DANOS_OK);
+    assert(oper.link_up);
+
+    /* Dropping the snapshot is safe; the next pass rebuilds it. */
+    danos_oper_reset();
+    n = sizeof(oper);
+    assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n)
+           == DANOS_ERR_NOT_FOUND);
+    (void)danos_programming_run(&attempted, &failed);
+    n = sizeof(oper);
+    assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n) == DANOS_OK);
+
+    printf("[PASS] test_oper_readback (carrier refresh, no route readback)\n");
+}
+
 int main(void)
 {
     if (!g_default_store) g_default_store = danos_object_store_create(256);
@@ -266,6 +313,9 @@ int main(void)
     assert(danos_netlink_mock_route_exists(rt.prefix.addr.addr,
                                            rt.prefix.prefix_len, 0));
     assert(danos_netlink_mock_iface_up(5));
+
+    /* ---- 3b. operational readback -------------------------------------- */
+    test_oper_readback();
 
     /* Interface address is part of the same desired/programmed lifecycle. */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
