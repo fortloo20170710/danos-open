@@ -75,7 +75,7 @@ set_tests_properties(fuzz_decoders PROPERTIES TIMEOUT 300)
 # Coverage-guided libFuzzer targets for the hand-written protocol parsers.
 # clang-only, so they are built only with -DDANOS_LIBFUZZER=ON.
 if(DANOS_LIBFUZZER)
-  foreach(target gnmi_pb hpack h2_header tls)
+  foreach(target gnmi_pb hpack h2_header tls netconf_framing)
     add_executable(fuzz_${target} fuzz/fuzz_${target}.c)
     target_link_libraries(fuzz_${target} PRIVATE danos-mgmt danos-core danos-dpa pthread)
     target_compile_options(fuzz_${target} PRIVATE -UNDEBUG -fsanitize=fuzzer,address)

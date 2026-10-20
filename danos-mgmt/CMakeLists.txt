@@ -11,6 +11,7 @@ add_library(danos-mgmt STATIC
   src/gnmi/gnmi_grpc.c
   src/gnmi/gnmi_tls.c
   src/netconf/netconf.c
+  src/netconf/netconf_framing.c
   src/authz/authz.c
 )
 target_include_directories(danos-mgmt PUBLIC src)

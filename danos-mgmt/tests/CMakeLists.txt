@@ -15,6 +15,11 @@ target_link_libraries(netconf_test PRIVATE danos-mgmt danos-dpa pthread)
 target_compile_options(netconf_test PRIVATE -UNDEBUG)
 add_test(NAME netconf COMMAND netconf_test)
 
+add_executable(netconf_framing_test test_netconf_framing.c)
+target_link_libraries(netconf_framing_test PRIVATE danos-mgmt pthread)
+target_compile_options(netconf_framing_test PRIVATE -UNDEBUG)
+add_test(NAME netconf_framing COMMAND netconf_framing_test)
+
 add_executable(gnmi_proto_test test_gnmi_proto.c)
 target_link_libraries(gnmi_proto_test PRIVATE danos-mgmt danos-dpa pthread)
 target_compile_options(gnmi_proto_test PRIVATE -UNDEBUG)
