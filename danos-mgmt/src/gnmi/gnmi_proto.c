@@ -102,19 +102,29 @@ size_t gnmi_pb_begin_nested(gnmi_pb_t *w, uint32_t field)
 static void pb_fix_len(gnmi_pb_t *w, size_t saved)
 {
     size_t body = w->len - saved - 1;
-    if (body < 0x80) {
-        w->buf[saved] = (uint8_t)body;
-    } else {
-        /* need two bytes: shift body right by one */
+
+    /* Protobuf length prefixes are varints, not a one- or two-byte
+     * encoding. A large nested message (a big JSON value, a model list)
+     * exceeds 16383 bytes and needs three or more groups of seven bits. */
+    size_t len_bytes = 1;
+    for (size_t v = body; v >= 0x80; v >>= 7) len_bytes++;
+
+    if (len_bytes > 1) {
         size_t n = body;
-        if (saved + 1 + n + 1 > w->cap) {
+        if (saved + len_bytes + n > w->cap) {
             w->overflow = true;
             return;
         }
-        memmove(w->buf + saved + 2, w->buf + saved + 1, n);
-        w->buf[saved] = (uint8_t)(body | 0x80);
-        w->buf[saved + 1] = (uint8_t)(body >> 7);
-        w->len += 1;
+        memmove(w->buf + saved + len_bytes, w->buf + saved + 1, n);
+        w->len += len_bytes - 1;
+    }
+
+    size_t v = body;
+    for (size_t i = 0; i < len_bytes; i++) {
+        uint8_t b = (uint8_t)(v & 0x7f);
+        v >>= 7;
+        if (i + 1 < len_bytes) b |= 0x80;
+        w->buf[saved + i] = b;
     }
 }
 

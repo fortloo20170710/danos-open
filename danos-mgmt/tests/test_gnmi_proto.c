@@ -277,6 +277,46 @@ static int test_capabilities_encoding(void)
     return 0;
 }
 
+/* A nested message larger than 16383 bytes needs a three-byte varint
+ * length. The old writer reserved only two bytes and truncated the
+ * prefix, producing a message no peer could parse. */
+static int test_nested_length_over_16k(void)
+{
+    static uint8_t buf[65536];
+    static char payload[20001];
+    memset(payload, 'x', sizeof(payload) - 1);
+    payload[sizeof(payload) - 1] = '\0';
+
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, buf, sizeof(buf));
+    size_t saved = gnmi_pb_begin_nested(&w, 1);
+    gnmi_pb_put_string(&w, 1, payload);
+    gnmi_pb_end_nested(&w, saved);
+    assert(!w.overflow);
+    assert(buf[0] == 0x0A);
+
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, buf, w.len);
+    uint32_t field = gnmi_pbr_tag(&r, &(uint32_t){0});
+    assert(field == 1);
+    const uint8_t *d = NULL;
+    size_t n = 0;
+    assert(gnmi_pbr_bytes(&r, &d, &n));
+    assert(!r.err);
+    /* Inner message: tag + length + 20000 bytes. */
+    gnmi_pb_reader_t inner;
+    gnmi_pbr_init(&inner, d, n);
+    uint32_t iw = 0;
+    assert(gnmi_pbr_tag(&inner, &iw) == 1);
+    const uint8_t *s = NULL;
+    size_t sn = 0;
+    assert(gnmi_pbr_bytes(&inner, &s, &sn));
+    assert(sn == 20000 && memcmp(s, payload, 20000) == 0);
+
+    printf("[PASS] test_nested_length_over_16k\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -288,6 +328,7 @@ int main(void)
     if (test_get_response_roundtrip() != 0) failed++;
     if (test_set_request_decode() != 0) failed++;
     if (test_capabilities_encoding() != 0) failed++;
+    if (test_nested_length_over_16k() != 0) failed++;
     printf("=== gnmi_proto_test: %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
     return failed;
