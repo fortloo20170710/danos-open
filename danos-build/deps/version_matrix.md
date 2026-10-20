@@ -1,30 +1,29 @@
 # DANOS-Open Dependency Version Matrix
 
-> G5: 依赖版本锁定。所有构建必须使用以下版本组合。
+> G5: 依赖版本锁定。当前验证基线如下，任何升级须通过全量 CI + conformance。
 
-## v0.1 兼容矩阵
+## v0.16 验证基线
 
 | 依赖 | 版本 | 备注 |
 |------|------|------|
-| FRR | 10.2.x | 通过 ZAPI socket 通信，不链接库 |
-| VPP | 24.06.x | Primary dataplane |
-| DPDK | 23.11.x (LTS) | VPP 依赖 |
-| OVS | - | v0.3 引入 |
-| P4Runtime | - | v0.4 引入 |
-| Linux | 6.6+ (LTS) | VFIO+IOMMU |
+| FRR | 10.3.x | 通过 ZAPI socket 通信，不链接库 |
+| VPP | 26.10 | Primary dataplane（Debian trixie） |
+| DPDK | 24.07 | 与 VPP 26.10 配套；独立性能测试 lane 使用 |
+| OVS | - | 未开始（v0.16 冻结） |
+| P4Runtime | - | 未开始（v0.16 冻结） |
+| Linux | 6.12+ | Debian trixie 内核；VFIO/IOMMU |
 | GCC | 13+ | C11 |
 | CMake | 3.16+ | |
 
 ## 版本锁定文件
 
-构建时使用 `danos-build/deps/versions.lock` 锁定确切版本：
+构建时使用 `danos-build/deps/versions.lock` 锁定精确版本：
 
 ```ini
-# danos-build/deps/versions.lock
-FRR_VERSION=10.2.1
-VPP_VERSION=24.06.0
-DPDK_VERSION=23.11.1
-LINUX_MIN_VERSION=6.6
+FRR_VERSION=10.3
+VPP_VERSION=26.10
+DPDK_VERSION=24.07
+LINUX_MIN_VERSION=6.12
 GCC_MIN_VERSION=13
 CMAKE_MIN_VERSION=3.16
 ```

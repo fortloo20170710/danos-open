@@ -1,22 +1,21 @@
 # danos-observability — 可观测性与 Telemetry
 
-> v0.2+ 计划模块。telemetry / prometheus / tracing / audit。
 > 设计依据：`docs/archive/v1.1/observability/observability_telemetry.md`（第 22 章）。
 
-## 职责
+## 已实现（v0.16）
 
-- **gNMI Subscribe**：STREAM / ON_CHANGE / SAMPLE 三种模式
-- **OpenConfig telemetry paths**：标准化遥测路径
-- **Prometheus exporter**：metrics 暴露 + Grafana dashboard 模板
-- **流式 telemetry**：gRPC stream、IPFIX/NetFlow
-- **结构化日志**：JSON 格式、集中收集（Loki/ELK）
-- **分布式追踪**：OpenTelemetry，跨 FRR → Adapter → DPA → Backend
-- **告警**：Alertmanager 规则、Runbook
-- **审计**：Transaction ID 关联操作主体、时间、变更 diff
+- **Prometheus exporter**：`src/prometheus.c`，128 项指标注册表、外部 stat provider
+- **HTTP `/metrics` 服务**：`src/prom_server.c`，带连接上限、读写超时；
+  默认仅监听 `127.0.0.1`，用 `DANOS_METRICS_BIND` 显式开放远程抓取
+- **结构化日志**：`src/log.c`
+- **gNMI Subscribe**：由 `danos-mgmt` 的 gRPC 栈提供（ONCE/STREAM 子集）
+- **审计**：由 `danos-security/src/audit.c` 提供 JSON-lines 审计日志
 
-## 状态
+## 尚未完成
 
-骨架目录（v1.1 §3.1 仓库结构对齐）。设计文档已完成，实现待 v0.2+。
+- OpenTelemetry 分布式追踪、IPFIX/NetFlow 导出
+- Alertmanager 规则与 Grafana dashboard 模板
+- 指标基数与标签治理（当前为固定名称的扁平指标）
 
 ## 接口边界
 

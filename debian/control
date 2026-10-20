@@ -16,8 +16,8 @@ Vcs-Browser: https://github.com/Aikon-INT/danos-open
 Package: danos-open
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends},
-         frr (>= 10.2),
-         vpp (>= 24.06)
+         frr (>= 10.3),
+         vpp (>= 26.10)
 Description: Disaggregated Network Operating System (Open)
  DANOS-Open is a Software-First, ASIC-SDK-Free Disaggregated NOS
  built with Linux, FRR, VPP, DPDK, and P4.
@@ -27,7 +27,7 @@ Description: Disaggregated Network Operating System (Open)
   - danos-core: Core engine (object registry, state store, transactions)
   - danos-fib: FRR FIB adapter (ZAPI parser + mapper)
   - danos-vpp: VPP backend (capability + mapper)
-  - danos-mgmt: Management plane (CLI + gNMI-like REST server)
+  - danos-mgmt: Management plane (CLI + gNMI/gRPC server)
   - danos-models: YANG models
   - danos-test: Conformance and unit tests
 
