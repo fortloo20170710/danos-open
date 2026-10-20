@@ -16,21 +16,21 @@ jobs:
     name: gnmic interop (I1-I9)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake socat libssl-dev openssl python3
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.22'
       - name: Build gnmic
         run: |
-          mkdir -p /tmp/gnmic-build && cd /tmp/gnmic-build
-          go mod init build
-          go get github.com/openconfig/gnmic@v0.35.0
-          go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # Build from the checked-in module so go.sum verifies every
+          # dependency instead of resolving a fresh graph at CI time.
+          cd tools/gnmic
+          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
           gnmic version
       - name: Configure & build DANOS
         run: |
@@ -45,7 +45,7 @@ jobs:
     name: ASAN + UBSAN (full suite + fuzz)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -68,7 +68,7 @@ jobs:
     name: ThreadSanitizer (concurrent gNMI)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -86,21 +86,27 @@ jobs:
     name: LLVM libFuzzer decoder target
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y clang cmake build-essential libssl-dev openssl python3
       - name: Configure
         run: cmake -B build-fuzz -DCMAKE_C_COMPILER=clang -DDANOS_LIBFUZZER=ON -DCMAKE_BUILD_TYPE=Debug
       - name: Build
-        run: cmake --build build-fuzz -j$(nproc) --target fuzz_decoders
+        run: |
+          cmake --build build-fuzz -j$(nproc) --target fuzz_decoders
+          cmake --build build-fuzz -j$(nproc) --target fuzz_gnmi_pb fuzz_hpack fuzz_h2_header
       - name: Fuzz smoke
-        run: ./build-fuzz/danos-test/fuzz_decoders -runs=1000
+        run: |
+          ./build-fuzz/danos-test/fuzz_decoders -runs=1000
+          ./build-fuzz/danos-test/fuzz_gnmi_pb -runs=10000
+          ./build-fuzz/danos-test/fuzz_hpack -runs=10000
+          ./build-fuzz/danos-test/fuzz_h2_header -runs=10000
 
   concurrent-scale:
     name: Scale (32 concurrent gNMI connections)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -116,7 +122,7 @@ jobs:
     name: mgrd OCI image
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -137,17 +143,39 @@ jobs:
           docker logs mgrd-smoke | grep -q "gNMI"
           docker rm -f mgrd-smoke
 
+  release-image:
+    name: Source image (Dockerfile build + tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build source image (runs CTest in builder stage)
+        run: docker build -t danos-open:${{ github.sha }} .
+      - name: Smoke test runtime image
+        run: |
+          docker run -d --name danos-smoke -e DANOS_ALLOW_INSECURE=1 \
+            -p 127.0.0.1:59201:59201 danos-open:${{ github.sha }} \
+            --port 59200 --metrics-port 59201 --wal /var/lib/danos/mgrd.wal --seed
+          for i in $(seq 1 20); do
+            docker exec danos-smoke nc -z 127.0.0.1 59201 && break
+            sleep 1
+          done
+          printf 'GET /metrics HTTP/1.0\r\n\r\n' \
+            | docker exec -i danos-smoke nc -w 2 127.0.0.1 59201 \
+            | grep -q danos_
+          docker rm -f danos-smoke
+
   kernel-programming:
     name: Kernel programming (K4/K5-ping)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake iproute2 iputils-ping libssl-dev openssl python3
       - name: Setup Go (gnmic)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.22'
           # This job creates its temporary Go module under /tmp and has no
@@ -156,10 +184,10 @@ jobs:
           cache: false
       - name: Build gnmic
         run: |
-          mkdir -p /tmp/gnmic-build && cd /tmp/gnmic-build
-          go mod init build
-          go get github.com/openconfig/gnmic@v0.35.0
-          go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # Build from the checked-in module so go.sum verifies every
+          # dependency instead of resolving a fresh graph at CI time.
+          cd tools/gnmic
+          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -172,7 +200,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -278,15 +306,15 @@ jobs:
             exit 1
           fi
       - name: Setup Go (gnmic)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.22'
       - name: Build gnmic
         run: |
-          mkdir -p /tmp/gnmic-build && cd /tmp/gnmic-build
-          go mod init build
-          go get github.com/openconfig/gnmic@v0.35.0
-          go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # Build from the checked-in module so go.sum verifies every
+          # dependency instead of resolving a fresh graph at CI time.
+          cd tools/gnmic
+          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release

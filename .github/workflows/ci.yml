@@ -12,7 +12,7 @@ jobs:
     name: Build & Test (x86_64)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -47,7 +47,7 @@ jobs:
     name: Build (aarch64 cross)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install cross toolchain
         run: |
           sudo apt-get update
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: |
           sudo apt-get update
@@ -92,7 +92,7 @@ jobs:
     name: YANG Model Validation
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Python
         run: |
           sudo apt-get update
@@ -104,7 +104,7 @@ jobs:
     name: WAL real-filesystem baseline
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y build-essential cmake libssl-dev openssl python3
       - name: Build performance target
