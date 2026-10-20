@@ -17,7 +17,7 @@ contributor needs lives here; everything else is an archive.
 | [Hardening pass 2026-10-04](security-and-correctness-hardening-2026-10-04.md) | Memory-safety, persistence and VPP wire-protocol fixes |
 | [v0.16 acceptance matrix](v0.16-acceptance-matrix.md) | Single current rc1 acceptance record; dated evidence is in the archive |
 | [Management resource limits](management-resource-limits.md) | Connection, frame, queue and message budgets for the gNMI listener |
-| [NETCONF over SSH](management-netconf-ssh.md) | Deployment, capabilities, roles and framing limits |
+| [NETCONF over SSH](management-netconf-ssh.md) | Deployment, datastores, capabilities, roles and framing limits |
 | [v0.16 performance schema](v0.16-performance-result-schema.md) | Machine-readable QEMU/VMware/PCI result fields |
 | [v0.16 PCI runner contract](v0.16-pci-runner-contract.md) | External real-DPDK runner prerequisites and first-pass contract |
 | [v0.16 next-stage plan](v0.16-next-stage-plan.md) | Release closure sequence and deferred extensions |

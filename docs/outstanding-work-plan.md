@@ -590,15 +590,21 @@ speaks RFC 6242 framing on stdio. Base 1.0 end-of-message and base 1.1 chunked
 framing are both implemented, with an 8 MiB message and 4 MiB chunk bound; the
 server sends its hello first and switches to chunked only when the client
 advertises base 1.1. Session IDs are generated per connection instead of
-hardcoded. Capabilities now list only base 1.0/1.1, writable-running and
-`urn:danos:yang:1.0`; unimplemented candidate-only RPCs return
-`operation-not-supported`. `edit-config` applies all `<interface>` blocks in
-one transaction. The SSH user is the authenticated identity, mapped to RBAC by
-`DANOS_NETCONF_ROLE`.
+hardcoded. The hello advertises base 1.0/1.1, writable-running, candidate,
+startup and `urn:danos:yang:1.0`; `validate`, confirmed commit and
+`kill-session` return `operation-not-supported`. `edit-config` applies all
+`<interface>` blocks in one transaction. The SSH user is the authenticated
+identity, mapped to RBAC by `DANOS_NETCONF_ROLE`.
 
-Remaining scope is the datastore surface, not the transport: no candidate or
-startup datastore, no RPC locking, and `edit-config` still covers only the
-interface `mtu`/`enabled` leaves.
+The candidate and startup datastores followed: candidate edits are published
+by `commit` in one DPA transaction, `discard-changes` drops them, `lock` and
+`unlock` track per-session ownership, `copy-config` moves data among the three
+datastores, and startup is a checksummed, atomically replaced file. Candidate
+state and locks are process-local because each SSH session is its own
+subsystem process; hosting NETCONF in one daemon remains open.
+
+Remaining scope for `edit-config` is the modeled subtree: it covers only the
+interface `mtu`/`enabled` leaves, on interfaces that already exist.
 
 ### [x] 9. FRR nexthop types and protocol mapping
 

@@ -30,7 +30,7 @@
 |------|------|------|
 | danos-dpa | 稳定 | DPA 接口与错误模型 |
 | danos-core | 稳定 | 对象注册表、四态模型、事务、WAL、reconciler |
-| danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH |
+| danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH（candidate/startup 数据存储与锁） |
 | danos-fib | 可用 | FRR ZAPI v6 解析与映射 |
 | danos-vpp | 可用 | binary API、路由/接口编程、统计 |
 | danos-netlink | 可用 | IPv4 路由/地址/接口；IPv6 地址明确返回不支持 |

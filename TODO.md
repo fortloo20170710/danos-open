@@ -66,6 +66,8 @@
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
+- [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
+- [ ] NETCONF 单守护进程托管：让 candidate 与锁跨 SSH 会话共享（当前每会话一个进程）
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）

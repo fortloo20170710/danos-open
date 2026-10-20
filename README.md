@@ -142,7 +142,7 @@ roadmap in `docs/project-status.md`; v1.1 spec archived at `docs/archive/v1.1/`)
 | `danos-fib/` | FRR zebra/FIB adapter | v0.2 |
 | `danos-vpp/` | VPP backend: real binary API (handshake + msg table + typed messages) + stat segment + programming adapter (v0.11) | v0.11 |
 | `danos-models/` | YANG / OpenConfig models (13 models; interfaces subtree bound to gNMI via model_paths) | v0.5 |
-| `danos-mgmt/` | CLI / gNMI (real gRPC, model-driven, streaming Subscribe) / NETCONF over SSH (RFC 6242 subsystem, model-wired edit-config) — all three share the model layer | v0.7 |
+| `danos-mgmt/` | CLI / gNMI (real gRPC, model-driven, streaming Subscribe) / NETCONF over SSH (RFC 6242 subsystem, candidate and startup datastores, model-wired edit-config) — all three share the model layer | v0.7 |
 | `danos-security/` | RBAC / audit log; CoPP policer programming (vpp_msgs) | v0.2 (CoPP v0.4) |
 | `danos-ha/` | BFD session manager (protocol delegated to FRR bfdd per ADR-0006; translation layer pending) / VRRP skeleton / supervisor | v0.2 |
 | `danos-observability/` | Prometheus exposition (real HTTP server, stat-provider bridge) / structured logging | v0.6 |

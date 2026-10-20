@@ -39,11 +39,16 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   `Subsystem netconf`, RFC 6242 end-of-message and chunked framing with an
   8 MiB message / 4 MiB chunk bound, negotiated base 1.1, real session IDs,
   SSH user identity and `DANOS_NETCONF_ROLE` mapped to RBAC, and an Interop
-  job that exercises the protocol over a loopback `sshd`. Advertised
-  capabilities now match implemented behavior; `commit`, `discard-changes`,
-  `lock`, `unlock` and `kill-session` return `operation-not-supported`, and a
-  multi-interface `edit-config` applies atomically instead of dropping every
-  block after the first.
+  job that exercises the protocol over a loopback `sshd`.
+- NETCONF candidate and startup datastores: `edit-config` against candidate,
+  `commit` publishing the difference to running in one transaction,
+  `discard-changes`, `lock`/`unlock` with per-session ownership, `copy-config`
+  among running/candidate/startup, and `delete-config` on startup. Startup is
+  a versioned, per-record CRC32 file written with `fsync` and `rename`;
+  `DANOS_NETCONF_STARTUP` overrides the default path. Advertised capabilities
+  now include candidate and startup. Confirmed commit and `validate` remain
+  unadvertised and are refused. A multi-interface `edit-config` applies
+  atomically instead of dropping every block after the first.
 
 ### Fixed
 
