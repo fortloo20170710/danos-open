@@ -31,6 +31,7 @@
 #include <sys/un.h>
 #include <netdb.h>
 #include <errno.h>
+#include <pthread.h>
 
 #define VPP_API_SOCK_PATH "/run/vpp/api.sock"
 #define VPP_STAT_SOCK_PATH "/run/vpp/stats.sock"
@@ -78,6 +79,33 @@ static vpp_api_ctx_impl_t g_ctx;
 static vpp_mock_stat_t    g_mock_stats[VPP_MOCK_STAT_MAX];
 static bool g_initialized = false;
 
+/* The binary API is one shared socket with one request context counter, and
+ * the daemon queries it from several threads (backend worker, health and CLI
+ * paths). Serialise every entry point on one mutex. It is recursive because
+ * the public calls nest: transact -> send/recv, reconnect -> connect. */
+static pthread_mutex_t g_ctx_lock;
+static pthread_once_t g_ctx_lock_once = PTHREAD_ONCE_INIT;
+
+static void vpp_ctx_lock_init(void)
+{
+    pthread_mutexattr_t attr;
+    if (pthread_mutexattr_init(&attr) != 0) return;
+    (void)pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+    (void)pthread_mutex_init(&g_ctx_lock, &attr);
+    pthread_mutexattr_destroy(&attr);
+}
+
+static void vpp_ctx_lock(void)
+{
+    pthread_once(&g_ctx_lock_once, vpp_ctx_lock_init);
+    pthread_mutex_lock(&g_ctx_lock);
+}
+
+static void vpp_ctx_unlock(void)
+{
+    pthread_mutex_unlock(&g_ctx_lock);
+}
+
 static void vpp_strip_crc_suffix(char *name)
 {
     size_t n = strlen(name);
@@ -108,6 +136,7 @@ static void fd_set_timeout(int fd, int ms)
 
 int danos_vpp_api_init(void)
 {
+    vpp_ctx_lock();
     memset(&g_ctx, 0, sizeof(g_ctx));
     g_ctx.msg_fd = -1;
     g_ctx.stat_fd = -1;
@@ -123,15 +152,18 @@ int danos_vpp_api_init(void)
     g_ctx.reconnect_delay_ms = VPP_RECONNECT_INITIAL_MS;
     vpp_msg_table_init(&g_ctx.msg_table);
     g_initialized = true;
+    vpp_ctx_unlock();
     return 0;
 }
 
 void danos_vpp_api_enable_mock(void)
 {
+    vpp_ctx_lock();
     if (!g_initialized) danos_vpp_api_init();
     g_ctx.state = VPP_API_MOCK;
     g_ctx.msg_fd = -1;
     g_ctx.stat_fd = -1;
+    vpp_ctx_unlock();
 }
 
 static int connect_unix_stream(const char *path)
@@ -246,12 +278,17 @@ static int vpp_handshake(void)
 
 int danos_vpp_api_connect(void)
 {
+    vpp_ctx_lock();
     if (!g_initialized) danos_vpp_api_init();
-    if (g_ctx.state == VPP_API_MOCK) return 0;
+    if (g_ctx.state == VPP_API_MOCK) {
+        vpp_ctx_unlock();
+        return 0;
+    }
 
     g_ctx.msg_fd = connect_unix_stream(g_ctx.api_sock_path);
     if (g_ctx.msg_fd < 0) {
         g_ctx.state = VPP_API_DISCONNECTED;
+        vpp_ctx_unlock();
         return -1;
     }
 
@@ -259,6 +296,7 @@ int danos_vpp_api_connect(void)
         close(g_ctx.msg_fd);
         g_ctx.msg_fd = -1;
         g_ctx.state = VPP_API_DISCONNECTED;
+        vpp_ctx_unlock();
         return -1;
     }
 
@@ -266,11 +304,13 @@ int danos_vpp_api_connect(void)
     g_ctx.last_connect_ns = now_ns();
     g_ctx.reconnect_delay_ms = VPP_RECONNECT_INITIAL_MS;
     g_ctx.connect_count++;
+    vpp_ctx_unlock();
     return 0;
 }
 
 void danos_vpp_api_disconnect(void)
 {
+    vpp_ctx_lock();
     if (g_ctx.msg_fd >= 0) {
         close(g_ctx.msg_fd);
         g_ctx.msg_fd = -1;
@@ -280,24 +320,36 @@ void danos_vpp_api_disconnect(void)
         g_ctx.stat_fd = -1;
     }
     g_ctx.state = VPP_API_DISCONNECTED;
+    vpp_ctx_unlock();
 }
 
 int danos_vpp_api_reconnect(void)
 {
-    if (g_ctx.state == VPP_API_MOCK) return 0;
+    vpp_ctx_lock();
+    if (g_ctx.state == VPP_API_MOCK) {
+        vpp_ctx_unlock();
+        return 0;
+    }
 
     uint64_t now = now_ns();
     uint64_t elapsed = (now - g_ctx.last_connect_ns) / 1000000ULL;
-    if (elapsed < g_ctx.reconnect_delay_ms) return -1;
+    if (elapsed < g_ctx.reconnect_delay_ms) {
+        vpp_ctx_unlock();
+        return -1;
+    }
 
     g_ctx.reconnect_count++;
     danos_vpp_api_disconnect();
-    if (danos_vpp_api_connect() == 0) return 0;
+    if (danos_vpp_api_connect() == 0) {
+        vpp_ctx_unlock();
+        return 0;
+    }
 
     g_ctx.reconnect_delay_ms *= 2;
     if (g_ctx.reconnect_delay_ms > VPP_RECONNECT_MAX_MS)
         g_ctx.reconnect_delay_ms = VPP_RECONNECT_MAX_MS;
     g_ctx.last_connect_ns = now;
+    vpp_ctx_unlock();
     return -1;
 }
 
@@ -307,15 +359,20 @@ int danos_vpp_api_reconnect(void)
 
 int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t payload_size)
 {
+    vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
         g_ctx.last_msg_id = msg_id;
         g_ctx.last_msg_size = payload_size;
         g_ctx.msgs_sent++;
+        vpp_ctx_unlock();
         return 0;
     }
 
-    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0) return -1;
-    if (!payload && payload_size > 0) return -1;
+    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0 ||
+        (!payload && payload_size > 0)) {
+        vpp_ctx_unlock();
+        return -1;
+    }
 
     /* Every request starts with client_index + context (big-endian),
      * followed by message-specific fields. The caller-supplied payload
@@ -329,29 +386,43 @@ int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t payload_si
 
     int rc = vpp_wire_send_fd(g_ctx.msg_fd, msg_id, body.data, body.len);
     vpp_buf_free(&body);
-    if (rc != 0) return -1;
+    if (rc != 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
     g_ctx.msgs_sent++;
+    vpp_ctx_unlock();
     return 0;
 }
 
 int danos_vpp_api_recv(uint8_t *buf, uint32_t buf_size)
 {
+    vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
-        if (buf_size < 6) return -1;
+        if (buf_size < 6) {
+            vpp_ctx_unlock();
+            return -1;
+        }
         memset(buf, 0, 6);
         g_ctx.msgs_received++;
+        vpp_ctx_unlock();
         return 6;
     }
 
-    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0) return -1;
+    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
 
     /* Return the API payload (msg_id + struct); the msgbuf header is consumed. */
     int n = vpp_wire_recv_fd(g_ctx.msg_fd, buf, buf_size);
     if (n <= 2) {
         danos_vpp_api_disconnect();
+        vpp_ctx_unlock();
         return -1;
     }
     g_ctx.msgs_received++;
+    vpp_ctx_unlock();
     return n;
 }
 
@@ -359,6 +430,7 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
                            uint32_t payload_size, uint8_t *reply,
                            uint32_t reply_size)
 {
+    vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
         g_ctx.last_msg_id = msg_id;
         g_ctx.last_msg_size = payload_size;
@@ -372,11 +444,16 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
             reply[2] = (uint8_t)(ctx >> 24); reply[3] = (uint8_t)(ctx >> 16);
             reply[4] = (uint8_t)(ctx >> 8);  reply[5] = (uint8_t)ctx;
             reply[6] = 0; reply[7] = 0; reply[8] = 0; reply[9] = 0;
+            vpp_ctx_unlock();
             return 10;
         }
+        vpp_ctx_unlock();
         return 0;
     }
-    if (danos_vpp_api_send(msg_id, payload, payload_size) != 0) return -1;
+    if (danos_vpp_api_send(msg_id, payload, payload_size) != 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
 
     /* Bound the entire transaction, not each recv independently. VPP may
      * interleave notifications or stale replies; resetting a 5s socket timeout
@@ -391,6 +468,7 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
         uint64_t now = now_ns();
         if (now >= deadline_ns || g_ctx.msg_fd < 0) {
             danos_vpp_api_disconnect();
+            vpp_ctx_unlock();
             return -1;
         }
         uint64_t remaining_ns = deadline_ns - now;
@@ -399,7 +477,10 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
         fd_set_timeout(g_ctx.msg_fd, remaining_ms);
 
         int n = danos_vpp_api_recv(rbuf, sizeof(rbuf));
-        if (n < 8) return -1;
+        if (n < 8) {
+            vpp_ctx_unlock();
+            return -1;
+        }
         uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
         vpp_reader_t r;
         vpp_reader_init(&r, rbuf + 2, (uint32_t)n - 2);
@@ -414,10 +495,12 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
             }
             (void)reply_id;
             fd_set_timeout(g_ctx.msg_fd, VPP_RECV_TIMEOUT_MS);
+            vpp_ctx_unlock();
             return n;
         }
         /* Not ours (e.g. an async event): keep reading. */
     }
+    vpp_ctx_unlock();
     return -1;
 }
 
@@ -425,36 +508,56 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
  * table returned during the handshake. */
 bool danos_vpp_api_lookup_msg_id(const char *name, uint16_t *msg_id)
 {
+    vpp_ctx_lock();
+    bool found;
     if (g_ctx.state == VPP_API_MOCK) {
         if (msg_id) *msg_id = 0;
-        return true;
+        found = true;
+    } else {
+        found = vpp_msg_table_lookup(&g_ctx.msg_table, name, msg_id);
     }
-    return vpp_msg_table_lookup(&g_ctx.msg_table, name, msg_id);
+    vpp_ctx_unlock();
+    return found;
 }
 
 uint32_t danos_vpp_api_client_index(void)
 {
-    return g_ctx.client_index;
+    vpp_ctx_lock();
+    uint32_t index = g_ctx.client_index;
+    vpp_ctx_unlock();
+    return index;
 }
 
 uint32_t danos_vpp_api_msg_table_count(void)
 {
-    return vpp_msg_table_count(&g_ctx.msg_table);
+    vpp_ctx_lock();
+    uint32_t count = vpp_msg_table_count(&g_ctx.msg_table);
+    vpp_ctx_unlock();
+    return count;
 }
 
 const char *danos_vpp_api_sock_path(void)
 {
-    return g_ctx.api_sock_path;
+    vpp_ctx_lock();
+    const char *path = g_ctx.api_sock_path;
+    vpp_ctx_unlock();
+    return path;
 }
 
 void danos_vpp_api_set_sock_path(const char *path)
 {
-    if (path) snprintf(g_ctx.api_sock_path, sizeof(g_ctx.api_sock_path), "%s", path);
+    if (!path) return;
+    vpp_ctx_lock();
+    snprintf(g_ctx.api_sock_path, sizeof(g_ctx.api_sock_path), "%s", path);
+    vpp_ctx_unlock();
 }
 
 void danos_vpp_api_set_stat_sock_path(const char *path)
 {
-    if (path) snprintf(g_ctx.stat_sock_path, sizeof(g_ctx.stat_sock_path), "%s", path);
+    if (!path) return;
+    vpp_ctx_lock();
+    snprintf(g_ctx.stat_sock_path, sizeof(g_ctx.stat_sock_path), "%s", path);
+    vpp_ctx_unlock();
     /* keep the stat client in sync */
     extern void danos_vpp_stat_set_sock_path(const char *path);
     danos_vpp_stat_set_sock_path(path);
@@ -474,32 +577,45 @@ int danos_vpp_stat_list_real(const char **names, uint64_t *values, int max_entri
 
 int danos_vpp_api_connect_stat(void)
 {
-    if (g_ctx.state == VPP_API_MOCK) return 0;
+    vpp_ctx_lock();
+    if (g_ctx.state == VPP_API_MOCK) {
+        vpp_ctx_unlock();
+        return 0;
+    }
     /* The stat segment is independent of the binary API channel. */
-    return danos_vpp_stat_connect();
+    int rc = danos_vpp_stat_connect();
+    vpp_ctx_unlock();
+    return rc;
 }
 
 uint64_t danos_vpp_api_stat_query(const char *name)
 {
     if (!name) return 0;
+    vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
         for (int i = 0; i < VPP_MOCK_STAT_MAX; i++) {
             if (g_mock_stats[i].used &&
                 strcmp(g_mock_stats[i].name, name) == 0) {
-                return g_mock_stats[i].value;
+                uint64_t v = g_mock_stats[i].value;
+                vpp_ctx_unlock();
+                return v;
             }
         }
         uint64_t h = 0;
         for (const char *p = name; *p; p++) {
             h = h * 31 + (uint64_t)(unsigned char)*p;
         }
+        vpp_ctx_unlock();
         return h;
     }
-    return danos_vpp_stat_query_real(name);
+    uint64_t value = danos_vpp_stat_query_real(name);
+    vpp_ctx_unlock();
+    return value;
 }
 
 int danos_vpp_api_stat_list(const char **names, uint64_t *values, int max_entries)
 {
+    vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
         int count = 0;
         for (int i = 0; i < VPP_MOCK_STAT_MAX && count < max_entries; i++) {
@@ -509,18 +625,23 @@ int danos_vpp_api_stat_list(const char **names, uint64_t *values, int max_entrie
                 count++;
             }
         }
+        vpp_ctx_unlock();
         return count;
     }
-    return danos_vpp_stat_list_real(names, values, max_entries);
+    int count = danos_vpp_stat_list_real(names, values, max_entries);
+    vpp_ctx_unlock();
+    return count;
 }
 
 void danos_vpp_api_stat_set(const char *name, uint64_t value)
 {
     if (!name) return;
+    vpp_ctx_lock();
     for (int i = 0; i < VPP_MOCK_STAT_MAX; i++) {
         if (g_mock_stats[i].used &&
             strcmp(g_mock_stats[i].name, name) == 0) {
             g_mock_stats[i].value = value;
+            vpp_ctx_unlock();
             return;
         }
     }
@@ -529,14 +650,17 @@ void danos_vpp_api_stat_set(const char *name, uint64_t value)
             snprintf(g_mock_stats[i].name, sizeof(g_mock_stats[i].name), "%s", name);
             g_mock_stats[i].value = value;
             g_mock_stats[i].used = true;
-            return;
+            break;
         }
     }
+    vpp_ctx_unlock();
 }
 
 void danos_vpp_api_stat_reset(void)
 {
+    vpp_ctx_lock();
     memset(g_mock_stats, 0, sizeof(g_mock_stats));
+    vpp_ctx_unlock();
 }
 
 /* =========================================================================
@@ -545,30 +669,43 @@ void danos_vpp_api_stat_reset(void)
 
 vpp_api_state_t danos_vpp_api_get_state(void)
 {
-    return g_ctx.state;
+    vpp_ctx_lock();
+    vpp_api_state_t state = g_ctx.state;
+    vpp_ctx_unlock();
+    return state;
 }
 
 bool danos_vpp_api_is_connected(void)
 {
-    return g_ctx.state == VPP_API_CONNECTED || g_ctx.state == VPP_API_MOCK;
+    vpp_ctx_lock();
+    bool up = g_ctx.state == VPP_API_CONNECTED || g_ctx.state == VPP_API_MOCK;
+    vpp_ctx_unlock();
+    return up;
 }
 
 bool danos_vpp_api_is_mock(void)
 {
-    return g_ctx.state == VPP_API_MOCK;
+    vpp_ctx_lock();
+    bool mock = g_ctx.state == VPP_API_MOCK;
+    vpp_ctx_unlock();
+    return mock;
 }
 
 void danos_vpp_api_get_stats(uint64_t *msgs_sent, uint64_t *msgs_received,
                               uint64_t *connect_count, uint64_t *reconnect_count)
 {
+    vpp_ctx_lock();
     if (msgs_sent)        *msgs_sent = g_ctx.msgs_sent;
     if (msgs_received)    *msgs_received = g_ctx.msgs_received;
     if (connect_count)    *connect_count = g_ctx.connect_count;
     if (reconnect_count)  *reconnect_count = g_ctx.reconnect_count;
+    vpp_ctx_unlock();
 }
 
 void danos_vpp_api_get_last_mock_msg(uint16_t *msg_id, uint32_t *msg_size)
 {
+    vpp_ctx_lock();
     if (msg_id)   *msg_id = g_ctx.last_msg_id;
     if (msg_size) *msg_size = g_ctx.last_msg_size;
+    vpp_ctx_unlock();
 }
