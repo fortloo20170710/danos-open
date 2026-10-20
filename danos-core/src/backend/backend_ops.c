@@ -272,9 +272,14 @@ static unsigned retry_hash(danos_obj_type_t type, danos_obj_id_t id)
 
 static retry_slot_t *retry_find(danos_obj_type_t type, danos_obj_id_t id)
 {
-    for (unsigned i = 0; i < 8; i++) {
-        retry_slot_t *s = &g_retry[(retry_hash(type, id) + i) & (RETRY_SLOTS - 1)];
-        if (s->used && s->type == type && s->id == id) return s;
+    /* Insertion probes the whole table (open addressing), so lookup must
+     * cover the same range or a colliding entry farther than 8 slots away
+     * is invisible: its backoff would be forgotten and retries reset. */
+    unsigned base = retry_hash(type, id);
+    for (unsigned i = 0; i < RETRY_SLOTS; i++) {
+        retry_slot_t *s = &g_retry[(base + i) & (RETRY_SLOTS - 1)];
+        if (!s->used) return NULL;
+        if (s->type == type && s->id == id) return s;
     }
     return NULL;
 }
@@ -310,7 +315,19 @@ static bool retry_defer(danos_obj_type_t type, danos_obj_id_t id, uint64_t now)
 {
     retry_slot_t *s = retry_find(type, id);
     if (!s) return false;
-    if (s->flapping) return true;
+    if (s->flapping) {
+        /* A park is a cool-down, not a permanent sentence. Without an
+         * expiry the object stays unprogrammed until the process is
+         * restarted, which on a router can mean indefinitely. */
+        uint64_t park_ns = (uint64_t)g_antiflap_window_ms * 10ULL * 1000000ULL;
+        if (park_ns < 30000000000ULL) park_ns = 30000000000ULL;  /* >= 30 s */
+        if (now - s->last_success_ns < park_ns) return true;
+        s->flapping = false;
+        s->attempts = 0;
+        s->flap_count = 0;
+        s->next_attempt_ns = now;
+        return false;
+    }
     if (g_max_retries && s->attempts >= g_max_retries) return true;
     return now < s->next_attempt_ns;
 }
@@ -503,7 +520,10 @@ uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)
 
 uint64_t danos_programming_programmed_count(danos_obj_type_t type)
 {
-    return danos_object_count(ledger(), type);
+    pthread_mutex_lock(&g_prog_lock);
+    uint64_t n = danos_object_count(ledger(), type);
+    pthread_mutex_unlock(&g_prog_lock);
+    return n;
 }
 
 danos_status_t danos_programming_object_presence(danos_obj_type_t type,
@@ -605,6 +625,10 @@ typedef struct {
 
 static sweep_id_t g_sweep_ids[SWEEP_MAX];
 static unsigned g_sweep_n;
+/* g_sweep_ids/g_sweep_n are shared scratch space. The reconciler and the
+ * live bridge can both drive sweeps, so both entry points serialize on
+ * the programming lock and on this mutex. */
+static pthread_mutex_t g_sweep_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void sweep_collect(danos_object_entry_t *e, void *user)
 {
@@ -632,7 +656,12 @@ static void sweep_collect(danos_object_entry_t *e, void *user)
 uint64_t danos_programming_sweep(uint64_t *failed)
 {
     sweep_ctx_t c = {0, 0};
+    uint64_t issued = 0;
+    pthread_mutex_lock(&g_sweep_lock);
+    pthread_mutex_lock(&g_prog_lock);
     if (!g_programmed) {
+        pthread_mutex_unlock(&g_prog_lock);
+        pthread_mutex_unlock(&g_sweep_lock);
         if (failed) *failed = 0;
         return 0;
     }
@@ -678,18 +707,27 @@ uint64_t danos_programming_sweep(uint64_t *failed)
         danos_object_delete(ledger(), type, id);
         c.issued++;
     }
+    issued = c.issued;
     if (failed) *failed = c.failed;
-    return c.issued;
+    pthread_mutex_unlock(&g_prog_lock);
+    pthread_mutex_unlock(&g_sweep_lock);
+    return issued;
 }
 
 uint64_t danos_programming_forget_programmed(void)
 {
     /* A restarted backend is a new programming epoch, including objects
      * that never made it into the ledger due to an earlier API outage. */
+    pthread_mutex_lock(&g_sweep_lock);
+    pthread_mutex_lock(&g_prog_lock);
     pthread_mutex_lock(&g_retry_lock);
     memset(g_retry, 0, sizeof(g_retry));
     pthread_mutex_unlock(&g_retry_lock);
-    if (!g_programmed) return 0;
+    if (!g_programmed) {
+        pthread_mutex_unlock(&g_prog_lock);
+        pthread_mutex_unlock(&g_sweep_lock);
+        return 0;
+    }
     g_sweep_n = 0;
     danos_object_iterate(g_programmed, sweep_collect, (void *)1);
     uint64_t forgotten = 0;
@@ -698,5 +736,7 @@ uint64_t danos_programming_forget_programmed(void)
                                 g_sweep_ids[i].id) == DANOS_OK)
             forgotten++;
     }
+    pthread_mutex_unlock(&g_prog_lock);
+    pthread_mutex_unlock(&g_sweep_lock);
     return forgotten;
 }
