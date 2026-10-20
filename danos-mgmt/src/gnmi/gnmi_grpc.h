@@ -44,6 +44,18 @@ void danos_gnmi_grpc_set_tls(danos_gnmi_grpc_ctx_t *ctx, danos_gnmi_tls_t *tls);
 void danos_gnmi_grpc_set_store(danos_gnmi_grpc_ctx_t *ctx,
                                danos_state_store_t *store);
 
+/* Decode and validate the 9-byte HTTP/2 frame header (RFC 9113 §4.1).
+ * Exposed separately so the framing parser can be fuzzed without a socket. */
+typedef struct {
+    uint32_t length;   /* payload length */
+    uint8_t  type;
+    uint8_t  flags;
+    uint32_t stream;   /* reserved bit masked off */
+} danos_h2_frame_header_t;
+
+bool danos_h2_parse_frame_header(const uint8_t hdr[9],
+                                 danos_h2_frame_header_t *out);
+
 /* Start listening (background accept thread). 0 on success. */
 int  danos_gnmi_grpc_start(danos_gnmi_grpc_ctx_t *ctx);
 void danos_gnmi_grpc_stop(danos_gnmi_grpc_ctx_t *ctx);

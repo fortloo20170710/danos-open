@@ -260,6 +260,20 @@ static void pending_free_all(h2_conn_t *c)
     c->pending_count = 0;
 }
 
+bool danos_h2_parse_frame_header(const uint8_t hdr[9],
+                                 danos_h2_frame_header_t *out)
+{
+    if (!hdr || !out) return false;
+    uint32_t flen = ((uint32_t)hdr[0] << 16) | ((uint32_t)hdr[1] << 8) | hdr[2];
+    if (flen > H2_MAX_FRAME_LEN) return false;
+    out->length = flen;
+    out->type = hdr[3];
+    out->flags = hdr[4];
+    out->stream = (((uint32_t)hdr[5] << 24) | ((uint32_t)hdr[6] << 16) |
+                   ((uint32_t)hdr[7] << 8) | hdr[8]) & 0x7fffffffu;
+    return true;
+}
+
 /* Read one frame from the wire, handling connection-level housekeeping
  * (SETTINGS ack + window updates, PING ack). Frames for other streams
  * encountered while the caller waits are returned to it via the queue;
@@ -274,11 +288,11 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
 
         uint8_t fh[9];
         if (read_full(c, fh, 9) < 0) return -1;
-        uint32_t flen = ((uint32_t)fh[0] << 16) | ((uint32_t)fh[1] << 8) | fh[2];
-        uint8_t ftype = fh[3], fflags = fh[4];
-        uint32_t fstream = ((uint32_t)fh[5] << 24) | ((uint32_t)fh[6] << 16) |
-                           ((uint32_t)fh[7] << 8) | fh[8];
-        if (flen > H2_MAX_FRAME_LEN) return -1;
+        danos_h2_frame_header_t f;
+        if (!danos_h2_parse_frame_header(fh, &f)) return -1;
+        uint32_t flen = f.length;
+        uint8_t ftype = f.type, fflags = f.flags;
+        uint32_t fstream = f.stream;
         uint8_t fbuf[H2_MAX_FRAME_LEN];
         if (flen && read_full(c, fbuf, flen) < 0) return -1;
 
