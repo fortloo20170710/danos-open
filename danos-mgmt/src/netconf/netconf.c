@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 
 void netconf_init(netconf_ctx_t *ctx, uint16_t port)
 {
@@ -25,51 +27,91 @@ void netconf_fini(netconf_ctx_t *ctx)
     ctx->authorization = NULL;
 }
 
-/* Simple XML tag extraction */
-static const char *find_tag(const char *xml, const char *tag)
+/* Simple XML tag extraction. Matches the element name exactly, so "<get"
+ * does not also select "<get-config". */
+static bool has_element(const char *xml, const char *tag)
 {
     char pattern[128];
     snprintf(pattern, sizeof(pattern), "<%s", tag);
-    return strstr(xml, pattern);
+    size_t plen = strlen(pattern);
+
+    for (const char *p = xml; (p = strstr(p, pattern)) != NULL; p += plen) {
+        switch (p[plen]) {
+        case '>': case '/': case ' ': case '\t': case '\n': case '\r':
+            return true;
+        default:
+            break;
+        }
+    }
+    return false;
 }
 
 netconf_rpc_type_t netconf_parse_rpc(const char *xml)
 {
     if (!xml) return NETCONF_RPC_UNKNOWN;
 
-    /* Look for RPC operation tags */
-    if (find_tag(xml, "get-config"))     return NETCONF_RPC_GET_CONFIG;
-    if (find_tag(xml, "hello"))         return NETCONF_RPC_HELLO;
-    if (find_tag(xml, "edit-config"))    return NETCONF_RPC_EDIT_CONFIG;
-    if (find_tag(xml, "get") && !strstr(xml, "get-config"))
-                                         return NETCONF_RPC_GET;
-    if (find_tag(xml, "close-session"))  return NETCONF_RPC_CLOSE_SESSION;
-    if (find_tag(xml, "kill-session"))   return NETCONF_RPC_KILL_SESSION;
-    if (find_tag(xml, "commit"))         return NETCONF_RPC_COMMIT;
-    if (find_tag(xml, "discard-changes"))return NETCONF_RPC_DISCARD;
-    if (find_tag(xml, "lock"))           return NETCONF_RPC_LOCK;
-    if (find_tag(xml, "unlock"))         return NETCONF_RPC_UNLOCK;
+    if (has_element(xml, "hello"))          return NETCONF_RPC_HELLO;
+    if (has_element(xml, "get-config"))     return NETCONF_RPC_GET_CONFIG;
+    if (has_element(xml, "edit-config"))    return NETCONF_RPC_EDIT_CONFIG;
+    if (has_element(xml, "get"))            return NETCONF_RPC_GET;
+    if (has_element(xml, "close-session"))  return NETCONF_RPC_CLOSE_SESSION;
+    if (has_element(xml, "kill-session"))   return NETCONF_RPC_KILL_SESSION;
+    if (has_element(xml, "commit"))         return NETCONF_RPC_COMMIT;
+    if (has_element(xml, "discard-changes"))return NETCONF_RPC_DISCARD;
+    if (has_element(xml, "lock"))           return NETCONF_RPC_LOCK;
+    if (has_element(xml, "unlock"))         return NETCONF_RPC_UNLOCK;
 
     return NETCONF_RPC_UNKNOWN;
 }
 
-char *netconf_hello_message(void)
+uint64_t netconf_new_session_id(void)
 {
-    return strdup(
+    static unsigned counter;
+    struct timespec ts = {0, 0};
+    uint64_t mixed;
+
+    (void)clock_gettime(CLOCK_REALTIME, &ts);
+    mixed = ((uint64_t)ts.tv_sec << 20) ^ ((uint64_t)ts.tv_nsec >> 10) ^
+            ((uint64_t)getpid() << 32) ^ (uint64_t)++counter;
+    mixed &= 0x7fffffffULL;     /* RFC 6241: 1 .. 2^31-1 */
+    return mixed ? mixed : 1;
+}
+
+char *netconf_hello_message(uint64_t session_id)
+{
+    static const char *const caps[] = {
+        "urn:ietf:params:netconf:base:1.0",
+        "urn:ietf:params:netconf:base:1.1",
+        "urn:ietf:params:netconf:capability:writable-running:1.0",
+        "urn:danos:yang:1.0",
+    };
+
+    if (session_id == 0 || session_id > 0x7fffffffULL) session_id = 1;
+
+    size_t cap = 512;
+    for (size_t i = 0; i < sizeof(caps) / sizeof(caps[0]); i++)
+        cap += strlen(caps[i]) + 32;
+
+    char *hello = malloc(cap);
+    if (!hello) return NULL;
+
+    size_t off = (size_t)snprintf(hello, cap,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<hello xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
-        "  <capabilities>\n"
-        "    <capability>urn:ietf:params:netconf:base:1.0</capability>\n"
-        "    <capability>urn:ietf:params:netconf:base:1.1</capability>\n"
-        "    <capability>urn:ietf:params:netconf:capability:writable-running:1.0</capability>\n"
-        "    <capability>urn:ietf:params:netconf:capability:candidate:1.0</capability>\n"
-        "    <capability>urn:ietf:params:netconf:capability:rollback-on-error:1.0</capability>\n"
-        "    <capability>urn:ietf:params:netconf:capability:validate:1.1</capability>\n"
-        "    <capability>urn:danos:yang:1.0</capability>\n"
+        "  <capabilities>\n");
+    for (size_t i = 0; i < sizeof(caps) / sizeof(caps[0]); i++)
+        off += (size_t)snprintf(hello + off, cap - off,
+            "    <capability>%s</capability>\n", caps[i]);
+    off += (size_t)snprintf(hello + off, cap - off,
         "  </capabilities>\n"
-        "  <session-id>1</session-id>\n"
-        "</hello>\n"
-    );
+        "  <session-id>%llu</session-id>\n"
+        "</hello>\n",
+        (unsigned long long)session_id);
+    if (off >= cap) {
+        free(hello);
+        return NULL;
+    }
+    return hello;
 }
 
 static char *ok_reply(void)
@@ -81,7 +123,7 @@ static char *ok_reply(void)
     );
 }
 
-static char *error_reply(const char *msg)
+static char *error_reply_tag(const char *tag, const char *msg)
 {
     char *resp = malloc(512);
     if (resp) {
@@ -89,14 +131,27 @@ static char *error_reply(const char *msg)
             "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
             "  <rpc-error>\n"
             "    <error-type>application</error-type>\n"
-            "    <error-tag>operation-failed</error-tag>\n"
+            "    <error-tag>%s</error-tag>\n"
             "    <error-severity>error</error-severity>\n"
             "    <error-message>%s</error-message>\n"
             "  </rpc-error>\n"
             "</rpc-reply>\n",
+            tag ? tag : "operation-failed",
             msg ? msg : "unknown error");
     }
     return resp;
+}
+
+static char *error_reply(const char *msg)
+{
+    return error_reply_tag("operation-failed", msg);
+}
+
+/* RPCs this server advertises no capability for. RFC 6241 requires
+ * operation-not-supported instead of a fabricated success. */
+static char *unsupported_reply(const char *operation)
+{
+    return error_reply_tag("operation-not-supported", operation);
 }
 
 /* ---- model-layer wired config view + edit ------------------------------- */
@@ -228,17 +283,18 @@ static char *get_config_reply(void)
     return b.buf;   /* ownership transfers to the caller */
 }
 
-static void extract_text(const char *xml, const char *tag,
-                         char *out, size_t cap)
+/* Extract the first <tag>...</tag> that ends before `limit`. */
+static void extract_text_n(const char *xml, const char *limit, const char *tag,
+                           char *out, size_t cap)
 {
     char open[64], close[64];
     snprintf(open, sizeof(open), "<%s>", tag);
     snprintf(close, sizeof(close), "</%s>", tag);
     const char *p = strstr(xml, open);
-    if (!p) return;
+    if (!p || (limit && p >= limit)) return;
     p += strlen(open);
     const char *e = strstr(p, close);
-    if (!e) return;
+    if (!e || (limit && e > limit)) return;
     size_t n = (size_t)(e - p);
     if (n >= cap) n = cap - 1;
     memcpy(out, p, n);
@@ -260,64 +316,141 @@ static void nc_lookup_iface_iter(danos_object_entry_t *e, void *user)
     }
 }
 
+#define NETCONF_MAX_EDIT_BLOCKS 1024
+
+/*
+ * Apply every <interface> block in the edit-config as one transaction.
+ * The earlier implementation called strstr once, so a client that changed
+ * several interfaces silently had all but the first discarded. Validation
+ * happens before the transaction starts; any failure leaves the store
+ * untouched.
+ */
 static char *edit_config_apply(const char *xml)
 {
-    const char *iblock = find_tag(xml, "interface>");
-    if (!iblock) return ok_reply();
+    const char *p = strstr(xml, "<config");
+    if (!p) p = xml;
 
-    char name[64] = {0}, mtu[32] = {0}, enabled[16] = {0};
-    extract_text(iblock, "name", name, sizeof(name));
-    extract_text(iblock, "mtu", mtu, sizeof(mtu));
-    extract_text(iblock, "enabled", enabled, sizeof(enabled));
-    if (!name[0]) return error_reply("interface name missing");
+    danos_iface_t *targets = NULL;
+    size_t count = 0, cap = 0;
 
-    danos_iface_t target;
-    struct nc_lookup lu = { .want = name, .out = &target, .found = false };
-    danos_object_iterate(g_default_store, nc_lookup_iface_iter, &lu);
-    if (!lu.found) return error_reply("interface not found");
+    const char *cur = p;
+    while ((cur = strstr(cur, "<interface")) != NULL) {
+        /* "<interface" is 10 bytes; reject the <interfaces> container. */
+        char next = cur[10];
+        if (next != '>' && next != '/' && next != ' ' &&
+            next != '\t' && next != '\n' && next != '\r') {
+            cur += 10;
+            continue;
+        }
+        if (next == '/') {      /* <interface/> carries no name */
+            free(targets);
+            return error_reply("interface name missing");
+        }
+        const char *body = strchr(cur, '>');
+        if (!body) break;
+        body++;
+        const char *end = strstr(body, "</interface>");
+        if (!end) {
+            free(targets);
+            return error_reply("unterminated interface element");
+        }
 
-    if (mtu[0]) {
-        gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
-        snprintf(v.s, sizeof(v.s), "%s", mtu);
-        danos_status_t st = gnmi_model_apply_leaf(DANOS_OBJ_IFACE,
-                                                  GNMI_FIELD_MTU,
-                                                  &target, sizeof(target), &v);
-        if (st != DANOS_OK) return error_reply(danos_status_str(st));
+        char name[64] = {0}, mtu[32] = {0}, enabled[16] = {0};
+        extract_text_n(body, end, "name", name, sizeof(name));
+        extract_text_n(body, end, "mtu", mtu, sizeof(mtu));
+        extract_text_n(body, end, "enabled", enabled, sizeof(enabled));
+        if (!name[0]) {
+            free(targets);
+            return error_reply("interface name missing");
+        }
+        if (count == NETCONF_MAX_EDIT_BLOCKS) {
+            free(targets);
+            return error_reply("too many interfaces in one edit-config");
+        }
+        if (count == cap) {
+            size_t ncap = cap ? cap * 2 : 8;
+            danos_iface_t *nt = realloc(targets, ncap * sizeof(*nt));
+            if (!nt) {
+                free(targets);
+                return error_reply("out of memory");
+            }
+            targets = nt;
+            cap = ncap;
+        }
+
+        danos_iface_t *target = &targets[count];
+        struct nc_lookup lu = { .want = name, .out = target, .found = false };
+        danos_object_iterate(g_default_store, nc_lookup_iface_iter, &lu);
+        if (!lu.found) {
+            free(targets);
+            return error_reply("interface not found");
+        }
+
+        if (mtu[0]) {
+            gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
+            snprintf(v.s, sizeof(v.s), "%s", mtu);
+            danos_status_t st = gnmi_model_apply_leaf(DANOS_OBJ_IFACE,
+                                                      GNMI_FIELD_MTU,
+                                                      target, sizeof(*target), &v);
+            if (st != DANOS_OK) {
+                free(targets);
+                return error_reply(danos_status_str(st));
+            }
+        }
+        if (enabled[0]) {
+            gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
+            snprintf(v.s, sizeof(v.s), "%s", enabled);
+            danos_status_t st = gnmi_model_apply_leaf(DANOS_OBJ_IFACE,
+                                                      GNMI_FIELD_ENABLED,
+                                                      target, sizeof(*target), &v);
+            if (st != DANOS_OK) {
+                free(targets);
+                return error_reply(danos_status_str(st));
+            }
+        }
+        count++;
+        cur = end + strlen("</interface>");
     }
-    if (enabled[0]) {
-        gnmi_typed_value_t v = { .kind = GNMI_VAL_JSON_IETF };
-        snprintf(v.s, sizeof(v.s), "%s", enabled);
-        danos_status_t st = gnmi_model_apply_leaf(DANOS_OBJ_IFACE,
-                                                  GNMI_FIELD_ENABLED,
-                                                  &target, sizeof(target), &v);
-        if (st != DANOS_OK) return error_reply(danos_status_str(st));
+
+    if (count == 0) {
+        free(targets);
+        return ok_reply();
     }
+
     danos_tx_t tx = {0};
     danos_status_t st = danos_tx_begin(&tx, "netconf-edit-config", NULL);
-    if (st == DANOS_OK) st = danos_iface_update(&tx, &target);
+    for (size_t i = 0; st == DANOS_OK && i < count; i++)
+        st = danos_iface_update(&tx, &targets[i]);
     if (st == DANOS_OK) st = danos_tx_commit_atomic(&tx);
     if (st != DANOS_OK && tx._internal) (void)danos_tx_abort(&tx);
+    free(targets);
     if (st != DANOS_OK) return error_reply(danos_status_str(st));
     return ok_reply();
 }
 
-/* edit-config mutates state, everything else is read-only. The role has no
- * credential behind it yet (see authz.h); this check is what will deny once
- * an identity source exists. */
-static bool netconf_authorized(netconf_rpc_type_t t)
+/* edit-config mutates state, everything else is read-only. The role comes
+ * from the transport when one established an identity (SSH), otherwise from
+ * the deployment default. */
+static bool netconf_authorized(const netconf_ctx_t *ctx, netconf_rpc_type_t t)
 {
     bool mutating = (t == NETCONF_RPC_EDIT_CONFIG);
-    return danos_authz_check(danos_authz_role_for_peer(NULL),
-                             DANOS_SEC_OBJ_ALL,
-                             mutating ? DANOS_SEC_OP_UPDATE : DANOS_SEC_OP_READ,
-                             "netconf");
+    danos_sec_role_t role = ctx->role ? ctx->role
+                                      : danos_authz_role_for_peer(NULL);
+    const char *identity = ctx->identity[0] ? ctx->identity
+                                            : danos_rbac_role_name(role);
+    return danos_authz_check_identity(role, DANOS_SEC_OBJ_ALL,
+                                      mutating ? DANOS_SEC_OP_UPDATE
+                                               : DANOS_SEC_OP_READ,
+                                      "netconf", identity);
 }
 
 /* NETCONF carries its credential in the <hello> message, not a per-request
- * header, so a session authenticates once at login. Unauthenticated sessions
- * are rejected from here on. */
+ * header, so a session authenticates once at login. A session whose
+ * transport already authenticated a user (the SSH subsystem) is past that
+ * step; otherwise the <hello> bearer token is checked. */
 static bool netconf_authenticate(netconf_ctx_t *ctx)
 {
+    if (ctx->identity[0]) return true;       /* authenticated by the transport */
     if (!danos_authz_configured()) return true;
     if (ctx->session_id != 0) return true;   /* already logged in */
     long uid = -1;
@@ -373,7 +506,8 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
             "</rpc-reply>\n");
     }
 
-    if (!netconf_authorized(rpc_type)) {
+    if (!netconf_authorized(ctx, rpc_type)) {
+        ctx->error_count++;
         /* RFC 6241 access-denied, reported as rpc-error. */
         return strdup(
             "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
@@ -398,14 +532,24 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
         return get_config_reply();
 
     case NETCONF_RPC_COMMIT:
-        return ok_reply();
+        ctx->error_count++;
+        return unsupported_reply("commit");
 
     case NETCONF_RPC_DISCARD:
-        return ok_reply();
+        ctx->error_count++;
+        return unsupported_reply("discard-changes");
 
     case NETCONF_RPC_LOCK:
+        ctx->error_count++;
+        return unsupported_reply("lock");
+
     case NETCONF_RPC_UNLOCK:
-        return ok_reply();
+        ctx->error_count++;
+        return unsupported_reply("unlock");
+
+    case NETCONF_RPC_KILL_SESSION:
+        ctx->error_count++;
+        return unsupported_reply("kill-session");
 
     case NETCONF_RPC_CLOSE_SESSION:
         return ok_reply();

@@ -12,6 +12,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <danos/security/rbac.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -27,6 +28,11 @@ typedef struct {
      * rather than per request. */
     char    *authorization;
     uint64_t session_id;    /* non-zero once logged in */
+    /* Identity established by the transport (the SSH user) and the role the
+     * deployment maps that identity to. The SSH server authenticates the
+     * user; this context carries the result into RBAC and the audit log. */
+    danos_sec_role_t role;
+    char identity[64];
 } netconf_ctx_t;
 
 /* NETCONF RPC types */
@@ -60,8 +66,12 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml);
  * Returns NULL on error. */
 char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml);
 
-/* Generate NETCONF <hello> message (capabilities advertisement) */
-char *netconf_hello_message(void);
+/* Generate NETCONF <hello> message (capabilities advertisement) for a
+ * session. session_id must be in 1..2^31-1. */
+char *netconf_hello_message(uint64_t session_id);
+
+/* Allocate a session identifier in the RFC 6241 range. */
+uint64_t netconf_new_session_id(void);
 
 /* Get statistics */
 void netconf_get_stats(netconf_ctx_t *ctx, uint64_t *rpc_count,
