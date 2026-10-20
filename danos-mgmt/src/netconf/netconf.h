@@ -48,6 +48,9 @@ typedef enum {
     NETCONF_RPC_LOCK          = 9,
     NETCONF_RPC_UNLOCK        = 10,
     NETCONF_RPC_HELLO         = 11,
+    NETCONF_RPC_COPY_CONFIG   = 12,
+    NETCONF_RPC_DELETE_CONFIG = 13,
+    NETCONF_RPC_VALIDATE      = 14,
     NETCONF_RPC_UNKNOWN       = 0,
 } netconf_rpc_type_t;
 

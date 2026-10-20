@@ -3,6 +3,7 @@
  */
 
 #include "netconf.h"
+#include "netconf_datastore.h"
 #include "../gnmi/model_paths.h"
 #include "../authz/authz.h"
 #include <danos/core/object_registry.h>
@@ -18,11 +19,13 @@ void netconf_init(netconf_ctx_t *ctx, uint16_t port)
 {
     memset(ctx, 0, sizeof(*ctx));
     ctx->port = port ? port : 830;
+    netconf_ds_init(NULL);
 }
 
 void netconf_fini(netconf_ctx_t *ctx)
 {
     if (!ctx) return;
+    netconf_ds_release_session(ctx->session_id);
     free(ctx->authorization);
     ctx->authorization = NULL;
 }
@@ -60,6 +63,9 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml)
     if (has_element(xml, "discard-changes"))return NETCONF_RPC_DISCARD;
     if (has_element(xml, "lock"))           return NETCONF_RPC_LOCK;
     if (has_element(xml, "unlock"))         return NETCONF_RPC_UNLOCK;
+    if (has_element(xml, "copy-config"))    return NETCONF_RPC_COPY_CONFIG;
+    if (has_element(xml, "delete-config"))  return NETCONF_RPC_DELETE_CONFIG;
+    if (has_element(xml, "validate"))       return NETCONF_RPC_VALIDATE;
 
     return NETCONF_RPC_UNKNOWN;
 }
@@ -83,6 +89,8 @@ char *netconf_hello_message(uint64_t session_id)
         "urn:ietf:params:netconf:base:1.0",
         "urn:ietf:params:netconf:base:1.1",
         "urn:ietf:params:netconf:capability:writable-running:1.0",
+        "urn:ietf:params:netconf:capability:candidate:1.0",
+        "urn:ietf:params:netconf:capability:startup:1.0",
         "urn:danos:yang:1.0",
     };
 
@@ -140,6 +148,82 @@ static char *error_reply_tag(const char *tag, const char *msg)
             msg ? msg : "unknown error");
     }
     return resp;
+}
+
+/* Look for `<name` inside [p, end) and require an element boundary. */
+static bool element_in(const char *p, const char *end, const char *name)
+{
+    char open[32];
+    snprintf(open, sizeof(open), "<%s", name);
+    size_t olen = strlen(open);
+
+    while (p && p < end) {
+        const char *hit = strstr(p, open);
+        if (!hit || hit >= end) return false;
+        char next = hit[olen];
+        if (next == '>' || next == '/' || next == ' ' || next == '\t' ||
+            next == '\n' || next == '\r')
+            return true;
+        p = hit + olen;
+    }
+    return false;
+}
+
+/* Parse <source><running/></source> style datastore selection. */
+static bool parse_datastore(const char *xml, const char *which,
+                            netconf_datastore_t *out)
+{
+    char open[32], close[32];
+    snprintf(open, sizeof(open), "<%s>", which);
+    snprintf(close, sizeof(close), "</%s>", which);
+
+    const char *p = strstr(xml, open);
+    if (!p) return false;
+    p += strlen(open);
+    const char *end = strstr(p, close);
+    if (!end) return false;
+
+    if (element_in(p, end, "running")) { *out = NETCONF_DS_RUNNING; return true; }
+    if (element_in(p, end, "candidate")) { *out = NETCONF_DS_CANDIDATE; return true; }
+    if (element_in(p, end, "startup")) { *out = NETCONF_DS_STARTUP; return true; }
+    return false;
+}
+
+static char *ds_error_reply(netconf_ds_status_t st, const char *what)
+{
+    switch (st) {
+    case NETCONF_DS_LOCKED:
+        return error_reply_tag("in-use", what ? what : "datastore is locked");
+    case NETCONF_DS_INVALID:
+        return error_reply_tag("invalid-value",
+                               what ? what : "datastore unavailable");
+    case NETCONF_DS_NOT_FOUND:
+        return error_reply_tag("invalid-value",
+                               what ? what : "object not found");
+    case NETCONF_DS_IO:
+        return error_reply_tag("operation-failed",
+                               what ? what : "startup write failed");
+    case NETCONF_DS_NOMEM:
+        return error_reply_tag("resource-denied", "out of memory");
+    case NETCONF_DS_FAILED:
+        return error_reply_tag("operation-failed",
+                               what ? what : "operation failed");
+    default:
+        return error_reply_tag("operation-failed",
+                               what ? what : "operation failed");
+    }
+}
+
+static char *lock_denied_reply(const char *what)
+{
+    return error_reply_tag("lock-denied", what);
+}
+
+/* Unit-test and anonymous contexts may have no session id; give them one
+ * stable identity so lock ownership still works. */
+static uint64_t session_of(const netconf_ctx_t *ctx)
+{
+    return ctx->session_id ? ctx->session_id : 1;
 }
 
 static char *error_reply(const char *msg)
@@ -264,7 +348,7 @@ static void nc_iface_xml_iter(danos_object_entry_t *e, void *user)
         i->mtu, i->admin_up ? "true" : "false");
 }
 
-static char *get_config_reply(void)
+static char *get_config_reply(netconf_datastore_t ds)
 {
     nc_buf_t b;
     nc_buf_init(&b, 4096);
@@ -273,12 +357,16 @@ static char *get_config_reply(void)
         "<rpc-reply xmlns=\"urn:ietf:params:xml:ns:netconf:base:1.0\">\n"
         "  <data>\n"
         "    <interfaces xmlns=\"urn:danos:yang:danos-iface\">\n");
-    danos_object_iterate(g_default_store, nc_iface_xml_iter, &b);
+    netconf_ds_status_t st = netconf_ds_iterate(ds, nc_iface_xml_iter, &b);
     nc_buf_addf(&b,
         "    </interfaces>\n"
         "  </data>\n"
         "</rpc-reply>\n");
 
+    if (st != NETCONF_DS_OK) {
+        free(b.buf);
+        return error_reply_tag("invalid-value", "datastore unavailable");
+    }
     if (b.oom) { free(b.buf); return error_reply("response too large"); }
     return b.buf;   /* ownership transfers to the caller */
 }
@@ -325,8 +413,12 @@ static void nc_lookup_iface_iter(danos_object_entry_t *e, void *user)
  * happens before the transaction starts; any failure leaves the store
  * untouched.
  */
-static char *edit_config_apply(const char *xml)
+static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
 {
+    if (ds == NETCONF_DS_STARTUP)
+        return error_reply_tag("invalid-value",
+                               "startup is read-only; use copy-config");
+
     const char *p = strstr(xml, "<config");
     if (!p) p = xml;
 
@@ -380,7 +472,10 @@ static char *edit_config_apply(const char *xml)
 
         danos_iface_t *target = &targets[count];
         struct nc_lookup lu = { .want = name, .out = target, .found = false };
-        danos_object_iterate(g_default_store, nc_lookup_iface_iter, &lu);
+        if (ds == NETCONF_DS_RUNNING)
+            danos_object_iterate(g_default_store, nc_lookup_iface_iter, &lu);
+        else
+            (void)netconf_ds_iterate(ds, nc_lookup_iface_iter, &lu);
         if (!lu.found) {
             free(targets);
             return error_reply("interface not found");
@@ -417,6 +512,23 @@ static char *edit_config_apply(const char *xml)
         return ok_reply();
     }
 
+    if (ds != NETCONF_DS_RUNNING) {
+        /* Candidate edits stay private until commit.  Validation above
+         * covered every block, so a failure here is out of memory. */
+        danos_status_t wst = DANOS_OK;
+        for (size_t i = 0; i < count && wst == DANOS_OK; i++) {
+            switch (netconf_ds_write(ds, DANOS_OBJ_IFACE,
+                                     targets[i].ifindex, &targets[i],
+                                     sizeof(targets[i]))) {
+            case NETCONF_DS_OK:         break;
+            case NETCONF_DS_NOMEM:      wst = DANOS_ERR_NO_MEMORY; break;
+            default:                    wst = DANOS_ERR_INVALID_ARG; break;
+            }
+        }
+        free(targets);
+        return wst == DANOS_OK ? ok_reply() : error_reply(danos_status_str(wst));
+    }
+
     danos_tx_t tx = {0};
     danos_status_t st = danos_tx_begin(&tx, "netconf-edit-config", NULL);
     for (size_t i = 0; st == DANOS_OK && i < count; i++)
@@ -433,7 +545,13 @@ static char *edit_config_apply(const char *xml)
  * the deployment default. */
 static bool netconf_authorized(const netconf_ctx_t *ctx, netconf_rpc_type_t t)
 {
-    bool mutating = (t == NETCONF_RPC_EDIT_CONFIG);
+    bool mutating = (t == NETCONF_RPC_EDIT_CONFIG ||
+                     t == NETCONF_RPC_COMMIT ||
+                     t == NETCONF_RPC_DISCARD ||
+                     t == NETCONF_RPC_LOCK ||
+                     t == NETCONF_RPC_UNLOCK ||
+                     t == NETCONF_RPC_COPY_CONFIG ||
+                     t == NETCONF_RPC_DELETE_CONFIG);
     danos_sec_role_t role = ctx->role ? ctx->role
                                       : danos_authz_role_for_peer(NULL);
     const char *identity = ctx->identity[0] ? ctx->identity
@@ -522,36 +640,132 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
     ctx->rpc_count++;
 
     switch (rpc_type) {
-    case NETCONF_RPC_GET_CONFIG:
-        return get_config_reply();
+    case NETCONF_RPC_GET_CONFIG: {
+        netconf_datastore_t ds = NETCONF_DS_RUNNING;
+        /* A missing <source> defaults to running, matching the previous
+         * single-datastore behaviour.  An unknown source is an error. */
+        if (strstr(xml, "<source>") && !parse_datastore(xml, "source", &ds)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "unsupported source");
+        }
+        return get_config_reply(ds);
+    }
 
-    case NETCONF_RPC_EDIT_CONFIG:
-        return edit_config_apply(xml);
+    case NETCONF_RPC_EDIT_CONFIG: {
+        netconf_datastore_t ds = NETCONF_DS_RUNNING;
+        if (strstr(xml, "<target>") && !parse_datastore(xml, "target", &ds)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "unsupported target");
+        }
+        if (netconf_ds_locked_by_other(ds, session_of(ctx))) {
+            ctx->error_count++;
+            return ds_error_reply(NETCONF_DS_LOCKED,
+                                  "datastore is locked by another session");
+        }
+        char *reply = edit_config_apply(xml, ds);
+        if (reply && strstr(reply, "rpc-error")) ctx->error_count++;
+        return reply;
+    }
 
     case NETCONF_RPC_GET:
-        return get_config_reply();
+        return get_config_reply(NETCONF_DS_RUNNING);
 
-    case NETCONF_RPC_COMMIT:
-        ctx->error_count++;
-        return unsupported_reply("commit");
+    case NETCONF_RPC_COMMIT: {
+        /* Confirmed commit is a separate capability; refuse it explicitly
+         * rather than committing immediately. */
+        if (has_element(xml, "confirmed") || has_element(xml, "persist")) {
+            ctx->error_count++;
+            return unsupported_reply("confirmed commit");
+        }
+        netconf_ds_status_t st = netconf_ds_commit(session_of(ctx));
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "commit failed");
+        }
+        return ok_reply();
+    }
 
-    case NETCONF_RPC_DISCARD:
-        ctx->error_count++;
-        return unsupported_reply("discard-changes");
+    case NETCONF_RPC_DISCARD: {
+        netconf_ds_status_t st = netconf_ds_discard(session_of(ctx));
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "discard-changes failed");
+        }
+        return ok_reply();
+    }
 
     case NETCONF_RPC_LOCK:
-        ctx->error_count++;
-        return unsupported_reply("lock");
+    case NETCONF_RPC_UNLOCK: {
+        netconf_datastore_t ds;
+        if (!parse_datastore(xml, "target", &ds)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "lock target missing");
+        }
+        netconf_ds_status_t st = rpc_type == NETCONF_RPC_LOCK
+            ? netconf_ds_lock(ds, session_of(ctx), ctx->identity)
+            : netconf_ds_unlock(ds, session_of(ctx));
+        if (st == NETCONF_DS_LOCKED) {
+            ctx->error_count++;
+            return lock_denied_reply(rpc_type == NETCONF_RPC_LOCK
+                ? "datastore is already locked"
+                : "lock is not held by this session");
+        }
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "datastore unavailable");
+        }
+        return ok_reply();
+    }
 
-    case NETCONF_RPC_UNLOCK:
+    case NETCONF_RPC_COPY_CONFIG: {
+        netconf_datastore_t src, dst;
+        if (!parse_datastore(xml, "source", &src)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "copy-config source missing");
+        }
+        if (!parse_datastore(xml, "target", &dst)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "copy-config target missing");
+        }
+        netconf_ds_status_t st = netconf_ds_copy(src, dst, session_of(ctx));
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "copy-config failed");
+        }
+        return ok_reply();
+    }
+
+    case NETCONF_RPC_DELETE_CONFIG: {
+        netconf_datastore_t ds;
+        if (!parse_datastore(xml, "target", &ds)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value",
+                                   "delete-config target missing");
+        }
+        if (ds != NETCONF_DS_STARTUP) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value",
+                                   "delete-config only supports startup");
+        }
+        netconf_ds_status_t st =
+            netconf_ds_delete_config(ds, session_of(ctx));
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "delete-config failed");
+        }
+        return ok_reply();
+    }
+
+    case NETCONF_RPC_VALIDATE:
         ctx->error_count++;
-        return unsupported_reply("unlock");
+        return unsupported_reply("validate");
 
     case NETCONF_RPC_KILL_SESSION:
         ctx->error_count++;
         return unsupported_reply("kill-session");
 
     case NETCONF_RPC_CLOSE_SESSION:
+        netconf_ds_release_session(session_of(ctx));
         return ok_reply();
 
     case NETCONF_RPC_UNKNOWN:

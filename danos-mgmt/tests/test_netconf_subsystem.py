@@ -7,8 +7,10 @@ exercised by danos-test/integration/run_netconf_ssh.sh in CI.
 
 import os
 import select
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 EOM = b"]]>]]>"
@@ -96,21 +98,25 @@ class Session:
         assert rc == expect, "exit %d (expected %d): %s" % (rc, expect, err)
 
 
-def env_for(role="admin"):
+def env_for(role="admin", startup_path=None):
     env = dict(os.environ)
     env["DANOS_NETCONF_ROLE"] = role
     # Keep audit writes out of the source tree and away from /var/log.
     env.setdefault("TMPDIR", "/tmp")
+    if startup_path:
+        env["DANOS_NETCONF_STARTUP"] = startup_path
     return env
 
 
-def test_base_1_0(binary):
-    s = Session(binary, env_for())
+def test_base_1_0(binary, startup_path):
+    s = Session(binary, env_for(startup_path=startup_path))
     hello = s.read_eom()
     assert b"<hello" in hello
     assert b"urn:ietf:params:netconf:base:1.0" in hello
     assert b"urn:ietf:params:netconf:base:1.1" in hello
-    assert b"capability:candidate" not in hello
+    assert b"capability:writable-running" in hello
+    assert b"capability:candidate" in hello
+    assert b"capability:startup" in hello
     assert b"rollback-on-error" not in hello
     assert b"capability:validate" not in hello
     assert b"<session-id>" in hello
@@ -129,7 +135,6 @@ def test_base_1_0(binary):
 def test_base_1_1(binary):
     s = Session(binary, env_for())
     s.read_eom()  # server hello, always EOM framed
-
     s.write(HELLO_11 + EOM + chunked(GET) + chunked(CLOSE))
     reply = s.read_chunked()
     assert b"<data>" in reply and b"<interfaces" in reply
@@ -150,7 +155,7 @@ def test_bad_chunk(binary):
 def test_unknown_rpc(binary):
     s = Session(binary, env_for())
     s.read_eom()
-    s.write(HELLO_10 + EOM + b"<rpc><commit/></rpc>" + EOM)
+    s.write(HELLO_10 + EOM + b"<rpc><validate><source><running/></source></validate></rpc>" + EOM)
     reply = s.read_eom()
     assert b"operation-not-supported" in reply
     s.write(CLOSE + EOM)
@@ -159,16 +164,58 @@ def test_unknown_rpc(binary):
     print("[PASS] test_unknown_rpc: unimplemented RPC is refused")
 
 
+def test_datastores(binary, startup_path):
+    s = Session(binary, env_for(startup_path=startup_path))
+    s.read_eom()
+
+    # commit and discard with no candidate edits are successful no-ops.
+    s.write(HELLO_10 + EOM + b"<rpc><commit/></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><discard-changes/></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+
+    # copy-config running -> startup touches the durable file.
+    s.write(b"<rpc><copy-config><target><startup/></target>"
+            b"<source><running/></source></copy-config></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><get-config><source><startup/></source></get-config></rpc>" + EOM)
+    reply = s.read_eom()
+    assert b"<data>" in reply
+
+    # lock, refusal of a second lock by the same session, unlock.
+    s.write(b"<rpc><lock><target><running/></target></lock></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><lock><target><running/></target></lock></rpc>" + EOM)
+    assert b"lock-denied" in s.read_eom()
+    s.write(b"<rpc><unlock><target><running/></target></unlock></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+
+    # delete-config clears startup.
+    s.write(b"<rpc><delete-config><target><startup/></target></delete-config></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+
+    s.write(CLOSE + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.finish(0)
+    print("[PASS] test_datastores: candidate, startup, locks over the wire")
+
+
 def main():
     if len(sys.argv) != 2:
         print("usage: test_netconf_subsystem.py <danos-netconf-subsystem>",
               file=sys.stderr)
         return 2
     binary = sys.argv[1]
-    test_base_1_0(binary)
-    test_base_1_1(binary)
-    test_bad_chunk(binary)
-    test_unknown_rpc(binary)
+    startup_dir = tempfile.mkdtemp(prefix="danos-nc-")
+    startup_path = os.path.join(startup_dir, "startup.db")
+    try:
+        test_base_1_0(binary, startup_path)
+        test_base_1_1(binary)
+        test_bad_chunk(binary)
+        test_unknown_rpc(binary)
+        test_datastores(binary, startup_path)
+    finally:
+        shutil.rmtree(startup_dir, ignore_errors=True)
     print("=== test_netconf_subsystem: ALL PASSED ===")
     return 0
 
