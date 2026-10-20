@@ -146,8 +146,12 @@ int danos_wal_checkpoint(wal_ctx_t *ctx)
     return 0;
 }
 
-int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
+int danos_wal_replay_ex(const char *path, wal_replay_cb_t callback, void *user,
+                        wal_replay_result_t *out)
 {
+    wal_replay_result_t local = { .records = 0, .corrupt = false,
+                                  .callback_failed = false };
+    if (out) *out = local;
     if (!path || !callback) return -1;
 
     FILE *fp = fopen(path, "rb");
@@ -156,11 +160,21 @@ int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
     int replayed = 0;
     uint8_t header[WAL_HEADER_SIZE];
 
-    while (fread(header, 1, WAL_HEADER_SIZE, fp) == WAL_HEADER_SIZE) {
+    for (;;) {
+        size_t got = fread(header, 1, WAL_HEADER_SIZE, fp);
+        if (got == 0) break;                 /* clean end of log */
+        if (got < WAL_HEADER_SIZE) break;    /* torn header at tail */
+
         /* Parse header */
         uint32_t magic;
         memcpy(&magic, header, 4);
-        if (magic != WAL_MAGIC) break;
+        if (magic != WAL_MAGIC) {
+            /* Unknown layout: an old-version file or a damaged header.
+             * Stopping silently would make callers believe the log was
+             * simply empty. */
+            local.corrupt = true;
+            break;
+        }
 
         wal_record_t rec;
         rec.magic = magic;
@@ -171,14 +185,21 @@ int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
         memcpy(&rec.data_len, header + 23, 4);
 
         /* Sanity check data_len */
-        if (rec.data_len > 1024 * 1024) break;  /* 1MB max */
+        if (rec.data_len > 1024 * 1024) {    /* 1MB max */
+            local.corrupt = true;
+            break;
+        }
 
         /* Read data */
         uint8_t *data = NULL;
         if (rec.data_len > 0) {
             data = malloc(rec.data_len);
-            if (!data) break;
+            if (!data) {
+                local.callback_failed = true;
+                break;
+            }
             if (fread(data, 1, rec.data_len, fp) != rec.data_len) {
+                /* A short payload is the signature of a crash mid-write. */
                 free(data);
                 break;
             }
@@ -191,26 +212,44 @@ int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
         uint32_t stored_crc, calc_crc;
         if (fread(&stored_crc, 1, 4, fp) != 4) {
             free(data);
-            break;
+            break;                           /* torn CRC at tail */
         }
         calc_crc = crc32_calc(header, WAL_HEADER_SIZE);
         if (rec.data_len > 0 && data)
             calc_crc = crc32_final(crc32_update(calc_crc, data, rec.data_len));
 
         if (calc_crc != stored_crc) {
-            /* CRC mismatch — stop replay */
+            /* A checksum failure can mean a torn final write or real
+             * damage. Report it so the caller can decide; valid records
+             * before this point have already been delivered. */
+            local.corrupt = true;
             free(data);
             break;
         }
 
         /* Invoke callback */
-        callback(&rec, user);
+        if (callback(&rec, user) != 0) {
+            local.callback_failed = true;
+            free(data);
+            break;
+        }
         replayed++;
         free(data);
     }
 
     fclose(fp);
+    local.records = replayed;
+    if (out) *out = local;
     return replayed;
+}
+
+int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user)
+{
+    wal_replay_result_t res;
+    int rc = danos_wal_replay_ex(path, callback, user, &res);
+    if (rc < 0) return rc;
+    if (res.callback_failed) return -1;
+    return res.records;
 }
 
 void danos_wal_get_stats(wal_ctx_t *ctx, uint64_t *records, uint64_t *bytes)

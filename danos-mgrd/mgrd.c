@@ -297,6 +297,20 @@ int main(int argc, char **argv)
         return 1;
     }
     int recovered = danos_persist_recover();
+    if (recovered < 0) {
+        fprintf(stderr, "mgrd: WAL recovery failed: %s; %s\n",
+                danos_persist_recovery_corrupt() ? "log is corrupt"
+                                                 : "replay error",
+                getenv("DANOS_ALLOW_PARTIAL_RECOVERY")
+                    ? "booting with the records that survived"
+                    : "refusing to boot (set DANOS_ALLOW_PARTIAL_RECOVERY=1 to override)");
+        if (!getenv("DANOS_ALLOW_PARTIAL_RECOVERY")) {
+            danos_gnmi_tls_free(tls);
+            danos_persist_disable();
+            return 1;
+        }
+        recovered = 0;
+    }
     printf("mgrd: persistence %s (%d records recovered)\n", wal, recovered);
     if (recovered == 0 && seed) {
         danos_status_t seed_status = seed_initial_config();

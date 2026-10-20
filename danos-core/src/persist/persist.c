@@ -6,15 +6,23 @@
 #include <danos/core/wal.h>
 #include <danos/core/object_registry.h>
 #include <danos/dpa.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static wal_ctx_t g_wal;
 static bool g_enabled = false;
 static bool g_recovering = false;
+static bool g_recovery_corrupt = false;
 static uint64_t g_records_logged = 0;
 static uint64_t g_recovered = 0;
+
+/* Serializes WAL appends and checkpoint replacement. Callers that hold the
+ * object-store lock already take it in the same order (store -> persist),
+ * so checkpoint must acquire the store lock first as well. */
+static pthread_mutex_t g_persist_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* DPA object type -> WAL object type */
 static uint16_t dpa_type_to_wal(danos_obj_type_t t)
@@ -61,18 +69,28 @@ static danos_obj_type_t wal_type_to_dpa(uint16_t t)
 int danos_persist_enable(const char *wal_path)
 {
     if (!wal_path) return -1;
-    if (g_enabled) danos_persist_disable();
-    if (danos_wal_init(&g_wal, wal_path) != 0) return -1;
+    pthread_mutex_lock(&g_persist_lock);
+    if (g_enabled) {
+        danos_wal_close(&g_wal);
+        g_enabled = false;
+    }
+    if (danos_wal_init(&g_wal, wal_path) != 0) {
+        pthread_mutex_unlock(&g_persist_lock);
+        return -1;
+    }
     g_enabled = true;
+    pthread_mutex_unlock(&g_persist_lock);
     return 0;
 }
 
 void danos_persist_disable(void)
 {
+    pthread_mutex_lock(&g_persist_lock);
     if (g_enabled) {
         danos_wal_close(&g_wal);
         g_enabled = false;
     }
+    pthread_mutex_unlock(&g_persist_lock);
 }
 
 bool danos_persist_is_enabled(void)
@@ -83,7 +101,11 @@ bool danos_persist_is_enabled(void)
 int danos_persist_log_op(uint8_t wal_op, uint16_t wal_obj_type,
                          uint64_t obj_id, const void *data, uint32_t len)
 {
-    if (!g_enabled) return 0;   /* persistence off: no-op */
+    pthread_mutex_lock(&g_persist_lock);
+    if (!g_enabled) {   /* persistence off: no-op */
+        pthread_mutex_unlock(&g_persist_lock);
+        return 0;
+    }
 
     wal_record_t rec;
     memset(&rec, 0, sizeof(rec));
@@ -95,10 +117,12 @@ int danos_persist_log_op(uint8_t wal_op, uint16_t wal_obj_type,
     rec.data_len = len;
     rec.data = data;
 
-    if (danos_wal_append(&g_wal, &rec) != 0) return -1;
-    if (danos_wal_sync(&g_wal) != 0) return -1;
-    g_records_logged++;
-    return 0;
+    int rc = 0;
+    if (danos_wal_append(&g_wal, &rec) != 0) rc = -1;
+    else if (danos_wal_sync(&g_wal) != 0) rc = -1;
+    else g_records_logged++;
+    pthread_mutex_unlock(&g_persist_lock);
+    return rc;
 }
 
 /* ---- recovery ----------------------------------------------------------- */
@@ -229,8 +253,13 @@ int danos_persist_log_transaction(uint64_t tx_id,
                                   const danos_object_mutation_t *muts,
                                   size_t count)
 {
-    if (!g_enabled) return 0;
     if (!tx_id || (!muts && count)) return -1;
+    pthread_mutex_lock(&g_persist_lock);
+    if (!g_enabled) {
+        pthread_mutex_unlock(&g_persist_lock);
+        return 0;
+    }
+    int rc = 0;
     for (size_t i = 0; i < count; i++) {
         const danos_object_mutation_t *m = &muts[i];
         uint16_t wt = dpa_type_to_wal(m->type);
@@ -244,28 +273,54 @@ int danos_persist_log_transaction(uint64_t tx_id,
         rec.obj_id = m->id;
         rec.data_len = m->remove ? 0 : (uint32_t)m->data_size;
         rec.data = m->remove ? NULL : m->data;
-        if (danos_wal_append(&g_wal, &rec) != 0) return -1;
+        if (danos_wal_append(&g_wal, &rec) != 0) { rc = -1; break; }
         g_records_logged++;
     }
-    if (danos_wal_append_commit(&g_wal, tx_id) != 0 ||
-        danos_wal_sync(&g_wal) != 0) return -1;
-    return 0;
+    if (rc == 0 &&
+        (danos_wal_append_commit(&g_wal, tx_id) != 0 ||
+         danos_wal_sync(&g_wal) != 0)) {
+        rc = -1;
+    }
+    pthread_mutex_unlock(&g_persist_lock);
+    return rc;
 }
 
 int danos_persist_recover(void)
 {
-    if (!g_enabled) return 0;
+    int result = 0;
+    replay_slot_t *table = NULL;
+    replay_ctx_t ctx = { .table = NULL, .pending = NULL };
+
+    pthread_mutex_lock(&g_persist_lock);
+    if (!g_enabled) {
+        pthread_mutex_unlock(&g_persist_lock);
+        return 0;
+    }
     if (!g_default_store) g_default_store = danos_object_store_create(1024);
+    if (!g_default_store) {
+        pthread_mutex_unlock(&g_persist_lock);
+        return -1;
+    }
     g_recovering = true;
+    g_recovery_corrupt = false;
 
-    replay_slot_t *table = calloc(REPLAY_SLOTS, sizeof(*table));
-    if (!table) return -1;
+    table = calloc(REPLAY_SLOTS, sizeof(*table));
+    if (!table) {
+        /* Leaving g_recovering set would silently disable every later
+         * append, so this path must always clear it. */
+        g_recovering = false;
+        pthread_mutex_unlock(&g_persist_lock);
+        return -1;
+    }
+    ctx.table = table;
 
-    replay_ctx_t ctx = { .table = table, .pending = NULL };
-    int replayed = danos_wal_replay(g_wal.path, replay_cb, &ctx);
-    if (replayed < 0) {
-        /* corrupt WAL: keep whatever replay gave us, discard the rest */
-        replayed = 0;
+    wal_replay_result_t replay = {0};
+    (void)danos_wal_replay_ex(g_wal.path, replay_cb, &ctx, &replay);
+    if (replay.corrupt || replay.callback_failed) {
+        /* Valid records before the damage are still applied below; the
+         * caller decides whether a partial configuration may boot. */
+        g_recovery_corrupt = true;
+        result = -1;
     }
 
     int applied = 0;
@@ -297,6 +352,7 @@ int danos_persist_recover(void)
         }
         free(s->data);
     }
+
     while (ctx.pending) {
         pending_replay_op_t *next = ctx.pending->next;
         free(ctx.pending->data);
@@ -306,15 +362,118 @@ int danos_persist_recover(void)
     free(table);
     g_recovering = false;
     g_recovered = (uint64_t)applied;
-    return applied;
+    pthread_mutex_unlock(&g_persist_lock);
+    return result != 0 ? -1 : applied;
+}
+
+bool danos_persist_recovery_corrupt(void)
+{
+    /* The flag is only written during recovery, which runs before the
+     * management plane starts; a plain read is sufficient here. */
+    return g_recovery_corrupt;
+}
+
+typedef struct {
+    wal_ctx_t *wal;
+    int rc;
+} snapshot_ctx_t;
+
+static void snapshot_entry(danos_object_entry_t *e, void *user)
+{
+    snapshot_ctx_t *ctx = user;
+    if (ctx->rc != 0) return;
+    uint16_t wt = dpa_type_to_wal(e->type);
+    if (!wt) return;
+    wal_record_t rec = {0};
+    rec.magic = WAL_MAGIC;
+    rec.tx_id = 1;              /* legacy immediate stream: applies on replay */
+    rec.op_type = WAL_OP_CREATE;
+    rec.obj_type = wt;
+    rec.obj_id = e->id;
+    rec.data_len = (uint32_t)e->data_size;
+    rec.data = e->data;
+    if (danos_wal_append(ctx->wal, &rec) != 0) ctx->rc = -1;
 }
 
 int danos_persist_checkpoint(void)
 {
     if (!g_enabled) return 0;
-    if (danos_wal_checkpoint(&g_wal) != 0) return -1;
-    /* rewrite current store contents as CREATE records */
-    return 0;
+
+    char path[sizeof(g_wal.path)];
+    char tmp[sizeof(g_wal.path) + 8];
+    snprintf(path, sizeof(path), "%s", g_wal.path);
+    snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    unlink(tmp);
+
+    wal_ctx_t snap;
+    if (danos_wal_init(&snap, tmp) != 0) return -1;
+
+    /* The store read lock excludes every mutation, and mutations append
+     * to the WAL while holding the write lock. Holding it across the
+     * rename therefore guarantees no committed record can land in the
+     * file being replaced. */
+    if (g_default_store) {
+        pthread_rwlock_rdlock(&g_default_store->lock);
+        snapshot_ctx_t sctx = { .wal = &snap, .rc = 0 };
+        for (size_t b = 0; b < g_default_store->bucket_count; b++) {
+            for (danos_object_entry_t *e = g_default_store->buckets[b];
+                 e && sctx.rc == 0; e = e->next) {
+                snapshot_entry(e, &sctx);
+            }
+            if (sctx.rc != 0) break;
+        }
+        if (sctx.rc == 0 && danos_wal_sync(&snap) != 0) sctx.rc = -1;
+        danos_wal_close(&snap);
+
+        pthread_mutex_lock(&g_persist_lock);
+        if (sctx.rc == 0 && g_enabled) {
+            danos_wal_close(&g_wal);
+            if (rename(tmp, path) != 0) {
+                sctx.rc = -1;
+            } else if (danos_wal_init(&g_wal, path) != 0) {
+                sctx.rc = -1;
+            }
+        } else if (sctx.rc == 0) {
+            sctx.rc = -1;   /* disabled concurrently: keep the old log */
+        }
+        pthread_mutex_unlock(&g_persist_lock);
+        pthread_rwlock_unlock(&g_default_store->lock);
+
+        if (sctx.rc != 0) {
+            unlink(tmp);
+            /* Reopen whatever log is still on disk so appends keep working. */
+            pthread_mutex_lock(&g_persist_lock);
+            if (g_enabled && !g_wal.fp) (void)danos_wal_init(&g_wal, path);
+            pthread_mutex_unlock(&g_persist_lock);
+            return -1;
+        }
+        return 0;
+    }
+
+    /* No store yet: a checkpoint is an empty log. */
+    if (danos_wal_sync(&snap) != 0) {
+        danos_wal_close(&snap);
+        unlink(tmp);
+        return -1;
+    }
+    danos_wal_close(&snap);
+
+    pthread_mutex_lock(&g_persist_lock);
+    int rc = 0;
+    if (!g_enabled) {
+        rc = -1;
+    } else {
+        danos_wal_close(&g_wal);
+        if (rename(tmp, path) != 0 || danos_wal_init(&g_wal, path) != 0) rc = -1;
+    }
+    pthread_mutex_unlock(&g_persist_lock);
+    if (rc != 0) {
+        unlink(tmp);
+        pthread_mutex_lock(&g_persist_lock);
+        if (g_enabled && !g_wal.fp) (void)danos_wal_init(&g_wal, path);
+        pthread_mutex_unlock(&g_persist_lock);
+    }
+    return rc;
 }
 
 void danos_persist_get_stats(uint64_t *records_logged, uint64_t *recovered)

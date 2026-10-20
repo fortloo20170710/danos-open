@@ -292,6 +292,103 @@ int test_route_persistence(void)
     return 0;
 }
 
+/* A checkpoint replaces the log with a snapshot of live objects. The old
+ * implementation truncated the file without writing anything, so every
+ * checkpoint turned a subsequent restart into an empty configuration. */
+int test_checkpoint_snapshot(void)
+{
+    fresh_boot();
+    assert(danos_persist_enable(WAL_PATH) == 0);
+
+    danos_tx_t tx;
+    for (danos_obj_id_t id = 7; id <= 8; id++) {
+        danos_iface_t ifc;
+        memset(&ifc, 0, sizeof(ifc));
+        ifc.ifindex = id;
+        snprintf(ifc.name, sizeof(ifc.name), "cp%u", (unsigned)id);
+        ifc.mtu = 1500;
+        assert(danos_tx_begin(&tx, "checkpoint", NULL) == DANOS_OK);
+        assert(danos_iface_create(&tx, &ifc) == DANOS_OK);
+        assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    }
+    assert(danos_tx_begin(&tx, "checkpoint", NULL) == DANOS_OK);
+    assert(danos_iface_delete(&tx, 8) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    assert(danos_persist_checkpoint() == 0);
+
+    /* Restart from the checkpointed log. */
+    danos_persist_disable();
+    danos_object_store_destroy(g_default_store);
+    g_default_store = NULL;
+    assert(danos_persist_enable(WAL_PATH) == 0);
+    int applied = danos_persist_recover();
+    assert(applied == 1);   /* only iface 7 is live */
+
+    assert(danos_tx_begin(&tx, "verify", NULL) == DANOS_OK);
+    danos_iface_t out;
+    assert(danos_iface_read(&tx, 7, &out) == DANOS_OK);
+    assert(strcmp(out.name, "cp7") == 0);
+    assert(danos_iface_read(&tx, 8, &out) == DANOS_ERR_NOT_FOUND);
+    assert(danos_tx_abort(&tx) == DANOS_OK);
+
+    assert(danos_object_count(g_default_store, DANOS_OBJ_IFACE) == 1);
+    danos_persist_disable();
+    unlink(WAL_PATH);
+    printf("[PASS] test_checkpoint_snapshot\n");
+    return 0;
+}
+
+/* A damaged record must not boot silently, and must not leave recovery
+ * latched on: after the failed attempt, appends still have to work. */
+int test_corrupt_wal_is_reported(void)
+{
+    fresh_boot();
+    assert(danos_persist_enable(WAL_PATH) == 0);
+
+    danos_tx_t tx;
+    danos_iface_t ifc;
+    memset(&ifc, 0, sizeof(ifc));
+    ifc.ifindex = 7;
+    strcpy(ifc.name, "bad0");
+    ifc.mtu = 1500;
+    assert(danos_tx_begin(&tx, "corrupt", NULL) == DANOS_OK);
+    assert(danos_iface_create(&tx, &ifc) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    uint64_t logged_before = 0, recovered = 0;
+    danos_persist_get_stats(&logged_before, &recovered);
+    danos_persist_disable();
+
+    /* Flip a byte inside the first record's tx_id, leaving the CRC stale. */
+    FILE *f = fopen(WAL_PATH, "r+b");
+    assert(f);
+    assert(fseek(f, 5, SEEK_SET) == 0);
+    const uint8_t bad = 0xFF;
+    assert(fwrite(&bad, 1, 1, f) == 1);
+    fclose(f);
+
+    assert(danos_persist_enable(WAL_PATH) == 0);
+    assert(danos_persist_recover() == -1);
+    assert(danos_persist_recovery_corrupt());
+
+    /* Recovery is finished: a new commit is still logged. */
+    memset(&ifc, 0, sizeof(ifc));
+    ifc.ifindex = 9;
+    strcpy(ifc.name, "after0");
+    ifc.mtu = 1500;
+    assert(danos_tx_begin(&tx, "after-recovery", NULL) == DANOS_OK);
+    assert(danos_iface_create(&tx, &ifc) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    uint64_t logged_after = 0;
+    danos_persist_get_stats(&logged_after, &recovered);
+    assert(logged_after == logged_before + 1);
+
+    danos_persist_disable();
+    unlink(WAL_PATH);
+    printf("[PASS] test_corrupt_wal_is_reported\n");
+    return 0;
+}
+
 int main(void)
 {
     int failed = 0;
@@ -300,6 +397,8 @@ int main(void)
     if (test_reconcile_after_recovery() != 0) failed++;
     if (test_torn_record_tolerance() != 0) failed++;
     if (test_route_persistence() != 0) failed++;
+    if (test_checkpoint_snapshot() != 0) failed++;
+    if (test_corrupt_wal_is_reported() != 0) failed++;
 
     /* Drop the last store and close persistence so the leak checker sees
      * a clean process exit. */

@@ -58,12 +58,22 @@ int danos_persist_log_transaction(uint64_t tx_id,
                                   size_t count);
 
 /* Replay the WAL into the DPA default object store. Returns the number
- * of applied records, or -1 on fatal error. Torn/corrupt trailing
- * records (crash during write) are discarded. */
+ * of applied records, or -1 when the log is unusable (allocation failure,
+ * callback failure, or a corrupt record). Records before the damage are
+ * still applied; use danos_persist_recovery_corrupt() to distinguish a
+ * refusing boot from a partial one. Torn records at the tail, the normal
+ * signature of a crash during a write, are discarded without error. */
 int danos_persist_recover(void);
 
-/* Checkpoint: rewrite the WAL as a compact snapshot of the current
- * store contents (drops history of deleted objects). */
+/* True when the last recovery stopped on a damaged or unreadable record.
+ * Callers that require a complete configuration (mgrd) must refuse to
+ * boot unless an explicit override is set. */
+bool danos_persist_recovery_corrupt(void);
+
+/* Checkpoint: rewrite the WAL as a compact snapshot of the current store
+ * contents (drops the history of deleted objects). Must be called while
+ * no transaction is in flight; the store lock serializes it against
+ * mutations, and the WAL replacement is atomic. */
 int danos_persist_checkpoint(void);
 
 /* Stats */

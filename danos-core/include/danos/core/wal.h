@@ -101,6 +101,25 @@ int danos_wal_checkpoint(wal_ctx_t *ctx);
 typedef int (*wal_replay_cb_t)(const wal_record_t *rec, void *user);
 int danos_wal_replay(const char *path, wal_replay_cb_t callback, void *user);
 
+/* Replay with an explicit health report.
+ *
+ * `records` counts records delivered to the callback. `corrupt` is set when
+ * the log contains a magic mismatch, an oversized payload, or a checksum
+ * failure; records before that point are still delivered. `callback_failed`
+ * is set when the callback returned non-zero (including allocation failure
+ * inside the callback). A short header/payload/CRC at end-of-file is the
+ * normal torn-tail case and is discarded without setting either flag.
+ *
+ * Returns the number of delivered records, or -1 for invalid arguments. */
+typedef struct {
+    int  records;
+    bool corrupt;
+    bool callback_failed;
+} wal_replay_result_t;
+
+int danos_wal_replay_ex(const char *path, wal_replay_cb_t callback, void *user,
+                        wal_replay_result_t *out);
+
 /* Get statistics */
 void danos_wal_get_stats(wal_ctx_t *ctx, uint64_t *records, uint64_t *bytes);
 
