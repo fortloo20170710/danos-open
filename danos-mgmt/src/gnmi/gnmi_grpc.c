@@ -684,6 +684,34 @@ static int obj_to_json(danos_obj_type_t type, const void *data, size_t size,
     return -1;
 }
 
+/* Operational copy of an interface, when the backend has reported one.
+ * Returns false when the object has not been programmed or the active
+ * backend cannot read it back; callers then use the desired copy. */
+static bool iface_oper_copy(const danos_iface_t *desired, danos_iface_t *out)
+{
+    size_t n = sizeof(*out);
+    if (danos_oper_read(DANOS_OBJ_IFACE, desired->ifindex, out, &n) != DANOS_OK)
+        return false;
+    return n == sizeof(*out);
+}
+
+/* Entry JSON for the operational subtree: adds the read-only link state
+ * that the config-tree encoding deliberately omits. */
+static int obj_to_state_json(danos_obj_type_t type, const void *data,
+                             size_t size, char *out, size_t cap)
+{
+    if (type == DANOS_OBJ_IFACE && size >= sizeof(danos_iface_t)) {
+        const danos_iface_t *i = data;
+        snprintf(out, cap,
+                 "{\"ifindex\":%u,\"name\":\"%s\",\"mtu\":%u,\"admin_up\":%s,"
+                 "\"link_up\":%s}",
+                 i->ifindex, i->name, i->mtu, i->admin_up ? "true" : "false",
+                 i->link_up ? "true" : "false");
+        return 0;
+    }
+    return obj_to_json(type, data, size, out, cap);
+}
+
 /* =========================================================================
  * Object snapshot / delta support for STREAM subscriptions
  * ========================================================================= */
@@ -1653,6 +1681,12 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
              (!strcmp(lookup.elems[0].name, "routes") && !strcmp(lookup.elems[1].name, "route"))))
             lookup.elem_count = 1;
         if (gnmi_model_resolve(&lookup, &mb) != DANOS_OK) return -(int)DANOS_ERR_NOT_FOUND;
+        /* A request under the operational subtree reads device-reported
+         * values when the backend has produced them. The OPER snapshot
+         * belongs to the default desired store the pipeline programs. */
+        bool state_read = src == g_default_store && mb.obj_type == DANOS_OBJ_IFACE &&
+            !mb.config_tree && p->elem_count >= 3 &&
+            strcmp(p->elems[2].name, "state") == 0;
         if (mb.kind == GNMI_MODEL_DATAPLANE_STATE) {
             if (src != g_default_store) return -(int)DANOS_ERR_INVALID_ARG;
             if (gr.data_type == 1) continue; /* CONFIG excludes operational state */
@@ -1707,10 +1741,11 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
                 return -(int)DANOS_ERR_INVALID_ARG;
         }
         if (mb.kind == GNMI_MODEL_LEAF) {
-            danos_iface_t iface; danos_vrf_t vrf;
+            danos_iface_t iface; danos_vrf_t vrf; danos_iface_t oper;
             const void *obj = NULL; size_t size = 0;
             if (mb.obj_type == DANOS_OBJ_IFACE && find_iface_by_name(ss, p->elems[1].key_value, &iface)) {
                 obj = &iface; size = sizeof(iface);
+                if (state_read && iface_oper_copy(&iface, &oper)) obj = &oper;
             } else if (mb.obj_type == DANOS_OBJ_VRF) {
                 uint32_t id; size_t n = sizeof(vrf);
                 if (path_uint(p->elems[1].key_value, &id) != DANOS_OK) return -(int)DANOS_ERR_INVALID_ARG;
@@ -1737,8 +1772,16 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
             char key[64], json[256];
             uint32_t route_vrf = 0;
             if (mb.obj_type == DANOS_OBJ_IFACE) {
-                snprintf(key, sizeof(key), "%s", ((const danos_iface_t *)obj)->name);
-                obj_to_json(mb.obj_type, obj, elem_size, json, sizeof(json));
+                const danos_iface_t *iface = obj;
+                danos_iface_t oper;
+                snprintf(key, sizeof(key), "%s", iface->name);
+                if (state_read && iface_oper_copy(iface, &oper)) iface = &oper;
+                if (state_read)
+                    obj_to_state_json(mb.obj_type, iface, elem_size, json,
+                                      sizeof(json));
+                else
+                    obj_to_json(mb.obj_type, iface, elem_size, json,
+                                sizeof(json));
             } else if (mb.obj_type == DANOS_OBJ_VRF) {
                 snprintf(key, sizeof(key), "%u", ((const danos_vrf_t *)obj)->vrf_id);
                 obj_to_json(mb.obj_type, obj, elem_size, json, sizeof(json));
