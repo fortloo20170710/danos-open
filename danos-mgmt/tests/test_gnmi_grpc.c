@@ -994,6 +994,250 @@ static int test_subscribe_stream_initial(bool updates_only,
     return 0;
 }
 
+/* ---- v0.16: change notifications carry only changed objects ------------ */
+
+typedef struct {
+    int updates;
+    int deletes;
+    char update_key[64];
+    int  update_mtu;
+    char delete_key[64];
+} delta_view_t;
+
+static void parse_delta_notification(const uint8_t *data, size_t len,
+                                     delta_view_t *v)
+{
+    memset(v, 0, sizeof(*v));
+    v->update_mtu = -1;
+
+    /* The gRPC message is SubscribeResponse{update=1}; unwrap the update. */
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, data, len);
+    const uint8_t *body = NULL;
+    size_t body_len = 0;
+    uint32_t field, wire;
+    while ((field = gnmi_pbr_tag(&r, &wire)) != 0) {
+        if (field == 1 && wire == 2 && gnmi_pbr_bytes(&r, &body, &body_len))
+            break;
+        gnmi_pbr_skip(&r, wire);
+    }
+    if (!body) return;
+
+    gnmi_pb_reader_t nr;
+    gnmi_pbr_init(&nr, body, body_len);
+    uint32_t nf, nw;
+    while ((nf = gnmi_pbr_tag(&nr, &nw)) != 0) {
+        const uint8_t *b;
+        size_t bn;
+        if (nf == 4 && nw == 2 && gnmi_pbr_bytes(&nr, &b, &bn)) {
+            v->updates++;
+            gnmi_pb_reader_t ur;
+            gnmi_pbr_init(&ur, b, bn);
+            uint32_t uf, uw;
+            while ((uf = gnmi_pbr_tag(&ur, &uw)) != 0) {
+                const uint8_t *f;
+                size_t fn;
+                if (uf == 1 && uw == 2 && gnmi_pbr_bytes(&ur, &f, &fn)) {
+                    gnmi_path_t p;
+                    memset(&p, 0, sizeof(p));
+                    if (gnmi_decode_path(f, fn, &p) && p.elem_count >= 2) {
+                        snprintf(v->update_key, sizeof(v->update_key), "%s",
+                                 p.elems[1].key_value);
+                    }
+                } else if (uf == 3 && uw == 2 &&
+                           gnmi_pbr_bytes(&ur, &f, &fn)) {
+                    gnmi_typed_value_t tv;
+                    memset(&tv, 0, sizeof(tv));
+                    if (gnmi_decode_typed_value(f, fn, &tv)) {
+                        const char *m = strstr(tv.s, "\"mtu\":");
+                        if (m) v->update_mtu = atoi(m + 6);
+                    }
+                } else {
+                    gnmi_pbr_skip(&ur, uw);
+                }
+            }
+        } else if (nf == 5 && nw == 2 && gnmi_pbr_bytes(&nr, &b, &bn)) {
+            v->deletes++;
+            gnmi_path_t p;
+            memset(&p, 0, sizeof(p));
+            if (gnmi_decode_path(b, bn, &p) && p.elem_count >= 2) {
+                snprintf(v->delete_key, sizeof(v->delete_key), "%s",
+                         p.elems[1].key_value);
+            }
+        } else {
+            gnmi_pbr_skip(&nr, nw);
+        }
+    }
+}
+
+/* Read one gRPC message body from the connection, buffering DATA payloads.
+ * Frames on other streams and control frames are ignored. */
+static int read_grpc_message(uint32_t stream, uint8_t *accum,
+                             size_t *accum_len, uint8_t *out, size_t out_cap,
+                             size_t *out_len)
+{
+    for (;;) {
+        while (*accum_len >= 5) {
+            size_t mlen = ((size_t)accum[1] << 24) |
+                          ((size_t)accum[2] << 16) |
+                          ((size_t)accum[3] << 8) | accum[4];
+            if (*accum_len < 5 + mlen) break;
+            if (mlen > out_cap) return -1;
+            memcpy(out, accum + 5, mlen);
+            *out_len = mlen;
+            *accum_len -= 5 + mlen;
+            memmove(accum, accum + 5 + mlen, *accum_len);
+            return 0;
+        }
+        uint8_t fh[9];
+        if (read_full_c(conn_fd, fh, sizeof(fh)) < 0) return -1;
+        uint32_t frame_len = ((uint32_t)fh[0] << 16) |
+                             ((uint32_t)fh[1] << 8) | fh[2];
+        uint32_t frame_stream = ((uint32_t)(fh[5] & 0x7f) << 24) |
+                                ((uint32_t)fh[6] << 16) |
+                                ((uint32_t)fh[7] << 8) | fh[8];
+        if (fh[3] == 7) return -1;  /* GOAWAY */
+        uint8_t frame[16384];
+        if (frame_len > sizeof(frame)) return -1;
+        if (frame_len && read_full_c(conn_fd, frame, frame_len) < 0) return -1;
+        if (fh[3] == 0 && frame_stream == stream && frame_len) {
+            if (*accum_len + frame_len > 32768) return -1;
+            memcpy(accum + *accum_len, frame, frame_len);
+            *accum_len += frame_len;
+        }
+    }
+}
+
+static int test_subscribe_delta(void)
+{
+    if (conn_fd >= 0) close(conn_fd);
+    conn_fd = -1;
+    assert(client_connect() == 0);
+    struct timeval tv = { .tv_sec = 5, .tv_usec = 0 };
+    assert(setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
+
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    size_t sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_path_t path;
+    assert(gnmi_path_from_str(&path, "interfaces"));
+    gnmi_encode_path(&w, 1, &path);
+    gnmi_pb_put_enum(&w, 2, 1);  /* ON_CHANGE */
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+
+    uint8_t headers[256];
+    size_t hlen = 0;
+    int k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                                 ":method", "POST");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             ":scheme", "http");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             ":path", "/gnmi.gNMI/Subscribe");
+    assert(k > 0); hlen += (size_t)k;
+    k = hpack_encode_literal(headers + hlen, sizeof(headers) - hlen,
+                             "content-type", "application/grpc");
+    assert(k > 0); hlen += (size_t)k;
+
+    const uint32_t stream = 201;
+    assert(write_frame_c(conn_fd, 1, 0x4, stream, headers,
+                         (uint32_t)hlen) == 0);
+    uint8_t ghdr[5] = { 0, 0, 0, 0, (uint8_t)w.len };
+    assert(write_frame_c(conn_fd, 0, 0, stream, ghdr, sizeof(ghdr)) == 0);
+    assert(write_frame_c(conn_fd, 0, 0x1, stream, req, (uint32_t)w.len) == 0);
+
+    uint8_t accum[32768], msg[16384];
+    size_t accum_len = 0, msg_len = 0;
+    bool got_sync = false;
+    int initial_updates = 0;
+    while (!got_sync) {
+        assert(read_grpc_message(stream, accum, &accum_len, msg,
+                                 sizeof(msg), &msg_len) == 0);
+        gnmi_pb_reader_t r;
+        gnmi_pbr_init(&r, msg, msg_len);
+        uint32_t f, wire;
+        while ((f = gnmi_pbr_tag(&r, &wire)) != 0) {
+            const uint8_t *b;
+            size_t bn;
+            if (f == 1 && wire == 2 && gnmi_pbr_bytes(&r, &b, &bn)) {
+                initial_updates++;
+            } else if (f == 3 && wire == 0) {
+                got_sync = gnmi_pbr_varint(&r) == 1;
+            } else {
+                gnmi_pbr_skip(&r, wire);
+            }
+        }
+    }
+    assert(initial_updates > 0);
+
+    /* Change one interface: exactly that object must be in the notification. */
+    first_iface_ctx_t first = {0};
+    danos_object_iterate(g_default_store, find_first_iface, &first);
+    assert(first.found);
+    danos_iface_t eth0;
+    size_t eth0_size = sizeof(eth0);
+    assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE,
+                             first.first_ifindex,
+                             &eth0, &eth0_size) == DANOS_OK);
+    uint32_t new_mtu = eth0.mtu + 1;
+    eth0.mtu = new_mtu;
+    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE,
+                               first.first_ifindex,
+                               &eth0, sizeof(eth0)) == DANOS_OK);
+
+    delta_view_t v;
+    msg_len = 0;
+    assert(read_grpc_message(stream, accum, &accum_len, msg, sizeof(msg),
+                             &msg_len) == 0);
+    parse_delta_notification(msg, msg_len, &v);
+    assert(v.updates == 1);
+    assert(v.deletes == 0);
+    assert(strcmp(v.update_key, eth0.name) == 0);
+    assert(v.update_mtu == (int)new_mtu);
+
+    /* A new object changes the set: only that object is sent. */
+    danos_iface_t eth9;
+    memset(&eth9, 0, sizeof(eth9));
+    eth9.ifindex = 9;
+    strcpy(eth9.name, "eth9");
+    eth9.mtu = 1500;
+    eth9.admin_up = true;
+    assert(danos_object_create(g_default_store, DANOS_OBJ_IFACE, 9,
+                               &eth9, sizeof(eth9)) == DANOS_OK);
+    msg_len = 0;
+    assert(read_grpc_message(stream, accum, &accum_len, msg,
+                             sizeof(msg), &msg_len) == 0);
+    parse_delta_notification(msg, msg_len, &v);
+    assert(v.updates == 1);
+    assert(v.deletes == 0);
+    assert(strcmp(v.update_key, "eth9") == 0);
+
+    /* Removal becomes a Notification.delete for the same concrete path. */
+    assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 9) == DANOS_OK);
+    msg_len = 0;
+    assert(read_grpc_message(stream, accum, &accum_len, msg,
+                             sizeof(msg), &msg_len) == 0);
+    parse_delta_notification(msg, msg_len, &v);
+    assert(v.updates == 0);
+    assert(v.deletes == 1);
+    assert(strcmp(v.delete_key, "eth9") == 0);
+
+    /* Restore the seeded value for later tests. */
+    eth0.mtu = new_mtu - 1;
+    assert(danos_object_update(g_default_store, DANOS_OBJ_IFACE,
+                               first.first_ifindex,
+                               &eth0, sizeof(eth0)) == DANOS_OK);
+    shutdown(conn_fd, SHUT_RDWR);
+    close(conn_fd);
+    conn_fd = -1;
+    printf("[PASS] test_subscribe_delta (one update per change, delete on removal)\n");
+    return 0;
+}
+
 static int test_get_large_flow_control(void)
 {
     /* create ~1000 interfaces in ONE transaction (response >> 64KB
@@ -1779,6 +2023,7 @@ int main(void)
                                       0, 0, false, 0, true) != 0) failed++;
     if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, false,
                                       1, 0, false, 0, true) != 0) failed++;
+    if (test_subscribe_delta() != 0) failed++;
     if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
                                       2, 250000000ULL, false, 0, true) != 0) failed++;
     if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,

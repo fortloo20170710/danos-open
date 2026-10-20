@@ -92,10 +92,31 @@ typedef struct {
 #define H2_MAX_PENDING 64
 
 #define H2_MAX_ACTIVE_SUBSCRIPTIONS 32
+
+/* Per-object baseline for change-driven STREAM subscriptions. Only objects
+ * that appear, change or disappear are sent, identified by their concrete
+ * keyed path. */
+typedef struct {
+    uint32_t type;
+    uint64_t id;
+    uint64_t hash;
+    uint32_t route_vrf;
+    char     key[64];
+} sub_obj_state_t;
+
+/* Bounds the per-subscription baseline: 4,096 objects at ~88 bytes is about
+ * 360 KiB, so 32 subscriptions stay under 12 MiB. */
+#define SUB_SNAPSHOT_MAX 4096
+
+typedef struct {
+    sub_obj_state_t *items;
+    size_t count;
+    size_t cap;
+} sub_snapshot_t;
+
 typedef struct {
     bool used;
     uint32_t stream;
-    uint64_t last_hash;
     uint64_t sample_interval_ns;
     uint64_t next_sample_ns;
     bool suppress_redundant;
@@ -103,6 +124,7 @@ typedef struct {
     uint64_t next_heartbeat_ns;
     uint64_t last_sample_hash;
     gnmi_subscribe_list_t list;
+    sub_snapshot_t snapshot;
 } h2_active_subscription_t;
 
 typedef struct {
@@ -117,6 +139,7 @@ typedef struct {
     pending_frame_t *pending, *pending_tail;
     uint32_t pending_count;
     h2_active_subscription_t subscriptions[H2_MAX_ACTIVE_SUBSCRIPTIONS];
+    bool goaway_sent;
 } h2_conn_t;
 
 #define H2_DEFAULT_WINDOW 65535
@@ -178,7 +201,8 @@ static void send_goaway(h2_conn_t *c, uint32_t code)
     uint8_t p[8] = { 0, 0, 0, 0,
                      (uint8_t)(code >> 24), (uint8_t)(code >> 16),
                      (uint8_t)(code >> 8), (uint8_t)code };
-    (void)write_frame(c, H2_F_GOAWAY, 0, 0, p, sizeof(p));
+    if (write_frame(c, H2_F_GOAWAY, 0, 0, p, sizeof(p)) == 0)
+        c->goaway_sent = true;
 }
 
 /* Apply the peer's SETTINGS (RFC 9113 §6.5.2). INITIAL_WINDOW_SIZE is a
@@ -660,6 +684,288 @@ static int obj_to_json(danos_obj_type_t type, const void *data, size_t size,
     return -1;
 }
 
+/* =========================================================================
+ * Object snapshot / delta support for STREAM subscriptions
+ * ========================================================================= */
+
+static const char *obj_top_name(uint32_t type)
+{
+    if (type == DANOS_OBJ_IFACE) return "interfaces";
+    if (type == DANOS_OBJ_VRF)   return "vrfs";
+    if (type == DANOS_OBJ_ROUTE) return "routes";
+    return NULL;
+}
+
+static const char *obj_elem_name(uint32_t type)
+{
+    if (type == DANOS_OBJ_IFACE) return "interface";
+    if (type == DANOS_OBJ_VRF)   return "vrf";
+    return "route";
+}
+
+/* Key and VRF for one store object. Returns false for types this listener
+ * does not expose. */
+static bool object_key(const danos_object_entry_t *e, char *key, size_t cap,
+                       uint32_t *route_vrf)
+{
+    *route_vrf = 0;
+    if (e->type == DANOS_OBJ_IFACE && e->data_size >= sizeof(danos_iface_t)) {
+        snprintf(key, cap, "%s", ((const danos_iface_t *)e->data)->name);
+        return true;
+    }
+    if (e->type == DANOS_OBJ_VRF && e->data_size >= sizeof(danos_vrf_t)) {
+        snprintf(key, cap, "%u", ((const danos_vrf_t *)e->data)->vrf_id);
+        return true;
+    }
+    if (e->type == DANOS_OBJ_ROUTE && e->data_size >= sizeof(danos_route_t)) {
+        const danos_route_t *r = e->data;
+        *route_vrf = r->vrf_id;
+        return gnmi_format_prefix(&r->prefix, key, cap) == DANOS_OK;
+    }
+    return false;
+}
+
+static uint64_t object_content_hash(const danos_object_entry_t *e)
+{
+    uint64_t h = 14695981039346656037ULL;
+    uint32_t type = (uint32_t)e->type;
+    for (size_t i = 0; i < sizeof(type); i++) {
+        h ^= ((const uint8_t *)&type)[i];
+        h *= 1099511628211ULL;
+    }
+    for (size_t i = 0; i < sizeof(e->id); i++) {
+        h ^= ((const uint8_t *)&e->id)[i];
+        h *= 1099511628211ULL;
+    }
+    for (size_t i = 0; i < e->data_size; i++) {
+        h ^= ((const uint8_t *)e->data)[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+static bool path_matches_object(const gnmi_path_t *p, uint32_t type,
+                                const char *key)
+{
+    if (p->elem_count == 0) return false;
+    const char *top = obj_top_name(type);
+    if (!top || strcmp(p->elems[0].name, top) != 0) return false;
+    if (type == DANOS_OBJ_IFACE && p->elem_count >= 2 &&
+        p->elems[1].has_key)
+        return strcmp(p->elems[1].key_value, key) == 0;
+    return true;
+}
+
+/* Turn a subscribed path into the concrete path of one object. */
+static void concrete_object_path(const gnmi_path_t *p, uint32_t type,
+                                 const char *key, uint32_t route_vrf,
+                                 gnmi_path_t *out)
+{
+    *out = *p;
+    if (out->elem_count == 0) {
+        out->elem_count = 1;
+        memset(&out->elems[0], 0, sizeof(out->elems[0]));
+        snprintf(out->elems[0].name, sizeof(out->elems[0].name), "%s",
+                 obj_top_name(type));
+    }
+    if (out->elem_count == 1) {
+        out->elem_count = 2;
+        memset(&out->elems[1], 0, sizeof(out->elems[1]));
+        snprintf(out->elems[1].name, sizeof(out->elems[1].name), "%s",
+                 obj_elem_name(type));
+    }
+    gnmi_path_elem_t *entry = &out->elems[1];
+    entry->has_key = true;
+    snprintf(entry->key_name, sizeof(entry->key_name), "%s",
+             type == DANOS_OBJ_IFACE ? "name" :
+             type == DANOS_OBJ_VRF ? "id" : "prefix");
+    snprintf(entry->key_value, sizeof(entry->key_value), "%s", key);
+    entry->has_extra_key = type == DANOS_OBJ_ROUTE;
+    if (entry->has_extra_key) {
+        snprintf(entry->extra_key_name, sizeof(entry->extra_key_name), "vrf");
+        snprintf(entry->extra_key_value, sizeof(entry->extra_key_value),
+                 "%u", route_vrf);
+    }
+}
+
+static void sub_snapshot_free(sub_snapshot_t *s)
+{
+    free(s->items);
+    memset(s, 0, sizeof(*s));
+}
+
+static bool sub_snapshot_push(sub_snapshot_t *s, const sub_obj_state_t *item)
+{
+    if (s->count >= SUB_SNAPSHOT_MAX) return false;
+    if (s->count == s->cap) {
+        size_t cap = s->cap ? s->cap * 2 : 16;
+        sub_obj_state_t *items = realloc(s->items, cap * sizeof(*items));
+        if (!items) return false;
+        s->items = items;
+        s->cap = cap;
+    }
+    s->items[s->count++] = *item;
+    return true;
+}
+
+static ssize_t sub_snapshot_find(const sub_snapshot_t *s, uint32_t type,
+                                 uint64_t id)
+{
+    for (size_t i = 0; i < s->count; i++)
+        if (s->items[i].type == type && s->items[i].id == id)
+            return (ssize_t)i;
+    return -1;
+}
+
+typedef struct {
+    const gnmi_subscribe_list_t *list;
+    sub_snapshot_t *out;
+    bool failed;
+} snapshot_ctx_t;
+
+static void snapshot_collect_cb(danos_object_entry_t *e, void *user)
+{
+    snapshot_ctx_t *c = user;
+    if (c->failed) return;
+    char key[64];
+    uint32_t route_vrf;
+    if (!object_key(e, key, sizeof(key), &route_vrf)) return;
+    bool wanted = false;
+    for (uint32_t i = 0; i < c->list->sub_count && !wanted; i++)
+        wanted = path_matches_object(&c->list->subs[i].path, e->type, key);
+    if (!wanted) return;
+    sub_obj_state_t item = {
+        .type = e->type, .id = e->id, .hash = object_content_hash(e),
+        .route_vrf = route_vrf
+    };
+    snprintf(item.key, sizeof(item.key), "%s", key);
+    if (!sub_snapshot_push(c->out, &item)) c->failed = true;
+}
+
+/* Capture the baseline used by the next change notification. */
+static int sub_snapshot_capture(const gnmi_subscribe_list_t *list,
+                                sub_snapshot_t *out)
+{
+    danos_object_store_t *src = desired_store(NULL);
+    if (!src) return 0;
+    snapshot_ctx_t c = { .list = list, .out = out };
+    danos_object_iterate(src, snapshot_collect_cb, &c);
+    return c.failed ? -(int)DANOS_ERR_NO_MEMORY : 0;
+}
+
+typedef struct {
+    const gnmi_subscribe_list_t *list;
+    gnmi_pb_t *w;
+    const sub_snapshot_t *old;
+    sub_snapshot_t *cur;
+    uint8_t *seen;          /* parallel to old->items */
+    uint32_t changes;
+    bool failed;
+} delta_ctx_t;
+
+static void delta_collect_cb(danos_object_entry_t *e, void *user)
+{
+    delta_ctx_t *d = user;
+    if (d->failed) return;
+    char key[64];
+    uint32_t route_vrf;
+    if (!object_key(e, key, sizeof(key), &route_vrf)) return;
+    const gnmi_path_t *matched = NULL;
+    for (uint32_t i = 0; i < d->list->sub_count && !matched; i++)
+        if (path_matches_object(&d->list->subs[i].path, e->type, key))
+            matched = &d->list->subs[i].path;
+    if (!matched) return;
+
+    uint64_t hash = object_content_hash(e);
+    ssize_t old_idx = sub_snapshot_find(d->old, e->type, e->id);
+    if (old_idx < 0 || d->old->items[old_idx].hash != hash) {
+        char json[256];
+        if (obj_to_json(e->type, e->data, e->data_size,
+                        json, sizeof(json)) == 0) {
+            gnmi_path_t concrete;
+            concrete_object_path(matched, e->type, key, route_vrf, &concrete);
+            size_t us = gnmi_pb_begin_nested(d->w, 4);
+            gnmi_encode_path(d->w, 1, &concrete);
+            gnmi_typed_value_t v = {
+                .kind = d->list->encoding == GNMI_ENC_JSON
+                      ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
+            };
+            snprintf(v.s, sizeof(v.s), "%s", json);
+            gnmi_encode_typed_value(d->w, 3, &v);
+            gnmi_pb_end_nested(d->w, us);
+            d->changes++;
+        }
+    }
+    if (old_idx >= 0 && d->seen) d->seen[old_idx] = 1;
+    sub_obj_state_t item = {
+        .type = e->type, .id = e->id, .hash = hash, .route_vrf = route_vrf
+    };
+    snprintf(item.key, sizeof(item.key), "%s", key);
+    if (!sub_snapshot_push(d->cur, &item)) d->failed = true;
+}
+
+/* Build a Notification holding only objects that appeared, changed or were
+ * removed since the snapshot. Returns 0 when nothing changed, the body length
+ * otherwise, or a negative DPA status. */
+static int build_delta_notification(const gnmi_subscribe_list_t *list,
+                                    sub_snapshot_t *snapshot,
+                                    uint8_t *resp, size_t resp_cap)
+{
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, resp, resp_cap);
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    gnmi_pb_put_uint64(&w, 1, (uint64_t)ts.tv_sec * 1000000000ULL +
+                                  (uint64_t)ts.tv_nsec);
+
+    sub_snapshot_t cur = {0};
+    uint8_t *seen = NULL;
+    if (snapshot->count) {
+        seen = calloc(snapshot->count, 1);
+        if (!seen) return -(int)DANOS_ERR_NO_MEMORY;
+    }
+    delta_ctx_t d = { .list = list, .w = &w, .old = snapshot, .cur = &cur,
+                      .seen = seen };
+    danos_object_store_t *src = desired_store(NULL);
+    if (src) danos_object_iterate(src, delta_collect_cb, &d);
+
+    /* Objects in the baseline that no longer exist become deletes. */
+    if (!d.failed) {
+        for (size_t i = 0; i < snapshot->count; i++) {
+            if (seen[i]) continue;
+            const sub_obj_state_t *old = &snapshot->items[i];
+            const gnmi_path_t *base = NULL;
+            for (uint32_t j = 0; j < list->sub_count && !base; j++)
+                if (path_matches_object(&list->subs[j].path, old->type,
+                                        old->key))
+                    base = &list->subs[j].path;
+            if (!base) continue;
+            gnmi_path_t concrete;
+            concrete_object_path(base, old->type, old->key, old->route_vrf,
+                                 &concrete);
+            /* Notification.delete is a repeated Path: field 5 carries the
+             * Path message body directly. */
+            gnmi_encode_path(&w, 5, &concrete);
+            d.changes++;
+        }
+    }
+
+    free(seen);
+    if (d.failed || w.overflow) {
+        sub_snapshot_free(&cur);
+        return -(int)DANOS_ERR_NO_MEMORY;
+    }
+    if (d.changes == 0) {
+        sub_snapshot_free(&cur);
+        return 0;
+    }
+    /* The new snapshot becomes the baseline only on success. */
+    sub_snapshot_free(snapshot);
+    *snapshot = cur;
+    return (int)w.len;
+}
+
 /* Collect objects of one type (iterate desired store buckets) */
 typedef struct {
     danos_obj_type_t type;
@@ -799,8 +1105,11 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
                 char json[256];
                 obj_to_json(DANOS_OBJ_IFACE, &ifaces[j], sizeof(ifaces[j]),
                             json, sizeof(json));
+                gnmi_path_t concrete;
+                concrete_object_path(p, DANOS_OBJ_IFACE, ifaces[j].name, 0,
+                                     &concrete);
                 size_t us = gnmi_pb_begin_nested(&w, 4);
-                gnmi_encode_path(&w, 1, p);
+                gnmi_encode_path(&w, 1, &concrete);
                 gnmi_typed_value_t v = {
                     .kind = sl->encoding == GNMI_ENC_JSON
                           ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
@@ -814,11 +1123,14 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
             uint32_t n = collect_objects(NULL, DANOS_OBJ_VRF, vrfs,
                                          sizeof(vrfs[0]), 16);
             for (uint32_t j = 0; j < n; j++) {
-                char json[256];
+                char key[16], json[256];
+                snprintf(key, sizeof(key), "%u", vrfs[j].vrf_id);
                 obj_to_json(DANOS_OBJ_VRF, &vrfs[j], sizeof(vrfs[j]),
                             json, sizeof(json));
+                gnmi_path_t concrete;
+                concrete_object_path(p, DANOS_OBJ_VRF, key, 0, &concrete);
                 size_t us = gnmi_pb_begin_nested(&w, 4);
-                gnmi_encode_path(&w, 1, p);
+                gnmi_encode_path(&w, 1, &concrete);
                 gnmi_typed_value_t v = {
                     .kind = sl->encoding == GNMI_ENC_JSON
                           ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
@@ -832,11 +1144,17 @@ static int build_notification_for_paths(const gnmi_subscribe_list_t *sl,
             uint32_t n = collect_objects(NULL, DANOS_OBJ_ROUTE, routes,
                                          sizeof(routes[0]), 32);
             for (uint32_t j = 0; j < n; j++) {
-                char json[256];
+                char key[64], json[256];
+                if (gnmi_format_prefix(&routes[j].prefix, key, sizeof(key))
+                    != DANOS_OK)
+                    continue;
                 obj_to_json(DANOS_OBJ_ROUTE, &routes[j], sizeof(routes[j]),
                             json, sizeof(json));
+                gnmi_path_t concrete;
+                concrete_object_path(p, DANOS_OBJ_ROUTE, key, routes[j].vrf_id,
+                                     &concrete);
                 size_t us = gnmi_pb_begin_nested(&w, 4);
-                gnmi_encode_path(&w, 1, p);
+                gnmi_encode_path(&w, 1, &concrete);
                 gnmi_typed_value_t v = {
                     .kind = sl->encoding == GNMI_ENC_JSON
                           ? GNMI_VAL_JSON : GNMI_VAL_JSON_IETF
@@ -980,12 +1298,12 @@ static void subscriptions_service(h2_conn_t *c)
                 heartbeat_due) {
                 if (subscription_send_update(c, sub) < 0) {
                     stream_forget(c, sub->stream);
+                    sub_snapshot_free(&sub->snapshot);
                     memset(sub, 0, sizeof(*sub));
                     continue;
                 }
                 sub->last_sample_hash = data_hash;
             }
-            sub->last_hash = data_hash;
             if (sample_due)
                 sub->next_sample_ns = now + sub->sample_interval_ns;
             if (heartbeat_due)
@@ -993,20 +1311,32 @@ static void subscriptions_service(h2_conn_t *c)
             continue;
         }
         /* Target-defined and ON_CHANGE subscriptions share this path: both
-         * notify when the serialized value of the requested paths changes.
-         * The connection services them once per poll cycle, so detection
-         * latency is bounded by that cadence. A stream is interested only in
-         * its requested paths: a mutation to an unrelated object must not
-         * cause a redundant notification on every other stream sharing this
-         * HTTP/2 connection. */
-        uint64_t data_hash = subscription_data_hash(&sub->list);
-        if (data_hash != UINT64_MAX && sub->last_hash == data_hash) continue;
-        if (subscription_send_update(c, sub) < 0) {
+         * notify when the value of a subscribed object changes, and the
+         * notification carries only objects that appeared, changed or were
+         * removed since the last one. The connection services them once per
+         * poll cycle, so detection latency is bounded by that cadence. A
+         * stream is interested only in its requested paths: a mutation to an
+         * unrelated object must not cause a redundant notification on every
+         * other stream sharing this HTTP/2 connection. */
+        uint8_t notification[8192], response[16384];
+        int length = build_delta_notification(&sub->list, &sub->snapshot,
+                                              notification,
+                                              sizeof(notification));
+        if (length < 0) {
             stream_forget(c, sub->stream);
+            sub_snapshot_free(&sub->snapshot);
             memset(sub, 0, sizeof(*sub));
             continue;
         }
-        sub->last_hash = data_hash;
+        if (length == 0) continue;
+        gnmi_pb_t w;
+        gnmi_pb_init(&w, response, sizeof(response));
+        gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
+        if (send_stream_message(c, sub->stream, response, w.len) < 0) {
+            stream_forget(c, sub->stream);
+            sub_snapshot_free(&sub->snapshot);
+            memset(sub, 0, sizeof(*sub));
+        }
     }
 }
 
@@ -1016,28 +1346,43 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
     /* Capture before sending the initial snapshot so mutations that race
      * with snapshot delivery are still observed by the newly active stream. */
     uint64_t initial_data_hash = subscription_data_hash(sl);
+    sub_snapshot_t baseline = {0};
+    if (!sl->sample_mode && sub_snapshot_capture(sl, &baseline) != 0)
+        return -1;
     gnmi_path_t paths[GNMI_MAX_ELEMS];
     uint32_t path_count = 0;
     for (uint32_t i = 0; i < sl->sub_count && path_count < GNMI_MAX_ELEMS; i++)
         paths[path_count++] = sl->subs[i].path;
 
-    if (send_stream_headers(c, stream) < 0) return -1;
+    if (send_stream_headers(c, stream) < 0) {
+        sub_snapshot_free(&baseline);
+        return -1;
+    }
     if (!sl->updates_only) {
         uint8_t notification[8192], response[16384];
         int length = build_notification_for_paths(sl, paths, path_count,
                                                   notification,
                                                   sizeof(notification));
-        if (length < 0) return -1;
+        if (length < 0) {
+            sub_snapshot_free(&baseline);
+            return -1;
+        }
         gnmi_pb_t w;
         gnmi_pb_init(&w, response, sizeof(response));
         gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
-        if (send_stream_message(c, stream, response, w.len) < 0) return -1;
+        if (send_stream_message(c, stream, response, w.len) < 0) {
+            sub_snapshot_free(&baseline);
+            return -1;
+        }
     }
     uint8_t sync[16];
     gnmi_pb_t sync_writer;
     gnmi_pb_init(&sync_writer, sync, sizeof(sync));
     gnmi_encode_subscribe_sync(&sync_writer);
-    if (send_stream_message(c, stream, sync, sync_writer.len) < 0) return -1;
+    if (send_stream_message(c, stream, sync, sync_writer.len) < 0) {
+        sub_snapshot_free(&baseline);
+        return -1;
+    }
 
     for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
         h2_active_subscription_t *sub = &c->subscriptions[i];
@@ -1058,7 +1403,7 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
                             ? monotonic_time_ns() + sub->sample_interval_ns
                             : 0;
         sub->list = *sl;
-        sub->last_hash = initial_data_hash;
+        sub->snapshot = baseline;
         if (sub->heartbeat_interval_ns)
             sub->next_heartbeat_ns = monotonic_time_ns() +
                                      sub->heartbeat_interval_ns;
@@ -1066,6 +1411,7 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
             sub->last_sample_hash = initial_data_hash;
         return 0;
     }
+    sub_snapshot_free(&baseline);
     return -(int)DANOS_ERR_BACKEND_BUSY;
 }
 
@@ -2072,7 +2418,10 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
                 }
                 if (ftype == H2_F_RST) {
                     h2_active_subscription_t *sub = active_subscription_find(&c, fstream);
-                    if (sub) memset(sub, 0, sizeof(*sub));
+                    if (sub) {
+                        sub_snapshot_free(&sub->snapshot);
+                        memset(sub, 0, sizeof(*sub));
+                    }
                     request_clear(request_find(requests, fstream, false));
                     stream_forget(&c, fstream);
                     poll_stream_drop(fstream);
@@ -2420,6 +2769,21 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
         if (end_stream) stream_forget(&c, fstream);
     }
 out:
+    /* After GOAWAY the peer may still be sending the frames that caused the
+     * failure. Closing with unread data makes the kernel send RST, which can
+     * discard the GOAWAY before the peer reads it, so drain first. */
+    if (c.goaway_sent && !c.ssl) {
+        int fl = fcntl(fd, F_GETFL);
+        if (fl >= 0) {
+            (void)fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+            uint8_t sink[4096];
+            for (int i = 0; i < 1024; i++)
+                if (read(fd, sink, sizeof(sink)) <= 0) break;
+            (void)fcntl(fd, F_SETFL, fl);
+        }
+    }
+    for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++)
+        sub_snapshot_free(&c.subscriptions[i].snapshot);
     for (size_t i = 0; i < H2_MAX_INFLIGHT_REQUESTS; i++)
         request_clear(&requests[i]);
     pending_free_all(&c);

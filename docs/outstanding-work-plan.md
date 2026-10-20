@@ -45,6 +45,17 @@
   services once per 100 ms poll cycle; the initial snapshot/sync contract is
   unchanged. Tests cover the wire decode, option rejection and an end-to-end
   mutation on an `updates_only` ON_CHANGE stream.
+- Per-object deltas (2026-10-20, fourth pass): target-defined and ON_CHANGE
+  STREAM notifications now carry only objects that appeared, changed or were
+  removed since the previous notification, using concrete keyed paths
+  (`interfaces/interface[name=...]`) and `Notification.delete` for removals.
+  Full notifications use the same concrete paths instead of repeating the
+  wildcard subscription path. Baselines hold type, id, content hash, key and
+  VRF per object and are capped at 4,096 per subscription; SAMPLE/heartbeat
+  delivery is unchanged. Tests assert one update per change, an added object
+  alone, and a delete on removal. A GOAWAY-then-close race is also fixed: the
+  server drains unread inbound data before closing so an RST cannot discard
+  the GOAWAY.
 
 ### 2026-10-19 pushed verification and next physical/VMware gates
 
@@ -525,8 +536,9 @@ Done:
   This suppresses cross-path wakeups (for example, a VRF mutation does not
   trigger an interfaces-only STREAM) while preserving relevant notifications.
   The path-scoped regression and full CTest pass 78/78; remote gates and commit
-  are pending. ON_CHANGE now uses this detector for STREAM subscriptions;
-  per-object deltas remain open.
+  are pending. ON_CHANGE now uses this detector for STREAM subscriptions, and
+  change notifications carry only the objects that appeared, changed or were
+  removed, identified by concrete keyed paths.
 
 - Set now applies delete → replace → update in one staging transaction.
   Interface replacement resets omitted modeled fields, preserves identity,
@@ -542,6 +554,8 @@ Still open:
   subscriptions over the path-scoped change detector; its SAMPLE-only options
   are rejected. Unsupported request options must be explicitly rejected rather
   than silently treated as event-driven STREAM.
+- SAMPLE and heartbeat notifications still carry the complete subscribed set;
+  only change-driven streams emit per-object deltas.
 - Broader cancellation/reset and subscription lifecycle behavior need
   regression coverage beyond the new RST_STREAM/same-connection case. The
   current bounded 200 ms wait is a liveness fallback

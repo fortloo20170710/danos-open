@@ -33,11 +33,12 @@ connection during peak load.
 | Header list size | 64 fields, 16 KiB block | The request is dropped when the block exceeds the cap |
 | Parked frame queue | 64 frames | The server sends GOAWAY `ENHANCE_YOUR_CALM` (0xB) and closes |
 | Active subscriptions | 32 | Further Subscribe requests are rejected |
+| Objects per subscription baseline | 4,096 | The Subscribe is refused, or an active stream is closed, when a delta snapshot exceeds it (~360 KiB per subscription) |
 | HPACK dynamic table | Per RFC 7541 defaults | Bounded by the decoder |
 
 The worst-case resident cost of one connection is roughly 10 MiB when an
 adversarial peer pipelines 32 near-limit request bodies while also filling the
-parked-frame queue. A normal management session stays under 1 MiB. With the
+parked-frame queue; 32 delta baselines add at most about 12 MiB. A normal management session stays under 1 MiB. With the
 connection cap, the management listener can therefore commit on the order of
 1 GiB of address space in the worst case; the resident set is much smaller
 because buffers are touched only as data arrives.
@@ -56,6 +57,17 @@ inbound frame larger than 16 KiB is a protocol error regardless of what the
 peer advertised for its own receive direction. A peer's
 `SETTINGS_MAX_FRAME_SIZE` applies to frames the server sends; values outside
 16 KiB–16 MiB are ignored as RFC 9113 requires.
+
+## Subscription snapshots
+
+Change-driven STREAM subscriptions (target-defined and ON_CHANGE) keep a
+per-subscription baseline of object type, id, content hash and concrete key.
+Each notification then carries only objects that appeared, changed or were
+removed; removals are `Notification.delete` entries for the same concrete
+keyed path. SAMPLE and heartbeat notifications continue to send the complete
+subscribed set on their schedule. The baseline is bounded at 4,096 objects per
+subscription; capture that exceeds the bound fails the Subscribe (or closes
+the stream if it grows later).
 
 ## Operational guidance
 
