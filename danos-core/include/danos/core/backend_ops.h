@@ -15,6 +15,7 @@
 #ifndef DANOS_BACKEND_OPS_H__
 #define DANOS_BACKEND_OPS_H__
 
+#include <danos/core/object_registry.h>
 #include <danos/dpa.h>
 
 #ifdef __cplusplus
@@ -50,6 +51,16 @@ typedef struct danos_backend_ops {
     danos_status_t (*vrf_add)(const danos_vrf_t *vrf, void *user);
     danos_status_t (*vrf_del)(danos_vrf_id_t vrf_id, void *user);
 
+    /* Optional operational readback. `out` receives a copy of the desired
+     * object with device-reported fields filled in (same size as `size`).
+     * Backends that cannot read one type return DANOS_ERR_NOT_SUPPORTED;
+     * that is a normal answer for routes, VRFs and every VPP object until
+     * an interface dump binding exists. Called for PROGRAMMED objects on
+     * each programming pass and after a successful program operation. */
+    danos_status_t (*readback)(danos_obj_type_t type, danos_obj_id_t id,
+                               const void *desired, size_t size,
+                               void *out, void *user);
+
     void *user;
 } danos_backend_ops_t;
 
@@ -59,6 +70,29 @@ void danos_backend_ops_set(const danos_backend_ops_t *ops);
 
 /* Currently installed ops (NULL if none). */
 const danos_backend_ops_t *danos_backend_ops_get(void);
+
+/* ---- OPER snapshot ------------------------------------------------------
+ * The programming pipeline refreshes a process-global operational store from
+ * ops->readback after each pass. This is the backend's view of an object,
+ * as opposed to the desired bytes the management plane wrote. It is a
+ * snapshot: an object that was never programmed, or whose backend cannot
+ * read back, has no OPER copy.
+ *
+ * The store tracks the default desired store (what the pipeline programs).
+ * Reads are individually locked; there is no cross-object atomic snapshot.
+ */
+danos_status_t danos_oper_read(danos_obj_type_t type, danos_obj_id_t id,
+                               void *out, size_t *out_size);
+
+/* Number of objects with an OPER copy of a type. */
+uint64_t danos_oper_count(danos_obj_type_t type);
+
+/* Iterate the OPER snapshot under its read lock (same callback contract as
+ * danos_object_iterate: the callback must not mutate the store). */
+void danos_oper_iterate(danos_object_iter_cb_t cb, void *user);
+
+/* Drop the snapshot (backend restart, daemon shutdown, tests). */
+void danos_oper_reset(void);
 
 /* One programming pass over the desired-state (default) store.
  * Returns the number of objects newly programmed/updated;

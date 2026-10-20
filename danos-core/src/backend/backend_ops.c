@@ -26,6 +26,8 @@
 
 static const danos_backend_ops_t *g_ops;
 static danos_object_store_t *g_programmed;
+/* Operational snapshot refreshed from ops->readback (v0.16). */
+static danos_object_store_t *g_oper;
 
 /* cumulative programming statistics (v0.13, exposed via Prometheus) */
 static struct {
@@ -67,6 +69,41 @@ static danos_object_store_t *ledger(void)
     if (!g_programmed)
         g_programmed = danos_object_store_create(256);
     return g_programmed;
+}
+
+static danos_object_store_t *oper_store(void)
+{
+    if (!g_oper)
+        g_oper = danos_object_store_create(256);
+    return g_oper;
+}
+
+/* ---- OPER snapshot (v0.16) ----------------------------------------------
+ * Caller holds g_prog_lock. A backend that cannot read an object back
+ * contributes no OPER entry: the management plane then falls back to the
+ * desired copy and never serves a stale operational value. */
+static void oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
+                         const void *desired, size_t size)
+{
+    if (!g_ops || !g_ops->readback || !desired ||
+        size == 0 || size > DANOS_MAX_OBJECT_BYTES)
+        return;
+
+    _Alignas(danos_route_t) uint8_t oper[DANOS_MAX_OBJECT_BYTES];
+    memset(oper, 0, size);
+    if (g_ops->readback(type, id, desired, size, oper, g_ops->user) != DANOS_OK) {
+        if (g_oper) (void)danos_object_delete(g_oper, type, id);
+        return;
+    }
+    danos_object_store_t *s = oper_store();
+    if (!s) return;
+    if (danos_object_update(s, type, id, oper, size) != DANOS_OK)
+        (void)danos_object_create(s, type, id, oper, size);
+}
+
+static void oper_forget(danos_obj_type_t type, danos_obj_id_t id)
+{
+    if (g_oper) (void)danos_object_delete(g_oper, type, id);
 }
 
 /* ---- dependency digest (v0.11) -------------------------------------------
@@ -431,6 +468,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
             /* Healthy: drop any accumulated backoff so a later failure
              * starts from a clean slate. */
             retry_clear(e->type, e->id, mono_ns(), true);
+            oper_refresh(e->type, e->id, e->data, e->data_size);
             return;   /* in sync */
         }
     }
@@ -470,6 +508,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     if (st != DANOS_OK) {
         c->failed++;
         retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep, st);
+        oper_forget(e->type, e->id);
         /* v0.11: a previously-programmed route whose next hop became
          * unusable must be WITHDRAWN, not left forwarding via a stale
          * gateway. */
@@ -500,6 +539,8 @@ static void program_entry(danos_object_entry_t *e, void *user)
     else
         (void)danos_object_create(ledger(), e->type, e->id, rec,
                                   e->data_size + LEDGER_HEADER_SIZE);
+
+    oper_refresh(e->type, e->id, e->data, e->data_size);
 }
 
 uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)
@@ -705,6 +746,7 @@ uint64_t danos_programming_sweep(uint64_t *failed)
         }
         /* VRF: registration-only backend ops — ledger drop suffices */
         danos_object_delete(ledger(), type, id);
+        oper_forget(type, id);
         c.issued++;
     }
     issued = c.issued;
@@ -723,6 +765,11 @@ uint64_t danos_programming_forget_programmed(void)
     pthread_mutex_lock(&g_retry_lock);
     memset(g_retry, 0, sizeof(g_retry));
     pthread_mutex_unlock(&g_retry_lock);
+    /* A restarted dataplane also invalidates every operational reading. */
+    if (g_oper) {
+        danos_object_store_destroy(g_oper);
+        g_oper = NULL;
+    }
     if (!g_programmed) {
         pthread_mutex_unlock(&g_prog_lock);
         pthread_mutex_unlock(&g_sweep_lock);
@@ -739,4 +786,44 @@ uint64_t danos_programming_forget_programmed(void)
     pthread_mutex_unlock(&g_prog_lock);
     pthread_mutex_unlock(&g_sweep_lock);
     return forgotten;
+}
+
+/* ---- OPER snapshot accessors -------------------------------------------- */
+
+danos_status_t danos_oper_read(danos_obj_type_t type, danos_obj_id_t id,
+                               void *out, size_t *out_size)
+{
+    if (!out || !out_size || type <= DANOS_OBJ_INVALID || type >= DANOS_OBJ_MAX)
+        return DANOS_ERR_INVALID_ARG;
+    pthread_mutex_lock(&g_prog_lock);
+    danos_status_t st = g_oper ?
+        danos_object_read(g_oper, type, id, out, out_size) : DANOS_ERR_NOT_FOUND;
+    pthread_mutex_unlock(&g_prog_lock);
+    return st;
+}
+
+uint64_t danos_oper_count(danos_obj_type_t type)
+{
+    pthread_mutex_lock(&g_prog_lock);
+    uint64_t n = g_oper ? danos_object_count(g_oper, type) : 0;
+    pthread_mutex_unlock(&g_prog_lock);
+    return n;
+}
+
+void danos_oper_iterate(danos_object_iter_cb_t cb, void *user)
+{
+    if (!cb) return;
+    pthread_mutex_lock(&g_prog_lock);
+    if (g_oper) danos_object_iterate(g_oper, cb, user);
+    pthread_mutex_unlock(&g_prog_lock);
+}
+
+void danos_oper_reset(void)
+{
+    pthread_mutex_lock(&g_prog_lock);
+    if (g_oper) {
+        danos_object_store_destroy(g_oper);
+        g_oper = NULL;
+    }
+    pthread_mutex_unlock(&g_prog_lock);
 }
