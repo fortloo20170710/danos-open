@@ -19,12 +19,17 @@ contributor needs lives here; everything else is an archive.
 | [v0.16 performance schema](v0.16-performance-result-schema.md) | Machine-readable QEMU/VMware/PCI result fields |
 | [v0.16 PCI runner contract](v0.16-pci-runner-contract.md) | External real-DPDK runner prerequisites and first-pass contract |
 | [v0.16 next-stage plan](v0.16-next-stage-plan.md) | Release closure sequence and deferred extensions |
+| [Coverage baseline](coverage-baseline.md) | Production C coverage measurement, gate and provenance |
+| [Physical DPDK perf test plan](physical-dpdk-perf-testplan.md) | testpmd physical baseline procedure (draft runbook) |
+| [Architecture diagrams](architecture.md) | Mermaid overview and simplified data flow |
 
 ## Entry points outside docs/
 
 - `README.md` — quick start, module map, verified interoperability
 - `CONTRIBUTING.md` — gates, rules, where things live
 - `TODO.md` — public backlog (environment/feature/quality)
+- `tools/perf-testpmd/` — draft physical testpmd harness (not acceptance evidence)
+- `tools/gnmic/` — hash-verified Go module for the CI gnmic dependency
 
 ## Archive
 

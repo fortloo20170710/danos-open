@@ -17,9 +17,37 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
 - Virtual QEMU e1000 and VMware VMXNET3 evidence validation, baseline reporting,
   explicit frame-size metadata for new QEMU soak runs, and VM CPU capture.
 - Real PCI preflight checks that reject virtual or ambiguous NIC identities.
+- libFuzzer targets for gNMI protobuf decoding, HPACK and HTTP/2 frame headers,
+  wired into the Interop workflow.
+- A line-coverage non-regression gate (`--fail-under-line`) enforced by the
+  Coverage workflow at 79%, with a refreshed 2026-10-20 baseline.
+- A root `Dockerfile` that builds and tests the tree from source, then ships a
+  minimal `danos-mgrd` runtime image with a metrics health check.
+- Pinned GitHub Actions commit SHAs and a checked-in `tools/gnmic` Go module so
+  CI verifies `go.sum` instead of resolving dependencies at run time.
 
 ### Fixed
 
+- WAL replay now distinguishes a torn tail from corruption and reports callback
+  failures; checkpoints write and fsync a snapshot before rename; `danos-mgrd`
+  refuses startup on corrupt recovery unless an operator override is set.
+- Audit records escape quotes and control characters and the audit file is
+  created owner-only (`0600`).
+- The metrics server caps concurrent connections, applies read/write timeouts
+  and binds to loopback by default. Metric registries are lock-protected.
+- Route programming is idempotent through `NLM_F_REPLACE`, IPv6 address
+  operations fail explicitly as unsupported, and netlink ACKs are validated.
+- The VPP binary-API reader sizes its window from the frame length prefix.
+- gNMI protobuf decoding supports lengths beyond 16 KiB, and HTTP/2 frame
+  header parsing is shared with the fuzz target.
+- `danos_tx_rollback` rejects states where it cannot undo programmed state and
+  the DPA contract documents post-commit rollback limits.
+- Backend sweep, retry-slot lookup and anti-flap parking are locked and
+  permanent parking survives sweeps.
+- The systemd unit applies capability bounding, filesystem and syscall
+  sandboxing.
+- The legacy REST gNMI server is linked only into tests, keeping it out of the
+  daemon and the fuzz surface.
 - Transaction candidate isolation, atomic staged publication, abort guarantees,
   conflict handling and committed-WAL recovery; caller cleanup on errors.
 - Bootstrap transaction error handling and seed/recovery coverage.

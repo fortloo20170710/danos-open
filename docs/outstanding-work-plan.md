@@ -1,5 +1,32 @@
 # Outstanding work plan
 
+### 2026-10-20 hardening, coverage and repository hygiene
+
+- Applied the P0–P2 review findings in grouped commits: WAL replay health and
+  checkpoint snapshots, fail-closed recovery startup, audit escaping and file
+  mode, metrics-server limits, systemd sandboxing, netlink idempotence, VPP
+  frame-window sizing, backend sweep/retry locking, multi-byte protobuf
+  lengths, honest rollback semantics, legacy REST gNMI isolation and HTTP/2
+  frame-header extraction.
+- Added libFuzzer targets for gNMI protobuf, HPACK and HTTP/2 frame headers;
+  the Interop workflow builds and smoke-runs them. Local GCC syntax checks
+  pass; clang is still unavailable in this workspace.
+- Fresh coverage run on the same tree: lines 7028/8756 (80.3%), functions
+  611/690 (88.6%), branches 4117/7003 (58.8%), CTest 81/81. The Coverage
+  workflow now enforces a 79% line floor through
+  `run_coverage.py --fail-under-line`; both the pass and fail paths were
+  exercised locally.
+- The root `Dockerfile` was repaired and verified end to end: its builder stage
+  passes CTest 81/81 and the runtime image answers `/metrics`; two container
+  gaps (missing `openssl` CLI and missing `git`/`.git` for the installer
+  payload test) were fixed.
+- GitHub Actions are pinned by commit SHA, gnmic is built from the checked-in
+  `tools/gnmic` module with `go.sum`, and local build directories are ignored.
+  The testpmd draft is now tracked under `tools/perf-testpmd/` with an explicit
+  not-acceptance-ready note; its technical gaps below remain open.
+- Verification on this tree: clean Release build 81/81 CTest, ASan/UBSan build
+  81/81 CTest, and the source-image builder 81/81.
+
 ### 2026-10-19 pushed verification and next physical/VMware gates
 
 - R2 reboot management recheck passed 5/5 host pings to `192.168.1.244` with
@@ -33,7 +60,8 @@
   traffic window and FRR route add/withdraw/recovery checks; separately load
   VMware modules and run the strict VMXNET3 pair verifier. Only a properly
   correlated independent-generator/receiver measurement can close PCI
-  performance. Keep the uncommitted testpmd draft out of acceptance until
+  performance. The testpmd draft is now tracked under
+  `tools/perf-testpmd/`; keep it out of acceptance until
   its VPP transit attribution, counters, elapsed-time PPS and CPU sampling
   are corrected and tested.
 
@@ -1586,10 +1614,11 @@ Done:
   recorded in the result file. Only the exact value 1 waives.
 
 Still open:
-- a production C coverage workflow and fresh-run collector now exist; initial
-  local baseline is 77.5% lines / 55.5% branches with CTest 41/41. Remote job
-  execution is still blocked by GitHub billing; assertion quality and a
-  coverage non-regression policy remain open (see coverage-baseline.md).
+- the production C coverage workflow and fresh-run collector exist; the
+  2026-10-20 baseline is 80.3% lines / 88.6% functions / 58.8% branches with
+  CTest 81/81. The workflow now enforces a 79% line floor; raising the floor
+  needs a new baseline. Remote job execution is still blocked by GitHub
+  billing, and assertion quality remains open (see coverage-baseline.md).
 2026-10-08: `conf_vrf_crud`, `conf_acl_crud` and `conf_qos_crud` now exercise
 and assert readback, duplicate, update and deletion semantics. This closes the
 listed thin-case gap but does not address the separate storage-vs-backend
@@ -1617,8 +1646,10 @@ Still open:
 
 Partial progress: the new [coverage lane](coverage-baseline.md) pins its GitHub
 actions to upstream commit SHAs and its gcovr/transitive Python packages to
-versions plus wheel hashes. This does not pin the other workflows, apt, VPP
-or container inputs and does not close SBOM/signing/history items.
+versions plus wheel hashes. All other workflows now pin their actions by commit
+SHA, gnmic builds from `tools/gnmic` with a checked-in `go.sum`, and
+`build-test/`, `build-coverage/` and `build_testpmd/` are ignored. apt, VPP
+packages, container base images, SBOM and signing remain open.
 
 ### [ ] 14. Architecture diagram accuracy
 
