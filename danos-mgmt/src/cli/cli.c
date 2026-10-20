@@ -164,10 +164,18 @@ static void cli_show_iface_iter(danos_object_entry_t *e, void *user)
     if (e->type != DANOS_OBJ_IFACE || e->data_size < sizeof(danos_iface_t))
         return;
     const danos_iface_t *i = e->data;
+    /* OPER column: the backend's readback when one exists, otherwise the
+     * last known value on the desired object. */
+    bool link_up = i->link_up;
+    danos_iface_t oper;
+    size_t n = sizeof(oper);
+    if (danos_oper_read(DANOS_OBJ_IFACE, i->ifindex, &oper, &n) == DANOS_OK &&
+        n == sizeof(oper))
+        link_up = oper.link_up;
     (*(int *)user)++;
     printf("%-8u %-16s %-8u %-6s %-8s\n",
            i->ifindex, i->name, i->mtu,
-           i->admin_up ? "up" : "down", i->link_up ? "up" : "down");
+           i->admin_up ? "up" : "down", link_up ? "up" : "down");
 }
 
 int cli_cmd_show_route(danos_cli_ctx_t *ctx, const char *args)
