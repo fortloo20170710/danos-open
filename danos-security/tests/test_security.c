@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static int tests_run = 0;
 static int tests_pass = 0;
@@ -93,7 +95,9 @@ static void test_audit(void)
 {
     printf("== Audit ==\n");
     /* Use temp path to avoid /var/log permission issues */
-    danos_audit_init("/tmp/danos_audit_test.log");
+    const char *path = "/tmp/danos_audit_test.log";
+    unlink(path);
+    danos_audit_init(path);
 
     danos_audit_entry_t entry = {0};
     entry.tx_id = 12345;
@@ -117,7 +121,36 @@ static void test_audit(void)
     n = danos_audit_query(0, results, 10);
     CHECK(n >= 1, "query all");
 
+    /* Remote-controlled fields must not be able to forge a record or a
+     * new line. This one embeds a quote, a newline and a fake event. */
+    danos_audit_entry_t injected = {0};
+    injected.tx_id = 999;
+    injected.event = DANOS_AUDIT_AUTH_FAIL;
+    snprintf(injected.initiator, sizeof(injected.initiator), "eve\"\n{\"event\":\"forged\"}");
+    snprintf(injected.source_ip, sizeof(injected.source_ip), "10.0.0.2");
+    snprintf(injected.obj_type, sizeof(injected.obj_type), "route");
+    snprintf(injected.obj_id, sizeof(injected.obj_id), "10.0.0.0/8");
+    snprintf(injected.diff, sizeof(injected.diff), "x");
+    clock_gettime(CLOCK_REALTIME, &injected.timestamp);
+    CHECK(danos_audit_log(&injected) == 0, "log injected entry");
+
     danos_audit_close();
+
+    FILE *fp = fopen(path, "r");
+    CHECK(fp != NULL, "read audit log back");
+    if (fp) {
+        int lines = 0;
+        int c;
+        while ((c = fgetc(fp)) != EOF) if (c == '\n') lines++;
+        fclose(fp);
+        CHECK(lines == 2, "one physical line per audit record");
+    }
+
+    struct stat st;
+    CHECK(stat(path, &st) == 0 && (st.st_mode & 0077) == 0,
+          "audit log is owner-only");
+
+    unlink(path);
 }
 
 int main(void)
