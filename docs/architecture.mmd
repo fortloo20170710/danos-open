@@ -1,0 +1,268 @@
+```mermaid
+flowchart TB
+    %% ==================== 外部用户/系统 ====================
+    subgraph External["外部用户与系统"]
+        User["网络运维工程师"]
+        NMS["网管系统 (NMS/SDN Controller)"]
+        gNMI_Client["gNMI 客户端\n(gnmic, gNOI, 自研)"]
+        NETCONF_Client["NETCONF 客户端"]
+        Prometheus["Prometheus\n监控采集"]
+        Alertmanager["Alertmanager\n告警"]
+        Log_Aggregator["日志聚合\n(ELK/Loki)"]
+    end
+
+    %% ==================== 管理平面 ====================
+    subgraph MgmtPlane["管理平面 (danos-mgmt)"]
+        direction TB
+        
+        subgraph Transport["传输层"]
+            gNMI_Server["gNMI Server\n(手写 C 实现 gRPC/HTTP2/HPACK)"]
+            NETCONF_Server["NETCONF Server\n(RFC 6242, SSH 待实现)"]
+            CLI_Server["CLI Server\n(交互式/脚本)"]
+            Unix_Socket["Unix Domain Socket\n(SO_PEERCRED 认证)"]
+        end
+        
+        subgraph AuthZ["授权与审计 (danos-security)"]
+            MTLS["mTLS 终止\n- 服务端证书\n- 客户端证书强制验证\n- 指纹→角色映射"]
+            PeerCred["Unix Peer Cred\n- root → admin\n- 非 root → viewer"]
+            RBAC["RBAC 引擎\n- 基于证书/凭证身份\n- Set 事务审计保留身份"]
+            Audit["审计日志\n- 结构化 JSON\n- 身份绑定"]
+        end
+        
+        subgraph ModelLayer["模型层 (Model-Driven)"]
+            ModelPaths["model_paths\n- YANG 路径注册表\n- 叶级 Get/Set 映射\n- gRPC NotFound/InvalidArgument"]
+            ModelRoutes["model_routes\n- 组合路由写入\n- 单 gNMI Update → NH+NHGroup+Route\n- 级联删除"]
+            YANG_Models["13 个 YANG/OpenConfig 模型\n- interfaces, routing-policy\n- bgp, ospf, isis\n- vrf, acl, qos 等"]
+        end
+        
+        subgraph Persistence["持久化 (WAL)"]
+            WAL["Write-Ahead Log\n- 64-bit obj_id (FNV-1a)\n- CRC32 链式校验\n- 魔数版本化 (DNOS2)\n- 启动重放 + 破损容忍"]
+        end
+    end
+
+    %% ==================== 核心引擎 ====================
+    subgraph CoreEngine["核心引擎 (danos-core)"]
+        direction TB
+        
+        subgraph ObjectStore["对象存储"]
+            Registry["对象注册表\n- DANOS_MAX_OBJECT_BYTES (1024)\n- 类型安全、大小校验"]
+            Store["事务存储\n- Desired / Programmed / Operational\n- MVCC 语义"]
+        end
+        
+        subgraph Transaction["事务引擎"]
+            TxMgr["事务管理器\n- Begin/Prepare/Validate/Commit/Abort\n- 候选隔离、原子分级发布\n- 冲突检测、调用方清理"]
+            TxRecord["事务记录池\n- 显式退役 (danos_tx_commit)\n- 截止时间回收\n- 栈上 danos_tx_t 所有权"]
+        end
+        
+        subgraph Programming["编程管道 (ADR-0007)"]
+            Pipeline["编程管道\n- Desired → Backend\n- 依赖感知拓扑排序\n- PROGRAMMED 账本\n- 墓碑扫除、重试/退避/耗尽"]
+            Reconciler["协调器\n- Diff 快照 + 回调解锁\n- 重入安全 (TSan 验证)\n- 编程重试/错误归因"]
+            Capability["能力注册表\n- 动态后端能力发现\n- 后端选择契约"]
+        end
+        
+        subgraph Event["事件总线"]
+            StoreEvents["存储事件\n- Create/Update/Delete\n- 唤醒订阅/协调器"]
+        end
+    end
+
+    %% ==================== 数据平面抽象 (DPA) ====================
+    subgraph DPA["DPA (Data Plane Abstraction)\nC ABI + Protobuf (danos-dpa)"]
+        DPA_Types["核心类型\n- danos_route_t, danos_nh_t, danos_nhgroup_t\n- danos_iface_t, danos_vrf_t\n- danos_acl_table_t, danos_acl_rule_t\n- danos_qos_t, danos_bfd_t"]
+        DPA_Ops["操作接口\n- create/read/update/delete\n- capability 查询\n- 事务边界"]
+        DPA_Proto["Protobuf 定义\n- gNMI/NETCONF 直接映射\n- 版本化演进"]
+    end
+
+    %% ==================== 后端适配器 ====================
+    subgraph Backends["后端适配器 (Backend Adapters)"]
+        direction TB
+        
+        subgraph VPP_Backend["VPP 后端 (danos-vpp) ✅ v0.11"]
+            VPP_Adapter["VPP 编程适配器\n- iface up/down/addr\n- route add/del (IPv4/IPv6)\n- vrf add/del\n- ECMP 多路径 (NHGroup)\n- CoPP policer 编程"]
+            VPP_API["VPP 二进制 API 客户端\n- 握手 + 消息表 (839 msg)\n- 类型化消息编解码\n- 修正 wire encoding:\n  • admin_up_down: u32\n  • string: u32 len + bytes (无 padding)\n  • sockclnt_create: 固定 64B name\n  • stat segment: memcpy 对齐读取"]
+            VPP_Mapper["VPP Mapper\n- DPA 对象 → VPP API 调用\n- 依赖解析 (NH → NHGroup → Route)\n- 重试预算、冲突处理"]
+            VPP_Cap["VPP 能力表\n- 仅声明可编程类型\n- iface, route, vrf\n- 诚实广告 (无 IPv6/EVPN/MPLS 等)"]
+            Mock_VPP["Mock VPP Server (测试)\n- 严格帧长/字段校验\n- 回归保护"]
+        end
+        
+        subgraph Netlink_Backend["Netlink 后端 (danos-netlink) ✅ v0.9"]
+            NL_Adapter["rtnetlink 适配器\n- 真实内核 FIB 编程\n- Mock 内存 FIB (测试)\n- 驱动 ADR-0007 管道"]
+        end
+        
+        subgraph FRR_Bridge["FRR 桥接 (danos-fib/danos-ha)"]
+            Fib_Bridge["fib_live_bridge\n- ZAPI socket 连接\n- 路由通知订阅 (v6 header)\n- 重连 + 期望状态重放\n- BGP/OSPF/Static/Connected 重分发"]
+            ZAPI_Mapper["ZAPI Mapper\n- FRR 路由 → DPA Route/NH/NHGroup\n- NHGroup 最大 64 NH (u8→限制)\n- 客户端注册/重注册"]
+            BFD_Mgr["BFD 会话管理器 (骨架)\n- 协议委托 FRR bfdd (ADR-0006)\n- 翻译层: DPA BFD ↔ FRR 配置 (待实现)"]
+            VRRP["VRRP 骨架 (待实现)"]
+            Supervisor["Supervisor 监护进程"]
+        end
+        
+        subgraph Future_Backends["未来后端 (故意未启动)"]
+            OVS["OVS-DPDK 后端"]
+            P4["P4Runtime / P4 后端"]
+            Platform["Platform 适配\n- x86 / ARM / 通用"]
+        end
+    end
+
+    %% ==================== 数据平面运行时 ====================
+    subgraph Dataplane["数据平面运行时"]
+        VPP_Runtime["VPP (Vector Packet Processing)\n- DPDK 或 kernel 接口\n- v26.10-rc0~545-gad99177fe\n- 统计段 /sys/node/vectors"]
+        DPDK["DPDK\n- PMD: igb_uio / vfio-pci / uio_pci_generic\n- Hugepages (28×2MiB)"]
+        FRR_Daemon["FRR (GPLv2, 独立进程)\n- zebra (FIB)\n- bgpd, ospfd, bfdd\n- ZAPI socket 通信"]
+        Linux_Kernel["Linux Kernel 6.6+ LTS\n- rtnetlink / netlink\n- 网络命名空间"]
+        NIC["物理 NIC\n- Intel I211 (8086:1539)\n- PCIe 绑定 uio_pci_generic"]
+    end
+
+    %% ==================== 可观测性 ====================
+    subgraph Observability["可观测性 (danos-observability) ✅ v0.6"]
+        Metrics["Prometheus 暴露\n- 真实 HTTP Server\n- Stat Provider 桥接\n- /metrics 端点"]
+        Logging["结构化日志\n- JSON 格式\n- 关联请求 ID"]
+        Tracing["分布式追踪 (规划中)"]
+    end
+
+    %% ==================== 系统守护进程 ====================
+    subgraph SystemDaemon["系统守护进程 (danos-mgrd) ✅ v0.6"]
+        Mgrd["danos-mgrd\n- WAL 启动重放\n- gNMI + Prometheus /metrics\n- 崩溃恢复 (WAL replay)\n- --backend vpp 显式选择\n- 启动失败回退拒绝\n- systemd 单元文件"]
+    end
+
+    %% ==================== 兼容性层 ====================
+    subgraph Compat["兼容性层 (danos-compat) ✅ v0.3"]
+        CLI_Trans["CLI 翻译器\n- OcNOS-like → DPA\n- 待模型层重构"]
+        Config_Import["配置导入\n- 最小可用"]
+    end
+
+    %% ==================== 测试体系 ====================
+    subgraph Testing["测试体系 (danos-test) ✅ v0.10"]
+        Conformance["一致性测试\n- DPA API 契约\n- VRF/ACL/QoS 生命周期断言"]
+        Interop["互操作测试\n- gnmic v0.35 I1-I9\n- 32 并发连接 (ASAN/TSAN)"]
+        Fuzz["模糊测试\n- libFuzzer target\n- 解码器 fuzzing"]
+        Scale["规模测试\n- 1000-object 事务\n- 并发流"]
+        Perf["性能测试\n- 多核 CLI\n- PCI 结果记录器/校验器"]
+        Kernel["内核测试\n- K4/K5 netns/ping"]
+        Robot["Robot Framework\n- 只读 VPP 适配器\n- MAC 身份/超时/无效输出拒绝"]
+    end
+
+    %% ==================== 连线关系 ====================
+    %% 外部 → 管理平面
+    User --> CLI_Server
+    NMS --> gNMI_Client
+    NMS --> NETCONF_Client
+    gNMI_Client --> gNMI_Server
+    NETCONF_Client --> NETCONF_Server
+    Prometheus --> Metrics
+    Alertmanager --> Metrics
+    Log_Aggregator --> Logging
+
+    %% 管理平面内部
+    gNMI_Server --> MTLS
+    gNMI_Server --> PeerCred
+    NETCONF_Server --> MTLS
+    CLI_Server --> PeerCred
+    Unix_Socket --> PeerCred
+    
+    MTLS --> RBAC
+    PeerCred --> RBAC
+    RBAC --> Audit
+    
+    gNMI_Server --> ModelPaths
+    NETCONF_Server --> ModelPaths
+    CLI_Server --> ModelPaths
+    
+    ModelPaths --> ModelRoutes
+    ModelPaths --> YANG_Models
+    ModelRoutes --> TxMgr
+    
+    TxMgr --> WAL
+    TxMgr --> TxRecord
+    TxMgr --> Pipeline
+    
+    %% 核心引擎内部
+    Registry --> Store
+    Store --> TxMgr
+    Store --> StoreEvents
+    StoreEvents --> Pipeline
+    StoreEvents --> Reconciler
+    StoreEvents -.-> gNMI_Server
+    
+    Pipeline --> Reconciler
+    Pipeline --> Capability
+    Capability --> VPP_Backend
+    Capability --> Netlink_Backend
+    Capability --> FRR_Bridge
+    
+    %% DPA
+    DPA_Types --> Registry
+    DPA_Ops --> TxMgr
+    DPA_Proto --> ModelPaths
+    
+    %% 后端连接
+    VPP_Adapter --> VPP_API
+    VPP_Adapter --> VPP_Mapper
+    VPP_Adapter --> VPP_Cap
+    VPP_API --> VPP_Runtime
+    VPP_Runtime --> DPDK
+    DPDK --> NIC
+    
+    NL_Adapter --> Linux_Kernel
+    
+    Fib_Bridge --> ZAPI_Mapper
+    Fib_Bridge --> FRR_Daemon
+    ZAPI_Mapper --> TxMgr
+    FRR_Daemon --> Linux_Kernel
+    FRR_Daemon --> VPP_Runtime
+    
+    BFD_Mgr --> FRR_Daemon
+    Supervisor --> Mgrd
+    
+    %% 系统守护进程
+    Mgrd --> WAL
+    Mgrd --> gNMI_Server
+    Mgrd --> Metrics
+    Mgrd --> Pipeline
+    Mgrd --> VPP_Backend
+    
+    %% 兼容性
+    CLI_Trans --> ModelPaths
+    Config_Import --> WAL
+    
+    %% 可观测性
+    Metrics --> Store
+    Metrics --> Pipeline
+    Metrics --> VPP_Runtime
+    Logging --> TxMgr
+    Logging --> Pipeline
+    
+    %% 测试
+    Conformance -.-> DPA
+    Interop -.-> gNMI_Server
+    Fuzz -.-> VPP_API
+    Fuzz -.-> gNMI_Server
+    Scale -.-> Pipeline
+    Perf -.-> VPP_Runtime
+    Kernel -.-> NL_Adapter
+    Robot -.-> VPP_Runtime
+
+    %% 样式
+    classDef external fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef mgmt fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef core fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    classDef dpa fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    classDef backend fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    classDef dp fill:#ede7f6,stroke:#311b92,stroke-width:2px
+    classDef obs fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+    classDef daemon fill:#f1f8e9,stroke:#33691e,stroke-width:2px
+    classDef compat fill:#fafafa,stroke:#616161,stroke-width:1px,stroke-dasharray: 5 5
+    classDef future fill:#fafafa,stroke:#9e9e9e,stroke-width:1px,stroke-dasharray: 5 5
+    classDef test fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+
+    class User,NMS,gNMI_Client,NETCONF_Client,Prometheus,Alertmanager,Log_Aggregator external
+    class gNMI_Server,NETCONF_Server,CLI_Server,Unix_Socket,MTLS,PeerCred,RBAC,Audit,ModelPaths,ModelRoutes,YANG_Models,WAL mgmt
+    class Registry,Store,TxMgr,TxRecord,Pipeline,Reconciler,Capability,StoreEvents core
+    class DPA_Types,DPA_Ops,DPA_Proto dpa
+    class VPP_Adapter,VPP_API,VPP_Mapper,VPP_Cap,Mock_VPP,NL_Adapter,Fib_Bridge,ZAPI_Mapper,BFD_Mgr,VRRP,Supervisor backend
+    class OVS,P4,Platform future
+    class VPP_Runtime,DPDK,FRR_Daemon,Linux_Kernel,NIC dp
+    class Metrics,Logging,Tracing obs
+    class Mgrd daemon
+    class CLI_Trans,Config_Import compat
+    class Conformance,Interop,Fuzz,Scale,Perf,Kernel,Robot test
+```

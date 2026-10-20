@@ -1,0 +1,37 @@
+# DPDK testpmd 静态编译镜像
+# 产出: /out/testpmd (静态链接, 仅含 igb PMD)
+# 使用方法:
+#   docker build -t dpdk-testpmd-builder -f Dockerfile.testpmd .
+#   docker run --rm -v /tmp/dpdk-out:/out dpdk-testpmd-builder
+# 结果在宿主机 /tmp/dpdk-out/testpmd
+
+FROM debian:trixie-slim AS builder
+
+# 安装编译依赖
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    meson ninja-build pkg-config libnuma-dev python3-pyelftools \
+    build-essential wget ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# 下载并编译 DPDK 24.07 (匹配 VPP 26.10)
+WORKDIR /tmp
+RUN wget -q https://fast.dpdk.org/rel/dpdk-24.07.tar.xz && \
+    tar -xf dpdk-24.07.tar.xz && \
+    cd dpdk-24.07 && \
+    meson setup build \
+        -Dexamples=testpmd \
+        -Ddefault_library=static \
+        -Denable_drivers=net/igb \
+        -Dc_args="-O3 -static" \
+        --prefix=/tmp/dpdk-install && \
+    ninja -C build && \
+    ninja -C build install
+
+# 验证静态链接
+RUN file /tmp/dpdk-install/bin/testpmd | grep -q "statically linked" && \
+    /tmp/dpdk-install/bin/testpmd --version
+
+# 运行阶段: 仅复制二进制到 /out
+FROM scratch
+COPY --from=builder /tmp/dpdk-install/bin/testpmd /testpmd
+ENTRYPOINT ["/testpmd"]

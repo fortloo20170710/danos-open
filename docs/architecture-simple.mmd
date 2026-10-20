@@ -1,0 +1,97 @@
+```mermaid
+flowchart TB
+    %% ============ 简化架构图：核心数据流 ============
+    
+    subgraph Northbound["北向接口"]
+        CLI["CLI\n(交互/脚本)"]
+        gNMI["gNMI/gRPC\n(手写 C 栈)\nmTLS + PeerCred"]
+        NETCONF["NETCONF\n(模型驱动)\nSSH 待实现"]
+        Prom["Prometheus\n/metrics"]
+    end
+    
+    subgraph Mgmt["管理平面 (danos-mgmt)"]
+        Auth["认证授权\n- mTLS 指纹→角色\n- Unix root→admin\n- RBAC + 审计"]
+        Model["模型层\n- 13 YANG 模型\n- model_paths (叶级)\n- model_routes (组合)"]
+        Txn["事务引擎\n- 候选隔离\n- 原子分级发布\n- WAL 持久化"]
+    end
+    
+    subgraph Core["核心引擎 (danos-core)"]
+        Store["对象存储\n- Desired/Programmed/Oper\n- 事件总线"]
+        Pipe["编程管道 (ADR-0007)\n- 依赖拓扑排序\n- PROGRAMMED 账本\n- 墓碑/重试/回滚"]
+        Cap["能力注册表\n- 后端能力发现\n- 诚实广告"]
+    end
+    
+    subgraph DPA["DPA 抽象层 (danos-dpa)"]
+        DPA_A["C ABI + Protobuf\nRoute/NH/NHGroup/Iface/VRF/ACL/QoS/BFD"]
+    end
+    
+    subgraph Backends["后端适配器"]
+        VPP["VPP 后端 ✅ v0.11\n- 二进制 API (修正 wire encoding)\n- Mapper: DPA→VPP API\n- ECMP/CoPP/Stat Segment"]
+        NL["Netlink 后端 ✅ v0.9\n- rtnetlink / Mock FIB"]
+        FRR["FRR 桥接\n- fib_live_bridge (ZAPI)\n- BGP/OSPF/Static/Connected\n- BFD 骨架 (ADR-0006 待翻译层)"]
+        Future["OVS-DPDK / P4 / Platform\n(故意未启动)"]
+    end
+    
+    subgraph DataPlane["数据平面运行时"]
+        VPP_RT["VPP 26.10\n+ DPDK (I211 uio_pci_generic)\n+ Hugepages"]
+        FRR_RT["FRR (独立进程, GPLv2)\nzebra/bgpd/ospfd/bfdd"]
+        Kernel["Linux 6.6+ Kernel\nrtnetlink / netns"]
+    end
+    
+    subgraph System["系统服务"]
+        Mgrd["danos-mgrd\n- WAL 启动重放\n- gNMI + Metrics\n- 崩溃恢复\n- --backend vpp 显式选择"]
+        Obs["可观测性\n- Prometheus HTTP\n- 结构化日志"]
+    end
+    
+    %% 数据流向
+    CLI --> Auth
+    gNMI --> Auth
+    NETCONF --> Auth
+    Prom --> Obs
+    
+    Auth --> Model
+    Model --> Txn
+    Txn --> Store
+    Store --> Pipe
+    Pipe --> Cap
+    Cap --> VPP
+    Cap --> NL
+    Cap --> FRR
+    
+    VPP --> VPP_RT
+    NL --> Kernel
+    FRR --> FRR_RT
+    FRR --> VPP_RT
+    
+    Mgrd --> Txn
+    Mgrd --> VPP
+    Mgrd --> Obs
+    Store --> Obs
+    Pipe --> Obs
+    
+    %% DPA 连接
+    DPA_A -.-> Model
+    DPA_A -.-> Txn
+    DPA_A -.-> Pipe
+    DPA_A -.-> VPP
+    DPA_A -.-> NL
+    DPA_A -.-> FRR
+    
+    classDef nb fill:#e3f2fd,stroke:#1565c0
+    classDef mgmt fill:#f3e5f5,stroke:#6a1b9a
+    classDef core fill:#fff3e0,stroke:#ef6c00
+    classDef dpa fill:#e8f5e9,stroke:#2e7d32
+    classDef be fill:#fce4ec,stroke:#c2185b
+    classDef dp fill:#ede7f6,stroke:#4527a0
+    classDef sys fill:#f1f8e9,stroke:#558b2f
+    classDef fut fill:#fafafa,stroke:#9e9e9e,stroke-dasharray: 5 5
+    
+    class CLI,gNMI,NETCONF,Prom nb
+    class Auth,Model,Txn mgmt
+    class Store,Pipe,Cap core
+    class DPA_A dpa
+    class VPP,NL,FRR be
+    class Future fut
+    class VPP_RT,FRR_RT,Kernel dp
+    class Mgrd,Obs sys
+```
