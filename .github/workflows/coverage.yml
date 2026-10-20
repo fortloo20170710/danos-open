@@ -25,7 +25,7 @@ jobs:
           python3 -m venv .coverage-tools
           .coverage-tools/bin/python -m pip install --require-hashes --only-binary=:all: -r danos-test/quality/requirements-coverage.lock
       - name: Measure deterministic production-code coverage
-        run: .coverage-tools/bin/python danos-test/quality/run_coverage.py --build-dir build-coverage --gcovr .coverage-tools/bin/gcovr --jobs 2
+        run: .coverage-tools/bin/python danos-test/quality/run_coverage.py --build-dir build-coverage --gcovr .coverage-tools/bin/gcovr --jobs 2 --fail-under-line 79
       - name: Preserve coverage and test evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

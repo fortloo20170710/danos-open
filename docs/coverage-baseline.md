@@ -12,7 +12,8 @@ build/coverage-tools/bin/python -m pip install \
   -r danos-test/quality/requirements-coverage.lock
 build/coverage-tools/bin/python danos-test/quality/run_coverage.py \
   --build-dir build/coverage-new-run \
-  --gcovr "$PWD/build/coverage-tools/bin/gcovr" --jobs 2
+  --gcovr "$PWD/build/coverage-tools/bin/gcovr" --jobs 2 \
+  --fail-under-line 79
 ```
 
 The build directory must not exist. The runner never deletes or reuses old
@@ -33,6 +34,26 @@ protocol compliance, true VPP/FRR runtime qualification, ISO boots or PCI lanes.
 Some deterministic tests exercise mocks. Line execution is not assertion
 quality, correct behavior or adequate security coverage.
 
+## 2026-10-20 current baseline
+
+Fresh run: build-coverage/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
+03df625 with the P0–P2 worktree changes (dirty). CTest 81/81 passed.
+
+| Metric | Executed / total | Coverage |
+| --- | --- | --- |
+| Lines | 7028 / 8756 | 80.3% |
+| Functions | 611 / 690 | 88.6% |
+| Branches | 4117 / 7003 | 58.8% |
+
+A second identical run executed 7026 lines (80.2%), so individual paths
+vary by about 0.1 points between runs. `run_coverage.py` accepts
+`--fail-under-line PCT`, which records `line_gate` in the manifest and
+exits 1 when the measured line percentage is below PCT. CI
+(.github/workflows/coverage.yml) sets the gate at 79%, which leaves
+roughly one point of headroom over the observed baseline and still
+catches meaningful regressions. Raising the gate requires a fresh
+baseline first.
+
 ## 2026-10-06 initial accepted baseline
 
 Fresh run: build/coverage-acceptance-20261006-r2/reports, GCC/gcov 15.2.0,
@@ -49,11 +70,11 @@ it is not attributed to an earlier clean release/tag. The first report had
 zero production lines due to config-relative filter resolution and was rejected,
 not counted as acceptance. The corrected fresh run used absolute-path regexes.
 
-The first lane establishes a measurement, not an arbitrary percentage gate.
-Next work should improve assertions/error-path coverage and then agree a
-non-regression policy from reproducible runner results. In particular the VPP
-adapter's 35.0% line coverage reflects unexercised adapter paths, not evidence
-that real forwarding passed.
+The first lane established a measurement rather than an arbitrary percentage
+gate. The 2026-10-20 baseline now carries the non-regression gate. Further work
+should improve assertions and error-path coverage; the VPP adapter's line
+coverage reflects unexercised adapter paths, not evidence that real forwarding
+passed.
 
 ## CI and dependency boundaries
 

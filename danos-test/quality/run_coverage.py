@@ -18,6 +18,8 @@ def main():
     p.add_argument("--build-dir", required=True, type=Path)
     p.add_argument("--gcovr", default="gcovr")
     p.add_argument("--jobs", type=int, default=2)
+    p.add_argument("--fail-under-line", type=float, default=None, metavar="PCT",
+                   help="fail when line coverage is below PCT (non-regression gate)")
     args = p.parse_args()
     if args.jobs < 1:
         p.error("--jobs must be positive")
@@ -80,6 +82,15 @@ def main():
                 if not summary.get("line_total", 0):
                     raise ValueError("empty production coverage report")
                 manifest["summary"] = summary
+                if args.fail_under_line is not None:
+                    got = float(summary.get("line_percent", 0.0))
+                    manifest["line_gate"] = {"minimum": args.fail_under_line,
+                                             "measured": got,
+                                             "passed": got + 1e-9 >= args.fail_under_line}
+                    if got + 1e-9 < args.fail_under_line:
+                        raise ValueError(
+                            f"line coverage {got:.1f}% is below the "
+                            f"{args.fail_under_line:.1f}% floor")
             manifest["status"] = "PASS" if rc == 0 else "ERROR"
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         manifest["error"] = str(exc)
