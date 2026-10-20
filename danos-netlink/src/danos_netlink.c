@@ -102,6 +102,24 @@ static int nl_open(void)
     return nl_fd < 0 ? -1 : 0;
 }
 
+/* Read and validate one netlink ACK. The kernel replies with NLMSG_ERROR
+ * carrying error 0 for success; anything else is a programming failure.
+ * The length/type checks keep a malformed or truncated reply from being
+ * read past its header. */
+static int nl_read_ack(void)
+{
+    char resp[1024];
+    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
+    if (n < (ssize_t)sizeof(struct nlmsghdr)) return -1;
+    struct nlmsghdr *nh = (struct nlmsghdr *)resp;
+    if (nh->nlmsg_len < sizeof(*nh) || nh->nlmsg_len > (size_t)n) return -1;
+    if (nh->nlmsg_type != NLMSG_ERROR) return -1;
+    if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) return -1;
+    struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
+    danos_netlink_last_kernel_error = err->error;
+    return err->error == 0 ? 0 : -1;
+}
+
 /* Build and send RTM_NEWROUTE for an IPv4 route (kernel table_id). */
 static int nl_route_msg(const danos_resolved_route_t *res, int add)
 {
@@ -113,7 +131,10 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
     memset(&msg, 0, sizeof(msg));
 
     msg.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-    msg.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | (add ? NLM_F_CREATE : 0);
+    /* REPLACE makes replay idempotent: after a controller restart the
+     * same route is re-issued and must update, not fail with EEXIST. */
+    msg.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK |
+                         (add ? (NLM_F_CREATE | NLM_F_REPLACE) : 0);
     msg.nh.nlmsg_type = add ? RTM_NEWROUTE : RTM_DELROUTE;
     msg.nh.nlmsg_seq = 1;
 
@@ -153,16 +174,7 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
     if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
 
     /* read ACK (or error) */
-    char resp[512];
-    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
-    if (n < 0) return -1;
-    struct nlmsghdr *nh = (struct nlmsghdr *)resp;
-    if (nh->nlmsg_type == NLMSG_ERROR) {
-        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
-        danos_netlink_last_kernel_error = err->error;
-        return err->error == 0 ? 0 : -1;
-    }
-    return 0;
+    return nl_read_ack();
 }
 
 static int nl_iface_up(danos_ifindex_t ifindex, bool up)
@@ -181,21 +193,13 @@ static int nl_iface_up(danos_ifindex_t ifindex, bool up)
     msg.ifi.ifi_change = IFF_UP;
 
     if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
-    char resp[512];
-    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
-    if (n < 0) return -1;
-    struct nlmsghdr *nh = (struct nlmsghdr *)resp;
-    if (nh->nlmsg_type == NLMSG_ERROR) {
-        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
-        return err->error == 0 ? 0 : -1;
-    }
-    return 0;
+    return nl_read_ack();
 }
 
 static int nl_iface_addr_msg(const danos_iface_t *iface, int add)
 {
     const danos_ip_prefix_t *p = &iface->ipv4_address;
-    if (p->addr.af != DANOS_AF_IPV4) return 0;
+    if (p->addr.af != DANOS_AF_IPV4) return -1;
     struct {
         struct nlmsghdr nh;
         struct ifaddrmsg ifa;
@@ -215,16 +219,7 @@ static int nl_iface_addr_msg(const danos_iface_t *iface, int add)
     memcpy(RTA_DATA(rta), p->addr.addr, 4);
     msg.nh.nlmsg_len += RTA_LENGTH(4);
     if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
-    char resp[512];
-    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
-    if (n < 0) return -1;
-    struct nlmsghdr *nh = (struct nlmsghdr *)resp;
-    if (nh->nlmsg_type == NLMSG_ERROR) {
-        struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
-        danos_netlink_last_kernel_error = err->error;
-        return err->error == 0 ? 0 : -1;
-    }
-    return 0;
+    return nl_read_ack();
 }
 
 /* =========================================================================
@@ -248,6 +243,8 @@ static danos_status_t ops_iface_addr_set(const danos_iface_t *iface, void *user)
 {
     (void)user;
     if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
+    if (iface->ipv4_address.addr.af != DANOS_AF_IPV4)
+        return DANOS_ERR_NOT_SUPPORTED;
     if (!g_nl.real) return DANOS_OK;
     return nl_iface_addr_msg(iface, 1) == 0 ? DANOS_OK : DANOS_ERR_BACKEND_IO;
 }
@@ -257,7 +254,8 @@ static danos_status_t ops_iface_addr_del(const danos_iface_t *iface, void *user)
     (void)user;
     if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
     if (!g_nl.real) return DANOS_OK;
-    if (iface->ipv4_address.addr.af != DANOS_AF_IPV4) return DANOS_OK;
+    if (iface->ipv4_address.addr.af != DANOS_AF_IPV4)
+        return DANOS_ERR_NOT_SUPPORTED;
     return nl_iface_addr_msg(iface, 0) == 0 ? DANOS_OK : DANOS_ERR_BACKEND_IO;
 }
 
