@@ -2,6 +2,7 @@
 build/
 build-test/
 build_testpmd/
+oci-context/
 build-tsan/
 build-fuzz/
 build-asan/

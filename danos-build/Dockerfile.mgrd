@@ -1,6 +1,11 @@
 # Minimal deployment image for the DANOS-Open control plane.
-# Build the binaries first (cmake), then:
-#   docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:v0.6.0 .
+# Build the binaries first (cmake), stage them into a small context, then:
+#   mkdir -p oci-context/build/danos-mgrd oci-context/danos-mgrd
+#   cp build/danos-mgrd/danos-mgrd oci-context/build/danos-mgrd/
+#   cp danos-mgrd/danos-mgrd.service oci-context/danos-mgrd/
+#   docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:v0.6.0 oci-context
+# Building with the repository root as context also works if .dockerignore
+# does not exclude build/ (it does, to keep the source-image context small).
 # Result: ~85 MB (vs 7.5 GB danos-build toolchain image).
 
 FROM debian:trixie-slim

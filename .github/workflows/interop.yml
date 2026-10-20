@@ -131,11 +131,21 @@ jobs:
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j$(nproc) --target danos-mgrd
+      - name: Stage image context
+        run: |
+          # The repository ignores build/ in .dockerignore, so mirror the
+          # layout the Dockerfile expects into a small dedicated context.
+          mkdir -p oci-context/build/danos-mgrd oci-context/danos-mgrd
+          cp build/danos-mgrd/danos-mgrd oci-context/build/danos-mgrd/
+          cp danos-mgrd/danos-mgrd.service oci-context/danos-mgrd/
       - name: Build OCI image
-        run: docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:${{ github.sha }} .
+        run: docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:${{ github.sha }} oci-context
       - name: Smoke test image
         run: |
+          # The daemon binds /metrics to loopback by default, so this throwaway
+          # container publishes it explicitly for the host-side curl.
           docker run -d --name mgrd-smoke -e DANOS_ALLOW_INSECURE=1 \
+            -e DANOS_METRICS_BIND=0.0.0.0 \
             -p 127.0.0.1:59201:59201 danos-mgrd:${{ github.sha }} \
             --port 59200 --metrics-port 59201 --wal /tmp/smoke.wal --seed
           sleep 2
