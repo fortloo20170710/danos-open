@@ -237,7 +237,11 @@ danos_status_t danos_tx_verify(danos_tx_t *tx);
 /* Abort: discard staged ops (only valid in OPEN/PREPARE/VALIDATE). */
 danos_status_t danos_tx_abort(danos_tx_t *tx);
 
-/* Rollback: undo a committed transaction (best-effort, logged). */
+/* Rollback: explicitly reports that a committed transaction cannot be
+ * undone. Commit publishes the batch and releases the staged base
+ * snapshots, so no previous value is retained. Returns
+ * DANOS_ERR_TX_ROLLBACK ("manual repair needed") and leaves the published
+ * state in place. Use danos_tx_abort before commit to discard changes. */
 danos_status_t danos_tx_rollback(danos_tx_t *tx);
 
 /* Release a finished transaction back to the internal record pool.

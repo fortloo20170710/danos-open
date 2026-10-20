@@ -67,6 +67,15 @@ int test_transaction(void)
     assert(st == DANOS_OK);
     assert(tx4.state == DANOS_TX_DONE);
 
+    /* Post-commit rollback reports the truth: the batch is published and
+     * no base snapshot is retained, so it cannot be reverted. */
+    danos_tx_t tx5 = {0};
+    assert(danos_tx_begin(&tx5, "rollback", NULL) == DANOS_OK);
+    assert(danos_tx_prepare(&tx5) == DANOS_OK);
+    assert(danos_tx_validate(&tx5) == DANOS_OK);
+    assert(danos_tx_commit(&tx5) == DANOS_OK);
+    assert(danos_tx_rollback(&tx5) == DANOS_ERR_TX_ROLLBACK);
+
     danos_tx_manager_fini();
     printf("[PASS] test_transaction: state machine + concurrency + atomic\n");
     return 0;

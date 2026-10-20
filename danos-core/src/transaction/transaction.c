@@ -627,9 +627,12 @@ danos_status_t danos_tx_rollback(danos_tx_t *tx)
     if (tx->state != DANOS_TX_COMMIT && tx->state != DANOS_TX_VERIFY)
         return DANOS_ERR_TX_INVALID;
 
-    tx->state = DANOS_TX_ROLLBACK;
+    /* Commit has already published the batch, and the staged base
+     * snapshots were released with the record. Reporting success without
+     * undoing the data would be a lie; this status is the documented
+     * "manual repair needed" signal. */
     tx_retire(danos_tx_validate_ptr(tx), tx);
-    return DANOS_OK;
+    return DANOS_ERR_TX_ROLLBACK;
 }
 
 danos_status_t danos_tx_get_state(const danos_tx_t *tx, danos_tx_state_t *out)
