@@ -69,6 +69,17 @@ subscribed set on their schedule. The baseline is bounded at 4,096 objects per
 subscription; capture that exceeds the bound fails the Subscribe (or closes
 the stream if it grows later).
 
+## Operational (OPER) snapshot
+
+The programming pipeline keeps one process-wide OPER store, refreshed from the
+active backend's readback hook on each pass and cleared on failure,
+withdrawal, backend restart or explicit reset. It stores one object copy (at
+most 1 KiB) per programmed object whose backend supports readback. Netlink
+readback currently covers interfaces only, so the snapshot is bounded by the
+interface count in practice; VPP and route/VRF readback contribute nothing
+until their query bindings exist. Reads are locked per call and fall back to
+the desired object when no OPER copy exists.
+
 ## Operational guidance
 
 - Raise the connection cap only after accounting for thread stacks and the

@@ -30,6 +30,10 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   minimal `danos-mgrd` runtime image with a metrics health check.
 - Pinned GitHub Actions commit SHAs and a checked-in `tools/gnmic` Go module so
   CI verifies `go.sum` instead of resolving dependencies at run time.
+- Backend operational readback: an optional `readback` hook, a refreshed OPER
+  snapshot, netlink interface state via `RTM_GETLINK`
+  (`IFLA_OPERSTATE`/`IFLA_MTU`), and gNMI/CLI state reads that prefer the
+  device-reported value with a desired-state fallback.
 
 ### Fixed
 

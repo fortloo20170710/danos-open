@@ -56,6 +56,17 @@
   alone, and a delete on removal. A GOAWAY-then-close race is also fixed: the
   server drains unread inbound data before closing so an RST cannot discard
   the GOAWAY.
+- OPER readback (2026-10-20, fifth pass): `danos_backend_ops_t` has an
+  optional `readback` hook. The programming pipeline maintains a
+  process-wide OPER snapshot, refreshed on every pass (including objects
+  already in sync) and cleared on failure, withdrawal, backend restart and
+  explicit reset. The netlink adapter reads one link through `RTM_GETLINK`
+  (`IFLA_OPERSTATE`, `IFLA_MTU`; `IFF_RUNNING` fallback) and the mock mirrors
+  that. gNMI `/interfaces/.../state` reads and the CLI OPER column use the
+  OPER copy and fall back to the desired object when the backend has no
+  reading. VPP has no interface-dump binding, so it contributes no OPER copy.
+  Tests cover carrier-only drift with an unchanged desired object, the absent
+  route readback, reset/rebuild, and gNMI leaf and state-entry reads.
 
 ### 2026-10-19 pushed verification and next physical/VMware gates
 
@@ -277,12 +288,13 @@ Execution priority, as confirmed on 2026-10-15:
    including ASan/UBSan, TSan, gnmic I1-I9, real VPP V1-V5 and K4/K5.
    Per-object deltas (only changed leaves in a notification) remain the next
    subscription-semantic gap.
-3. **OPER readback / control-plane-data-plane truth.** Read actual backend
-   state, publish it through the OPER view, compare it with desired/programmed
-   state, and test drift detection/repair and verification failure. The
-   reentrant diff callback fix is done, but the callback currently only counts
-   differences in the reconciler; it is not hardware readback. The separate
-   programming pass must not be mistaken for OPER verification.
+3. **OPER readback / control-plane-data-plane truth.** Interface readback is
+   implemented: netlink `RTM_GETLINK` -> OPER snapshot -> gNMI/CLI, with the
+   desired object as fallback. Still open: route and VRF readback (and drift
+   repair driven by it), a VPP interface dump so VPP objects produce an OPER
+   copy, and turning OPER differences into verification failures. The
+   reentrant diff callback fix is done; the reconciler's diff callback still
+   only counts differences and is not hardware readback.
 4. **NETCONF SSH transport.** Implement and qualify SSH transport and RFC 6242
    framing only after the higher-priority items; align advertised capabilities
    with implemented behavior.
@@ -498,8 +510,9 @@ Still open:
   reentrant-mutation regression. This does not yet establish that every drift
   is translated into per-type repair operations or verified against backend
   readback; those end-to-end behaviors remain open.
-- OPER does not exist: there is no path from backend state to an OPER view, so
-  `DANOS_ERR_VERIFY_FAIL` is unreachable
+- OPER exists for interfaces (netlink readback), but the reconciler does not
+  consume it for drift repair, and routes/VRFs have no readback binding, so
+  `DANOS_ERR_VERIFY_FAIL` is still unreachable
 
 ### [!] 6. HA and CoPP are duplicated and disconnected
 

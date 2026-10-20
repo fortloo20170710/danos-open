@@ -53,6 +53,12 @@ formatted as actual addresses. Dynamic snapshots replace the old fixed
 interface/VRF/route collection arrays; response overflow is an error, not a
 successful truncated collection.
 
+Interface reads under `/interfaces/interface[...]/state` (leaf or container)
+use the backend's readback when the programming pipeline has produced an OPER
+copy, and fall back to the desired object otherwise. The state container JSON
+adds the read-only `link_up` field. `link-up` remains read-only; a Set is
+rejected.
+
 ## Explicit limits
 
 - Whole-list/root replace and union_replace are rejected, not silently ignored.
