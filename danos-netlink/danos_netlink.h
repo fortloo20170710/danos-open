@@ -43,6 +43,11 @@ bool danos_netlink_mock_route_exists(const uint8_t addr[4], uint8_t len,
 /* Mock interface admin state. Returns false if unknown. */
 bool danos_netlink_mock_iface_up(danos_ifindex_t ifindex);
 
+/* Simulate the link side of the mock interface (carrier up/down), the
+ * counterpart of a kernel netdev state change. Programming the admin state
+ * does not change it. */
+void danos_netlink_mock_set_link(danos_ifindex_t ifindex, bool up);
+
 /* Real-mode info. */
 bool danos_netlink_is_real(void);
 
