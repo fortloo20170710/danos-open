@@ -1,0 +1,15 @@
+# Keep the image build context to sources; build products and local
+# tooling are regenerated inside the builder stage. The builder keeps
+# .git because the installer payload test records the source commit.
+.coverage-tools
+build
+build-test
+build-asan
+build-coverage
+build_testpmd
+build-fuzz
+*.o
+*.a
+*.so
+*.gcda
+*.gcno
