@@ -62,7 +62,9 @@ static danos_stat_provider_fn g_provider = NULL;
 
 void danos_prom_set_stat_provider(danos_stat_provider_fn fn)
 {
+    pthread_rwlock_wrlock(&g_metrics_lock);
     g_provider = fn;
+    pthread_rwlock_unlock(&g_metrics_lock);
 }
 
 int danos_prom_bind_stat(const char *metric, const char *stat_name)
@@ -79,15 +81,18 @@ int danos_prom_bind_stat(const char *metric, const char *stat_name)
 
 int danos_prom_refresh(void)
 {
-    if (!g_provider) return 0;
     int n = 0;
     pthread_rwlock_wrlock(&g_metrics_lock);
+    danos_stat_provider_fn provider = g_provider;
+    if (!provider) {
+        pthread_rwlock_unlock(&g_metrics_lock);
+        return 0;
+    }
     for (int i = 0; i < PROM_MAX_METRICS; i++) {
         if (!g_metrics[i].used || !g_metrics[i].stat_bound) continue;
-        uint64_t v = g_provider(g_metrics[i].stat_name);
-        if (v != 0 || g_metrics[i].value == 0.0) {
-            g_metrics[i].value = (double)v;
-        }
+        /* A zero is a real value (counter reset, empty queue), so it must
+         * be published just like any other reading. */
+        g_metrics[i].value = (double)provider(g_metrics[i].stat_name);
         n++;
     }
     pthread_rwlock_unlock(&g_metrics_lock);
@@ -107,8 +112,10 @@ static const char *type_name(danos_metric_type_t t)
 
 int danos_prom_init(void)
 {
+    pthread_rwlock_wrlock(&g_metrics_lock);
     memset(g_metrics, 0, sizeof(g_metrics));
     g_initialized = true;  /* set BEFORE registering defaults to avoid recursion */
+    pthread_rwlock_unlock(&g_metrics_lock);
 
     /* Register default metrics (§22.3.1) - 40+ metrics */
     struct { const char *name; const char *help; danos_metric_type_t type; } defaults[] = {
@@ -174,7 +181,10 @@ int danos_prom_register(const char *name, const char *help,
                         danos_metric_type_t type)
 {
     if (!name || !help) return -1;
-    if (!g_initialized) danos_prom_init();
+    pthread_rwlock_rdlock(&g_metrics_lock);
+    bool initialized = g_initialized;
+    pthread_rwlock_unlock(&g_metrics_lock);
+    if (!initialized) danos_prom_init();
     pthread_rwlock_wrlock(&g_metrics_lock);
     if (find_metric_locked(name)) {
         pthread_rwlock_unlock(&g_metrics_lock);
@@ -241,6 +251,10 @@ int danos_prom_render(char *buf, int buf_size)
 
     for (int i = 0; i < PROM_MAX_METRICS; i++) {
         if (!g_metrics[i].used) continue;
+        /* Each metric needs at most ~200 bytes; leave headroom so a
+         * truncated snprintf return value can never make the remaining
+         * size negative. */
+        if (offset < 0 || offset >= buf_size - 256) break;
         prom_metric_t *m = &g_metrics[i];
 
         /* # HELP line */
@@ -258,7 +272,6 @@ int danos_prom_render(char *buf, int buf_size)
             offset += snprintf(buf + offset, buf_size - offset,
                                "%s %.6f\n", m->name, m->value);
         }
-        if (offset >= buf_size - 256) break; /* leave room */
     }
     pthread_rwlock_unlock(&g_metrics_lock);
     return offset;
