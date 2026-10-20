@@ -13,7 +13,8 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   explicit fingerprint-to-role mapping, and authenticated RBAC/audit.
 - Unix peer-credential gNMI transport with root/admin and non-root/viewer roles.
 - Connection-owned gNMI STREAM subscriptions, incremental HTTP/2/gRPC assembly,
-  SAMPLE intervals, redundant-update suppression and heartbeat support.
+  SAMPLE intervals, redundant-update suppression, heartbeat support and
+  ON_CHANGE delivery over the path-scoped change detector.
 - Virtual QEMU e1000 and VMware VMXNET3 evidence validation, baseline reporting,
   explicit frame-size metadata for new QEMU soak runs, and VM CPU capture.
 - Real PCI preflight checks that reject virtual or ambiguous NIC identities.

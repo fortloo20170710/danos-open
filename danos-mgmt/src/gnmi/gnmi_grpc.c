@@ -992,9 +992,13 @@ static void subscriptions_service(h2_conn_t *c)
                 sub->next_heartbeat_ns = now + sub->heartbeat_interval_ns;
             continue;
         }
-        /* A stream is interested only in its requested paths. A mutation to
-         * an unrelated object must not cause a redundant notification on
-         * every other stream sharing this HTTP/2 connection. */
+        /* Target-defined and ON_CHANGE subscriptions share this path: both
+         * notify when the serialized value of the requested paths changes.
+         * The connection services them once per poll cycle, so detection
+         * latency is bounded by that cadence. A stream is interested only in
+         * its requested paths: a mutation to an unrelated object must not
+         * cause a redundant notification on every other stream sharing this
+         * HTTP/2 connection. */
         uint64_t data_hash = subscription_data_hash(&sub->list);
         if (data_hash != UINT64_MAX && sub->last_hash == data_hash) continue;
         if (subscription_send_update(c, sub) < 0) {
@@ -1124,6 +1128,7 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
     if ((sl->encoding != GNMI_ENC_JSON &&
          sl->encoding != GNMI_ENC_JSON_IETF) ||
         (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM) ||
+        (sl->on_change_mode && sl->mode != GNMI_SUB_MODE_STREAM) ||
         (sl->sample_mode && (sl->mode != GNMI_SUB_MODE_STREAM ||
          sl->sample_interval_ns > GNMI_SAMPLE_MAX_NS)))
         return -(int)DANOS_ERR_INVALID_ARG;

@@ -386,7 +386,7 @@ static int test_unknown_method(void)
 
 static int test_subscribe_unsupported_options_rejected(void)
 {
-    for (uint32_t option = 0; option < 5; option++) {
+    for (uint32_t option = 0; option < 6; option++) {
         uint8_t req[128];
         gnmi_pb_t w;
         gnmi_pb_init(&w, req, sizeof(req));
@@ -395,10 +395,17 @@ static int test_subscribe_unsupported_options_rejected(void)
             size_t model = gnmi_pb_begin_nested(&w, 7); /* use_models */
             gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
             gnmi_pb_end_nested(&w, model);
+        } else if (option == 5) {
+            gnmi_pb_put_enum(&w, 5, GNMI_SUB_MODE_ONCE); /* ON_CHANGE needs STREAM */
         }
         size_t sub = gnmi_pb_begin_nested(&w, 2);
-        if (option == 1)
-            gnmi_pb_put_enum(&w, 2, 1); /* ON_CHANGE remains deferred */
+        if (option == 1) {
+            /* ON_CHANGE is accepted, but its SAMPLE-only options are not. */
+            gnmi_pb_put_enum(&w, 2, 1);
+            gnmi_pb_put_bool(&w, 4, true);
+            gnmi_pb_put_uint64(&w, 5, 1000000000);
+        } else if (option == 5)
+            gnmi_pb_put_enum(&w, 2, 1);
         else if (option == 2)
             gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
         else if (option == 3)
@@ -1770,6 +1777,8 @@ int main(void)
                                       0, 0, false, 0, true) != 0) failed++;
     if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, true,
                                       0, 0, false, 0, true) != 0) failed++;
+    if (test_subscribe_stream_initial(true, GNMI_ENC_JSON_IETF, false,
+                                      1, 0, false, 0, true) != 0) failed++;
     if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,
                                       2, 250000000ULL, false, 0, true) != 0) failed++;
     if (test_subscribe_stream_initial(false, GNMI_ENC_JSON_IETF, false,

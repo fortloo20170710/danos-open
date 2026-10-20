@@ -648,6 +648,7 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                 gnmi_pbr_init(&lr, d, n);
                 bool have_path_mode = false;
                 bool aggregate_sample_mode = false;
+                bool aggregate_on_change_mode = false;
                 uint64_t aggregate_sample_interval = 0;
                 bool aggregate_suppress_redundant = false;
                 uint64_t aggregate_heartbeat_interval = 0;
@@ -678,9 +679,7 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 } else {
                                     if (sf == 2) {
                                         path_mode = (uint32_t)gnmi_pbr_varint(&sr);
-                                        /* ON_CHANGE is still deferred until
-                                         * path-scoped change detection exists. */
-                                        if (path_mode == 1 || path_mode > 2)
+                                        if (path_mode > 2)
                                             out->subscribe.unsupported_options = true;
                                         continue;
                                     }
@@ -703,6 +702,8 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 }
                             }
                             bool sample_mode = path_mode == 2;
+                            bool on_change_mode = path_mode == 1;
+                            sub->mode = path_mode;
                             if (sample_mode && sample_interval == 0)
                                 sample_interval = 1000000000ULL;
                             if (!sample_mode && sample_interval != 0)
@@ -714,11 +715,13 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 out->subscribe.unsupported_options = true;
                             if (!have_path_mode) {
                                 aggregate_sample_mode = sample_mode;
+                                aggregate_on_change_mode = on_change_mode;
                                 aggregate_sample_interval = sample_interval;
                                 aggregate_suppress_redundant = suppress_redundant;
                                 aggregate_heartbeat_interval = heartbeat_interval;
                                 have_path_mode = true;
                             } else if (aggregate_sample_mode != sample_mode ||
+                                       aggregate_on_change_mode != on_change_mode ||
                                        (sample_mode &&
                                         (aggregate_sample_interval != sample_interval ||
                                          aggregate_suppress_redundant != suppress_redundant ||
@@ -730,6 +733,8 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                 86400000000000ULL)
                                 out->subscribe.unsupported_options = true;
                             out->subscribe.sample_mode = aggregate_sample_mode;
+                            out->subscribe.on_change_mode =
+                                aggregate_on_change_mode;
                             out->subscribe.sample_interval_ns =
                                 aggregate_sample_interval;
                             out->subscribe.suppress_redundant =

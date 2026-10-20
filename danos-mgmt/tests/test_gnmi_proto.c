@@ -116,6 +116,53 @@ static int test_subscribe_request_decode(void)
     return 0;
 }
 
+static int test_subscribe_on_change_decode(void)
+{
+    gnmi_path_t path;
+    assert(gnmi_path_from_str(&path, "interfaces"));
+
+    uint8_t req[128];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    size_t list = gnmi_pb_begin_nested(&w, 1);
+    size_t sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_encode_path(&w, 1, &path);
+    gnmi_pb_put_enum(&w, 2, 1); /* ON_CHANGE */
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+
+    gnmi_subscribe_request_t decoded;
+    assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+    assert(!decoded.subscribe.unsupported_options);
+    assert(decoded.subscribe.on_change_mode);
+    assert(!decoded.subscribe.sample_mode);
+    assert(decoded.subscribe.sub_count == 1);
+    assert(decoded.subscribe.subs[0].mode == 1);
+
+    /* SAMPLE-only options stay invalid on an ON_CHANGE subscription:
+     * sample_interval alone, then suppress_redundant with a heartbeat. */
+    for (uint32_t variant = 0; variant < 2; variant++) {
+        gnmi_pb_init(&w, req, sizeof(req));
+        list = gnmi_pb_begin_nested(&w, 1);
+        sub = gnmi_pb_begin_nested(&w, 2);
+        gnmi_encode_path(&w, 1, &path);
+        gnmi_pb_put_enum(&w, 2, 1);
+        if (variant == 0) {
+            gnmi_pb_put_uint64(&w, 3, 1000000000);
+        } else {
+            gnmi_pb_put_bool(&w, 4, true);
+            gnmi_pb_put_uint64(&w, 5, 1000000000);
+        }
+        gnmi_pb_end_nested(&w, sub);
+        gnmi_pb_end_nested(&w, list);
+        assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+        assert(decoded.subscribe.unsupported_options);
+    }
+
+    printf("[PASS] test_subscribe_on_change_decode\n");
+    return 0;
+}
+
 static int test_subscribe_unsupported_options_decode(void)
 {
     uint8_t req[128];
@@ -324,6 +371,7 @@ int main(void)
     if (test_path_encoding() != 0) failed++;
     if (test_get_request_decode() != 0) failed++;
     if (test_subscribe_request_decode() != 0) failed++;
+    if (test_subscribe_on_change_decode() != 0) failed++;
     if (test_subscribe_unsupported_options_decode() != 0) failed++;
     if (test_get_response_roundtrip() != 0) failed++;
     if (test_set_request_decode() != 0) failed++;

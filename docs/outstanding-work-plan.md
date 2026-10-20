@@ -37,6 +37,14 @@
   added, and the gNMI per-connection resource budget is documented. Dated
   acceptance and plan evidence was moved to `docs/archive/`; the active pages
   now carry current state only. Local CTest 81/81 passes.
+- gNMI ON_CHANGE (2026-10-20, third pass): STREAM subscriptions may now select
+  ON_CHANGE per subscription. The decoder records the per-path mode, rejects
+  ON_CHANGE outside STREAM and rejects `sample_interval`,
+  `suppress_redundant` and `heartbeat_interval` on ON_CHANGE paths. Delivery
+  reuses the existing path-scoped change detector, which the connection
+  services once per 100 ms poll cycle; the initial snapshot/sync contract is
+  unchanged. Tests cover the wire decode, option rejection and an end-to-end
+  mutation on an `updates_only` ON_CHANGE stream.
 
 ### 2026-10-19 pushed verification and next physical/VMware gates
 
@@ -248,14 +256,16 @@ Execution priority, as confirmed on 2026-10-15:
    content excluding notification timestamps and skips unchanged periodic
    samples. A heartbeat emits an unchanged update on its configured deadline;
    heartbeat is valid only with suppress_redundant, and both options require
-   SAMPLE. Mixed per-path contracts, ON_CHANGE and `use_models` remain
-   explicitly rejected. End-to-end tests cover a changed value waiting for a
-   250 ms sample interval and an unchanged value emitted by a 300 ms heartbeat.
-   Full CTest is 78/78 and targeted gNMI proto/gRPC tests pass 10 consecutive
-   runs. CI, Coverage and Interop Gate pass at `85dc16e`, including
-   ASan/UBSan, TSan, gnmic I1-I9, real VPP V1-V5 and K4/K5. ON_CHANGE requires
-   event/path-scoped change detection and remains the next subscription-
-   semantic gap.
+   SAMPLE. ON_CHANGE is accepted as a STREAM sub-mode and shares the
+   path-scoped change detector; mixed per-path contracts and `use_models`
+   remain explicitly rejected. End-to-end tests cover a changed value waiting
+   for a 250 ms sample interval, an unchanged value emitted by a 300 ms
+   heartbeat, and an ON_CHANGE subscription that notifies after a store
+   mutation. Full CTest is 78/78 and targeted gNMI proto/gRPC tests pass 10
+   consecutive runs. CI, Coverage and Interop Gate pass at `85dc16e`,
+   including ASan/UBSan, TSan, gnmic I1-I9, real VPP V1-V5 and K4/K5.
+   Per-object deltas (only changed leaves in a notification) remain the next
+   subscription-semantic gap.
 3. **OPER readback / control-plane-data-plane truth.** Read actual backend
    state, publish it through the OPER view, compare it with desired/programmed
    state, and test drift detection/repair and verification failure. The
@@ -515,7 +525,8 @@ Done:
   This suppresses cross-path wakeups (for example, a VRF mutation does not
   trigger an interfaces-only STREAM) while preserving relevant notifications.
   The path-scoped regression and full CTest pass 78/78; remote gates and commit
-  are pending. This does not yet implement ON_CHANGE or per-object deltas.
+  are pending. ON_CHANGE now uses this detector for STREAM subscriptions;
+  per-object deltas remain open.
 
 - Set now applies delete → replace → update in one staging transaction.
   Interface replacement resets omitted modeled fields, preserves identity,
@@ -527,9 +538,10 @@ Done:
   [Set/Get semantics](gnmi-set-get-semantics.md).
 
 Still open:
-- `use_models` is not decoded/applied; ON_CHANGE path-scoped event detection
-  is not implemented. Unsupported request options must be explicitly rejected
-  rather than silently treated as event-driven STREAM.
+- `use_models` is not decoded/applied. ON_CHANGE is supported for STREAM
+  subscriptions over the path-scoped change detector; its SAMPLE-only options
+  are rejected. Unsupported request options must be explicitly rejected rather
+  than silently treated as event-driven STREAM.
 - Broader cancellation/reset and subscription lifecycle behavior need
   regression coverage beyond the new RST_STREAM/same-connection case. The
   current bounded 200 ms wait is a liveness fallback

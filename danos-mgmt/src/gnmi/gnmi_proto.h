@@ -223,6 +223,7 @@ typedef enum { GNMI_SUB_MODE_STREAM = 0, GNMI_SUB_MODE_ONCE = 1,
 
 typedef struct {
     gnmi_path_t path;
+    uint32_t    mode;  /* 0 target-defined, 1 ON_CHANGE, 2 SAMPLE */
 } gnmi_subscription_t;
 
 typedef struct {
@@ -233,6 +234,7 @@ typedef struct {
     gnmi_encoding_t      encoding;
     bool                 updates_only;
     bool                 sample_mode;
+    bool                 on_change_mode;
     uint64_t             sample_interval_ns;
     bool                 suppress_redundant;
     uint64_t             heartbeat_interval_ns;
