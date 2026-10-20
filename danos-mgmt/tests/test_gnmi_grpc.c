@@ -1124,6 +1124,172 @@ static int test_concurrent_streams(void)
     return 0;
 }
 
+/* ---- HTTP/2 SETTINGS and pending-queue bounds ---------------------------- */
+
+static void client_set_recv_timeout(int seconds)
+{
+    struct timeval tv = { .tv_sec = seconds, .tv_usec = 0 };
+    setsockopt(conn_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+}
+
+/* One Get("interfaces") request on `stream`; the response is large. */
+static int client_send_get_interfaces(uint32_t stream)
+{
+    uint8_t req[64];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, req, sizeof(req));
+    gnmi_path_t p;
+    if (!gnmi_path_from_str(&p, "interfaces")) return -1;
+    gnmi_encode_path(&w, 2, &p);
+
+    uint8_t hb[256];
+    size_t hl = 0;
+    int k;
+    k = hpack_encode_literal(hb + hl, sizeof(hb) - hl, ":method", "POST");
+    if (k < 0) return -1;
+    hl += (size_t)k;
+    k = hpack_encode_literal(hb + hl, sizeof(hb) - hl, ":scheme", "http");
+    if (k < 0) return -1;
+    hl += (size_t)k;
+    k = hpack_encode_literal(hb + hl, sizeof(hb) - hl, ":path", "/gnmi.gNMI/Get");
+    if (k < 0) return -1;
+    hl += (size_t)k;
+    k = hpack_encode_literal(hb + hl, sizeof(hb) - hl,
+                             "content-type", "application/grpc");
+    if (k < 0) return -1;
+    hl += (size_t)k;
+
+    if (write_frame_c(conn_fd, 1, 0x4, stream, hb, (uint32_t)hl) < 0) return -1;
+    uint8_t gh[5] = { 0, 0, 0, (uint8_t)(w.len >> 8), (uint8_t)w.len };
+    if (write_frame_c(conn_fd, 0, 0, stream, gh, 5) < 0) return -1;
+    if (write_frame_c(conn_fd, 0, 0x1, stream, req, (uint32_t)w.len) < 0)
+        return -1;
+    return 0;
+}
+
+/* The peer's SETTINGS_MAX_FRAME_SIZE bounds the frames the server sends
+ * (RFC 9113 §6.5.2). Advertising 32 KiB must lift the chunks above the
+ * 16 KiB default while never exceeding the advertised value. */
+static int test_settings_max_frame_size(void)
+{
+    if (conn_fd >= 0) {
+        shutdown(conn_fd, SHUT_RDWR);
+        close(conn_fd);
+        conn_fd = -1;
+    }
+    assert(client_connect() == 0);
+    client_set_recv_timeout(15);
+
+    /* INITIAL_WINDOW_SIZE = 1 MiB, MAX_FRAME_SIZE = 32768. */
+    uint8_t settings[12] = {
+        0x00, 0x04, 0x00, 0x10, 0x00, 0x00,
+        0x00, 0x05, 0x00, 0x00, 0x80, 0x00,
+    };
+    assert(write_frame_c(conn_fd, 4, 0, 0, settings, sizeof(settings)) == 0);
+    assert(client_send_get_interfaces(1) == 0);
+
+    size_t max_data = 0, over_default = 0;
+    uint8_t fh[9], frame[65536];
+    for (int i = 0; i < 64 && over_default < 2; i++) {
+        if (read_full_c(conn_fd, fh, 9) < 0) break;
+        uint32_t flen = ((uint32_t)fh[0] << 16) | ((uint32_t)fh[1] << 8) | fh[2];
+        uint8_t ftype = fh[3], fflags = fh[4];
+        if (flen > sizeof(frame)) break;
+        if (flen && read_full_c(conn_fd, frame, flen) < 0) break;
+        if (ftype == 4) {
+            if (!(fflags & 1)) write_frame_c(conn_fd, 4, 1, 0, NULL, 0);
+            continue;
+        }
+        if (ftype == 7) break;
+        if (ftype != 0) continue;
+        if (flen > max_data) max_data = flen;
+        if (flen > 16384) over_default++;
+    }
+
+    shutdown(conn_fd, SHUT_RDWR);
+    close(conn_fd);
+    conn_fd = -1;
+    /* Leave the shared connection usable for the remaining tests. */
+    assert(client_connect() == 0);
+
+    if (over_default == 0) {
+        fprintf(stderr, "no DATA frame exceeded the 16 KiB default "
+                        "(max=%zu)\n", max_data);
+        return 1;
+    }
+    if (max_data > 32768) {
+        fprintf(stderr, "DATA frame %zu exceeds advertised MAX_FRAME_SIZE\n",
+                max_data);
+        return 1;
+    }
+    printf("[PASS] test_settings_max_frame_size (max DATA=%zu after "
+           "MAX_FRAME_SIZE=32768)\n", max_data);
+    return 0;
+}
+
+/* The pending queue holds frames that arrive while a response is blocked on
+ * flow control. Overflow used to drop frames silently, desynchronising the
+ * streams; the connection must instead fail with GOAWAY(ENHANCE_YOUR_CALM). */
+static int test_pending_queue_overflow(void)
+{
+    if (conn_fd >= 0) {
+        shutdown(conn_fd, SHUT_RDWR);
+        close(conn_fd);
+        conn_fd = -1;
+    }
+    assert(client_connect() == 0);
+    /* Generous: parallel CTest runs can delay the worker for seconds. The
+     * normal path produces GOAWAY immediately. */
+    client_set_recv_timeout(15);
+
+    /* Zero initial window: the response cannot leave the server. */
+    uint8_t settings[6] = { 0x00, 0x04, 0x00, 0x00, 0x00, 0x00 };
+    assert(write_frame_c(conn_fd, 4, 0, 0, settings, sizeof(settings)) == 0);
+    assert(client_send_get_interfaces(1) == 0);
+
+    /* Flood an unrelated idle stream past the 64-frame pending bound. */
+    uint8_t one = 0;
+    for (int i = 0; i < 96; i++)
+        assert(write_frame_c(conn_fd, 0, 0, 9, &one, 1) == 0);
+
+    bool goaway = false;
+    uint32_t code = 0;
+    uint8_t fh[9], frame[65536];
+    for (int i = 0; i < 128; i++) {
+        if (read_full_c(conn_fd, fh, 9) < 0) break;
+        uint32_t flen = ((uint32_t)fh[0] << 16) | ((uint32_t)fh[1] << 8) | fh[2];
+        uint8_t ftype = fh[3], fflags = fh[4];
+        if (flen > sizeof(frame)) break;
+        if (flen && read_full_c(conn_fd, frame, flen) < 0) break;
+        if (ftype == 7) {
+            if (flen >= 8)
+                code = ((uint32_t)frame[4] << 24) | ((uint32_t)frame[5] << 16) |
+                       ((uint32_t)frame[6] << 8) | frame[7];
+            goaway = true;
+            break;
+        }
+        if (ftype == 4 && !(fflags & 1))
+            write_frame_c(conn_fd, 4, 1, 0, NULL, 0);
+    }
+
+    shutdown(conn_fd, SHUT_RDWR);
+    close(conn_fd);
+    conn_fd = -1;
+    assert(client_connect() == 0);
+
+    if (!goaway) {
+        fprintf(stderr, "connection survived pending-queue overflow\n");
+        return 1;
+    }
+    if (code != 0xb) {
+        fprintf(stderr, "GOAWAY error code %u, expected 11 "
+                        "(ENHANCE_YOUR_CALM)\n", code);
+        return 1;
+    }
+    printf("[PASS] test_pending_queue_overflow (GOAWAY ENHANCE_YOUR_CALM)\n");
+    return 0;
+}
+
 /* ---- v0.5: model-driven leaf Get/Set + unknown path errors --------------- */
 
 static int test_model_leaf_get_set(void)
@@ -1586,6 +1752,8 @@ int main(void)
     if (test_subscribe_once() != 0) failed++;
     if (test_get_large_flow_control() != 0) failed++;
     if (test_concurrent_streams() != 0) failed++;
+    if (test_settings_max_frame_size() != 0) failed++;
+    if (test_pending_queue_overflow() != 0) failed++;
     if (test_model_leaf_get_set() != 0) failed++;
     if (test_model_unknown_path() != 0) failed++;
 

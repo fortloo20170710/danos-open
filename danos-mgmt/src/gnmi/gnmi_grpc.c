@@ -113,6 +113,7 @@ typedef struct {
     int64_t conn_window;         /* stream-0 budget */
     h2_stream_t streams[H2_MAX_TRACKED_STREAMS];
     uint32_t peer_initial_window;
+    uint32_t peer_max_frame_size;   /* SETTINGS_MAX_FRAME_SIZE from the peer */
     pending_frame_t *pending, *pending_tail;
     uint32_t pending_count;
     h2_active_subscription_t subscriptions[H2_MAX_ACTIVE_SUBSCRIPTIONS];
@@ -171,6 +172,38 @@ static int write_frame(h2_conn_t *c, uint8_t type, uint8_t flags, uint32_t strea
     return 0;
 }
 
+/* Best-effort GOAWAY before dropping a connection. */
+static void send_goaway(h2_conn_t *c, uint32_t code)
+{
+    uint8_t p[8] = { 0, 0, 0, 0,
+                     (uint8_t)(code >> 24), (uint8_t)(code >> 16),
+                     (uint8_t)(code >> 8), (uint8_t)code };
+    (void)write_frame(c, H2_F_GOAWAY, 0, 0, p, sizeof(p));
+}
+
+/* Apply the peer's SETTINGS (RFC 9113 §6.5.2). INITIAL_WINDOW_SIZE is a
+ * delta on every live stream; MAX_FRAME_SIZE bounds the frames we send.
+ * Values outside the permitted ranges are ignored. */
+static void h2_apply_peer_settings(h2_conn_t *c, const uint8_t *p, uint32_t len)
+{
+    if (!p || len % 6 != 0) return;
+    for (uint32_t i = 0; i + 6 <= len; i += 6) {
+        uint16_t id = (uint16_t)((p[i] << 8) | p[i + 1]);
+        uint32_t v = ((uint32_t)p[i + 2] << 24) | ((uint32_t)p[i + 3] << 16) |
+                     ((uint32_t)p[i + 4] << 8) | p[i + 5];
+        if (id == 0x4) {
+            int64_t delta = (int64_t)v - (int64_t)c->peer_initial_window;
+            c->peer_initial_window = v;
+            for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
+                if (c->streams[w].used)
+                    c->streams[w].window += delta;
+        } else if (id == 0x5) {
+            if (v >= H2_MAX_FRAME_LEN && v <= 0x00ffffffu)
+                c->peer_max_frame_size = v;
+        }
+    }
+}
+
 /* =========================================================================
  * Frame receive with pending queue + flow-control state machine
  * ========================================================================= */
@@ -206,12 +239,15 @@ static void stream_forget(h2_conn_t *c, uint32_t id)
     if (s) s->used = false;
 }
 
-static void pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
+/* Park one frame for a later read. Returns false when the bound is reached or
+ * memory is exhausted; the caller must then fail the connection instead of
+ * dropping the frame and desynchronising the HTTP/2 stream state. */
+static bool pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
                          uint32_t stream, const uint8_t *payload, uint32_t len)
 {
-    if (c->pending_count >= H2_MAX_PENDING) return;   /* bounded */
+    if (c->pending_count >= H2_MAX_PENDING) return false;
     pending_frame_t *pf = malloc(sizeof(*pf));
-    if (!pf) return;
+    if (!pf) return false;
     pf->type = type;
     pf->flags = flags;
     pf->stream = stream;
@@ -219,7 +255,7 @@ static void pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
     pf->payload = len ? malloc(len) : NULL;
     if (len && !pf->payload) {
         free(pf);
-        return;
+        return false;
     }
     if (len) memcpy(pf->payload, payload, len);
     pf->next = NULL;
@@ -228,6 +264,7 @@ static void pending_push(h2_conn_t *c, uint8_t type, uint8_t flags,
     else c->pending = pf;
     c->pending_tail = pf;
     c->pending_count++;
+    return true;
 }
 
 static bool pending_pop(h2_conn_t *c, uint8_t *type, uint8_t *flags,
@@ -278,14 +315,25 @@ bool danos_h2_parse_frame_header(const uint8_t hdr[9],
  * (SETTINGS ack + window updates, PING ack). Frames for other streams
  * encountered while the caller waits are returned to it via the queue;
  * this function only returns frames that matter to the caller. */
+static int recv_frame_wire(h2_conn_t *c, uint8_t *type, uint8_t *flags,
+                           uint32_t *stream, uint8_t *payload, uint32_t *len);
 /* Returns 0 = frame delivered, 1 = housekeeping processed (flow-control
  * windows may have changed; caller should re-check budget), -1 = error. */
 static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
                       uint32_t *stream, uint8_t *payload, uint32_t *len)
 {
-    for (;;) {
-        if (pending_pop(c, type, flags, stream, payload, len)) return 0;
+    if (pending_pop(c, type, flags, stream, payload, len)) return 0;
+    /* Read straight from the wire, ignoring the pending queue. A caller that
+     * is itself parking frames must use this form: consulting the queue would
+     * hand back the frame it just parked and never make progress on the
+     * socket (in particular, never observe a WINDOW_UPDATE). */
+    return recv_frame_wire(c, type, flags, stream, payload, len);
+}
 
+static int recv_frame_wire(h2_conn_t *c, uint8_t *type, uint8_t *flags,
+                           uint32_t *stream, uint8_t *payload, uint32_t *len)
+{
+    for (;;) {
         uint8_t fh[9];
         if (read_full(c, fh, 9) < 0) return -1;
         danos_h2_frame_header_t f;
@@ -299,28 +347,7 @@ static int recv_frame(h2_conn_t *c, uint8_t *type, uint8_t *flags,
         switch (ftype) {
         case H2_F_SETTINGS: {
             if (!(fflags & H2_FLAG_ACK)) {
-                /* parse peer INITIAL_WINDOW_SIZE (id 4) and MAX_FRAME_SIZE (5) */
-                if (flen % 6 == 0) {
-                    for (uint32_t i = 0; i + 6 <= flen; i += 6) {
-                        uint16_t id = (uint16_t)((fbuf[i] << 8) | fbuf[i + 1]);
-                        uint32_t v = ((uint32_t)fbuf[i + 2] << 24) |
-                                     ((uint32_t)fbuf[i + 3] << 16) |
-                                     ((uint32_t)fbuf[i + 4] << 8) | fbuf[i + 5];
-                        if (id == 0x4) {
-                            /* RFC 7540 6.9.2: a change to
-                             * INITIAL_WINDOW_SIZE is a *delta* applied to
-                             * every stream's current window, not an
-                             * absolute reset. Assigning it overwrote live
-                             * windows and desynchronised the accounting. */
-                            int64_t delta = (int64_t)v -
-                                             (int64_t)c->peer_initial_window;
-                            c->peer_initial_window = v;
-                            for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
-                                if (c->streams[w].used)
-                                    c->streams[w].window += delta;
-                        }
-                    }
-                }
+                h2_apply_peer_settings(c, fbuf, flen);
                 write_frame(c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
             }
             continue;   /* housekeeping: caller never sees SETTINGS */
@@ -464,7 +491,8 @@ static int send_data_windowed(h2_conn_t *c, uint32_t stream,
     while (sent < len) {
         int64_t budget = s->window;
         if (budget > c->conn_window) budget = c->conn_window;
-        if (budget > H2_MAX_FRAME_LEN) budget = H2_MAX_FRAME_LEN;
+        if (budget > (int64_t)c->peer_max_frame_size)
+            budget = (int64_t)c->peer_max_frame_size;
 
         if (budget <= 0) {
             /* wait for WINDOW_UPDATE; park unrelated frames */
@@ -472,11 +500,14 @@ static int send_data_windowed(h2_conn_t *c, uint32_t stream,
             uint32_t st;
             uint32_t plen = H2_MAX_FRAME_LEN;
             uint8_t pl[H2_MAX_FRAME_LEN];
-            int rr = recv_frame(c, &t, &fl, &st, pl, &plen);
+            int rr = recv_frame_wire(c, &t, &fl, &st, pl, &plen);
             if (rr < 0) return -1;
             if (rr == 1) continue;              /* window refilled */
-            if ((t == H2_F_DATA || t == H2_F_HEADERS) && st != stream)
-                pending_push(c, t, fl, st, pl, plen);
+            if ((t == H2_F_DATA || t == H2_F_HEADERS) && st != stream &&
+                !pending_push(c, t, fl, st, pl, plen)) {
+                send_goaway(c, 0xb /* ENHANCE_YOUR_CALM */);
+                return -1;
+            }
             continue;
         }
 
@@ -1961,6 +1992,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
     c.ssl = ssl;
     c.conn_window = H2_DEFAULT_WINDOW;
     c.peer_initial_window = H2_DEFAULT_WINDOW;
+    c.peer_max_frame_size = H2_MAX_FRAME_LEN;
     /* Stream windows are created on demand at peer_initial_window. */
     hpack_dyn_init(&c.dyn_dec);
 
@@ -2012,22 +2044,7 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
             if (rr > 0) {
                 if (ftype == H2_F_SETTINGS) {
                     if (!(fflags & H2_FLAG_ACK)) {
-                        if (flen % 6 == 0) {
-                            for (uint32_t i = 0; i + 6 <= flen; i += 6) {
-                                uint16_t id = (uint16_t)((frame[i] << 8) | frame[i + 1]);
-                                uint32_t value = ((uint32_t)frame[i + 2] << 24) |
-                                                 ((uint32_t)frame[i + 3] << 16) |
-                                                 ((uint32_t)frame[i + 4] << 8) | frame[i + 5];
-                                if (id == 0x4) {
-                                    int64_t delta = (int64_t)value -
-                                                    (int64_t)c.peer_initial_window;
-                                    c.peer_initial_window = value;
-                                    for (int w = 0; w < H2_MAX_TRACKED_STREAMS; w++)
-                                        if (c.streams[w].used)
-                                            c.streams[w].window += delta;
-                                }
-                            }
-                        }
+                        h2_apply_peer_settings(&c, frame, flen);
                         (void)write_frame(&c, H2_F_SETTINGS, H2_FLAG_ACK, 0, NULL, 0);
                     }
                     continue;
@@ -2059,7 +2076,11 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
                 if (ftype == H2_F_GOAWAY) break;
                 if (ftype != H2_F_HEADERS && ftype != H2_F_DATA &&
                     ftype != H2_F_CONT) {
-                    pending_push(&c, ftype, fflags, fstream, frame, flen);
+                    if (!pending_push(&c, ftype, fflags, fstream, frame, flen)) {
+                        send_goaway(&c, 0xb /* ENHANCE_YOUR_CALM */);
+                        rc = -1;
+                        break;
+                    }
                     continue;
                 }
                 rr = 0; /* recv_available_frame: 1 means complete frame */
@@ -2176,7 +2197,11 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
                 }
                 if (cr == 1) continue;
                 if (ctype != H2_F_CONT) {
-                    pending_push(&c, ctype, cflags, cstream, cframe, clen);
+                    if (!pending_push(&c, ctype, cflags, cstream, cframe, clen)) {
+                        send_goaway(&c, 0xb /* ENHANCE_YOUR_CALM */);
+                        rc = -1;
+                        goto out;
+                    }
                     continue;
                 }
                 if (flen + clen <= sizeof(frame)) {
@@ -2305,8 +2330,13 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
                 if (request_slot && !end_stream) {
                     request_slot->headers = h;
                     memset(&h, 0, sizeof(h));
-                    if (request_has_complete_message(request_slot))
-                        pending_push(&c, H2_F_DATA, 0, fstream, NULL, 0);
+                    if (request_has_complete_message(request_slot) &&
+                        !pending_push(&c, H2_F_DATA, 0, fstream, NULL, 0)) {
+                        headers_free(&h);
+                        send_goaway(&c, 0xb /* ENHANCE_YOUR_CALM */);
+                        rc = -1;
+                        goto out;
+                    }
                 } else if (request_slot) {
                     request_clear(request_slot);
                     request_slot = NULL;
@@ -2341,7 +2371,12 @@ static int serve_connection(int fd, SSL *ssl, danos_sec_role_t peer_role,
         }
 
         if (rlen >= 0) {
-            send_grpc_response(&c, fstream, resp, (size_t)rlen);
+            if (send_grpc_response(&c, fstream, resp, (size_t)rlen) < 0) {
+                headers_free(&h);
+                if (request_slot) request_clear(request_slot);
+                rc = -1;
+                break;
+            }
         } else {
             /* map DPA status -> gRPC status: NOT_FOUND(2) -> 5,
              * INVALID_ARG(1) -> 3, everything else -> 2 (Unknown) */
