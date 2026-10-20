@@ -17,8 +17,11 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
 - Virtual QEMU e1000 and VMware VMXNET3 evidence validation, baseline reporting,
   explicit frame-size metadata for new QEMU soak runs, and VM CPU capture.
 - Real PCI preflight checks that reject virtual or ambiguous NIC identities.
-- libFuzzer targets for gNMI protobuf decoding, HPACK and HTTP/2 frame headers,
-  wired into the Interop workflow.
+- libFuzzer targets for gNMI protobuf decoding, HPACK, HTTP/2 frame headers and
+  the mTLS role map (with a seed corpus), wired into the Interop workflow.
+- A documented per-connection resource budget for the gNMI listener
+  (`docs/management-resource-limits.md`), covering admission, frame, queue and
+  message limits.
 - A line-coverage non-regression gate (`--fail-under-line`) enforced by the
   Coverage workflow at 79%, with a refreshed 2026-10-20 baseline.
 - A root `Dockerfile` that builds and tests the tree from source, then ships a
@@ -38,6 +41,17 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
 - Route programming is idempotent through `NLM_F_REPLACE`, IPv6 address
   operations fail explicitly as unsupported, and netlink ACKs are validated.
 - The VPP binary-API reader sizes its window from the frame length prefix.
+- The VPP binary-API context, message table and stat table are serialised by a
+  recursive mutex, so reconnect, transaction and diagnostic paths can run from
+  several daemon threads safely.
+- HTTP/2 sends honour the peer's `SETTINGS_MAX_FRAME_SIZE`; a full parked-frame
+  queue closes the connection with GOAWAY `ENHANCE_YOUR_CALM` instead of
+  dropping frames; and a writer blocked on flow control no longer re-parks its
+  own frames and spins without reading the socket.
+- Bearer-token authentication requires an explicit role
+  (`DANOS_AUTHZ_TOKEN_ROLE`, or `DANOS_AUTHZ_DEFAULT_ROLE` as fallback);
+  configuring a token without one fails startup, and an unknown default role
+  falls back to viewer instead of admin.
 - gNMI protobuf decoding supports lengths beyond 16 KiB, and HTTP/2 frame
   header parsing is shared with the fuzz target.
 - `danos_tx_rollback` rejects states where it cannot undo programmed state and

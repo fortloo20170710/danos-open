@@ -1,0 +1,972 @@
+# Outstanding work plan — historical evidence
+
+Moved out of [outstanding-work-plan.md](../outstanding-work-plan.md) on
+2026-10-20. These are dated checkpoints from 2026-10-13 and earlier, kept
+for provenance; the current plan and backlog stay in the parent document.
+
+### Historical r14 delivery checkpoint — 2026-10-13
+
+- [x] Rebuild Debian trixie mgrd from clean `28b4a9e`, including explicit
+  VPP programming backend selection, and include it in LIVE/installed payloads.
+- [x] Build r14 installable ISO and qualify exact-ISO installation/readback,
+  ISO-detached disk boot and genuine reboot/persistence on a fresh QEMU disk.
+- [x] Run installed-binary mTLS/RBAC checks and resolved ECMP 2/1/2 FIB,
+  fresh-runtime WAL route replay, withdrawal and no-resurrection checks.
+  CTest 68/68 PASS; hashes/evidence indexed in `iso-installation-acceptance.md`.
+- [x] R1 r14 physical installed-disk runtime, four I211 bindings, read-only
+  Robot 2/2 and warmed direct/transit ICMP 100/100 after VPP lab CLI replay.
+  Cold/restart losses retained; installed-disk UEFI observed on R1 only.
+- [x] R3 r14 installed-runtime inventory and read-only ECMP FIB qualification;
+  two resolved next hops and 1 Gbps carrier on ports 1/2/4. No R3 packet
+  stream was generated in this checkpoint.
+- [x] Mixed-version R2 r9 → R3 r14 → R1/R4 physical transit: four endpoints
+  100/100, zero loss; R3 ECMP DPO 430 packets, egress P1/P2 110/320.
+  This closes functional use of both paths only, not statistical balance.
+- [x] Bracket a fresh R2 four-destination batch with R3 counter snapshots:
+  420 ingress requests matched P1/P2 egress TX +105/+315; both paths used,
+  no drop-counter increase. Machine verifier added with negative-case tests;
+  CTest is now 70/70. Four-flow distribution/performance remains open.
+- [x] R3 VPP service restart with lab post-start replay: PID 741→1576,
+  dual resolved ECMP paths restored and both direct peer probes 100/100.
+  Transit during restart and mgrd WAL replay remain open.
+- [x] After R3 recovery, identity-guarded R2→R3 probes to all four remote
+  loopbacks passed 100/100, zero loss, TTL 63. This verifies post-recovery
+  reachability only; it does not measure continuity during restart or bucket
+  distribution. Result/hash indexed in `iso-installation-acceptance.md`.
+- [x] R3 installed PCI/DPDK preflight: four I211 functions on
+  `uio_pci_generic`, 28×2 MiB hugepages, VPP DPDK plugin and API socket PASS.
+- [x] R3 physical P2/R1 next-hop withdrawal and restore: verified actual
+  forwarding DPO transitions 2→1→2, direct probes on the surviving/restored
+  peers, and no restore errors. ARP warm-up was observable and not lossless;
+  this is not FRR/ZAPI withdrawal or R2 transit across the transition.
+- [ ] Capture measured 64-byte DPDK performance with independent receive
+  counts, loss, latency, CPU and per-flow/bucket distribution.
+- [ ] Live reconnect with mgrd remaining active during VPP restart; statistical
+  current-release packet ECMP distribution, R2/R4 r14 rollout and production PKI.
+  Synthetic adjacency and restarted-daemon recovery do not close these gates.
+
+The chronological notes below describe earlier checkpoints; r14 above is
+the current delivery and supersedes their pending-image statements.
+
+### Upstream DANOS test adaptation — 2026-10-11
+
+- [x] Review i-danos/tests pinned commit 1c731e0 and document transport,
+  topology, management-preservation and licensing boundaries.
+- [x] Add original read-only Robot VPP adapter with explicit MAC identity,
+  timeouts and invalid-output rejection. CTest 67/67 and Robot dry-run
+  3/3 PASS; neither is live hardware qualification.
+- [ ] Execute read-only suite on an explicit runner, archive Robot XML/HTML
+  with artifact/runtime identity, then wrap existing route lifecycle gates.
+  Preserve management connectivity; do not run legacy blanket deletes,
+  disable SSH host verification, or enable plaintext physical management.
+  R2 UART execution now passes 2/2 with expected MAC setup and command
+  outputs in `build/robot-r2-readonly-live/`. Next execute R3's full suite
+  including resolved ECMP; these operational checks are not throughput PASS.
+  R3 full UART suite is now 3/3 PASS with raw XML/HTML and scoped manifest.
+  Next adapt backend/object visibility and existing route lifecycle gates;
+  do not claim older installed ISO identity or hardware performance qualified.
+  Local DPA conformance and archived learned-route evidence now execute via
+  `DPA_CONFORMANCE.robot` (4/4 PASS after rebuilding its three binaries).
+  Physical backend/object views remain a real interface gap, not covered by
+  this mock/archive scope. Next specify read-only capability/ledger visibility
+  before adding mutable topology orchestration.
+  2026-10-12: minimal local `show dataplane` summary implemented; registered
+  capability and active programming backend are distinct, as are desired
+  and programmed-ledger counts. Full build/CTest 67/67, DPA Robot 5/5 PASS.
+  Per-object state, authenticated remote query and identifiable updated
+  physical image deployment remain open.
+  Targeted `show dataplane object <type> <id>` now reports desired/ledger
+  presence without programming or sweeping. Four presence combinations
+  are tested, but dependency sync, retry/error reasons and per-object
+  backend ownership are not yet provided. Remote authentication and
+  deployment remain separate unfinished steps.
+  Sampled desired/dependency versus ledger match, retry attempts/last
+  programming error/backoff/flapping/exhaustion and stale-candidate marking
+  are now implemented and tested. Full build/CTest 67/67, Robot 5/5 PASS.
+  Next authenticated read-only remote query and per-object backend identity;
+  do not claim hardware readback or mutate R3's old installed image.
+  Targeted read-only gNMI Get now uses the existing mTLS/authorization chain;
+  TLS 1.2/1.3 role tests cover reads and denial of all three Set forms.
+  Physical deployment/PKI, per-object backend attribution and formal YANG
+  schema/notification coverage remain open. No R3 service was enabled.
+  Per-record backend name is now captured at successful programming and
+  exposed by CLI and read-only gNMI leaf, with backend-switch/deletion/
+  forget and TLS denial tests. It is not hardware attestation or dynamic
+  migration. Next deployment/PKI qualification on an updated image.
+  Updated r13 installable ISO now has QEMU installation readback,
+  ISO-detached coldboot and fresh-kernel reboot/persistence PASS, with
+  LIVE/installed binary digests tied to the Debian-trixie build. Current
+  CTest 68/68 PASS. Installed r13 guest mTLS/RBAC and read-only DPA queries
+  now PASS using ephemeral PKI and --no-vpp; physical install/production PKI
+  and hardware performance are next. The subsequent real guest VPP API
+  connection plus mTLS operational Get/state-write rejection also PASS;
+  absent-object reads are not populated-ledger or FIB programming evidence;
+  no USB or physical disk has been overwritten in this build step.
+  The daemon's optional VPP API connection did not select its programming
+  backend. New explicit --backend vpp now installs the VPP adapter without
+  netlink overwrite and refuses startup fallback. Negative startup tests
+  and isolated candidate/real-VPP mTLS read-only activation PASS, CTest 68/68.
+  This source candidate is not in r13. Next qualify authenticated route
+  add/withdraw with ledger backend attribution and independent VPP FIB
+  readback, then rebuild and installation-qualify a new delivery image.
+  Candidate authenticated route programming now PASS in an independent
+  COW guest: two add/withdraw cycles, top-level ledger convergence/backend
+  attribution and independent exact-prefix VPP FIB presence/absence.
+  First substring-based verdict retracted; only strict JSON rerun qualifies.
+  Next ECMP and persisted-route replay across daemon/VPP restart, followed
+  by a rebuilt installation-qualified image; physical performance stays OPEN.
+  Candidate ECMP/FIB recovery now PASS: resolved 2/1/2 buckets, VPP actual
+  process replacement while mgrd stopped, absent-prefix precondition,
+  fresh mgrd WAL route replay, then withdrawal and no resurrection on another
+  daemon restart. Synthetic neighbor/interface fixture is recreated by the
+  harness, not by WAL. No packet distribution, live reconnect, FRR or physical
+  performance claim. Next rebuilt installation-qualified delivery and
+  separate live-runtime recovery/packet qualification; r13 is still unchanged.
+
+### 2026-10-11 physical receiver and CPU qualification checkpoint
+
+- [x] Cumulative receiver ledger closed through the first bounded pacing
+  series: ingress 790122 = receiver original UDP 786489 + DUT TX failures
+  3633. ICMP response drops are separate from original UDP reception.
+- [~] Source-local pacing diagnosis: finite count/time-budget guard, VPP
+  clock brackets and stable process/thread identity deployed on R2. Fast
+  4096-frame-per-flow probes did not reproduce the large-run burst; finite
+  staggered enable experiments are in progress, not a fix or capacity PASS.
+- [ ] Reconcile later source-only probe increments at R3 and both receivers;
+  capture receiver pre/post node counters for each next loaded run. Keep
+  source and DUT failures visible; do not rerun uncontrolled 60000-frame
+  bursts or infer a cause from short-run non-reproduction.
+  R3 reconciliation now confirms +82944 ingress/FIB, hardware egress
+  +62208/+20736 and no new TX failure. Return ICMP deficit is 69 (52/17).
+  Receiver UDP/ICMP node checks remain next; no application-level PASS.
+  R4 now confirms +62208 UDP, +62156 ICMP responses and +52 response
+  drops, closing its branch exactly. R1 actual delta snapshot remains next.
+  R1 snapshot now confirms +20736 UDP, +20719 responses and +17 response
+  drops. The combined later interval is closed: 82944 original UDP received,
+  82875 ICMP responses plus 69 response drops; no new DUT TX failure.
+  This completes receiver reconciliation, not the source pacing root-cause
+  investigation or hardware performance qualification.
+  Latest live-error probes are now reconciled on R3 at +52224 ingress/FIB,
+  egress +39168/+13056, no new TX failure. ICMP return deficit 35 (24/11)
+  needs actual R4/R1 node snapshots before closing this later interval.
+  R4 snapshot now confirms +39168 UDP, +39144 ICMP responses and +24
+  response drops. R1's +13056 UDP and 11-response deficit remain to audit.
+  R1 now confirms +13056 UDP, +13045 ICMP responses and +11 response
+  drops, closing the 52224-frame interval. Next work is source pacing
+  root-cause diagnosis and qualified sustained metrics, not further
+  promotion of short probe success to hardware performance PASS.
+
+- [x] Intermediate requested 500-pps-per-flow forward regression: source
+  and DUT +120000, ECMP 90000/30000, no new TX errors. Measured steady
+  ingress 1998.44–2002.05 pps, about 1.024 MAC Mbps, CPU 99.69–99.79%.
+  Return deficit 47 is upstream of R3; receiver cause still unverified.
+- [ ] Repeat failing requested 1000-pps-per-flow bounded diagnostic with
+  both source and DUT error deltas; distinguish a transient/source burst
+  from a repeatable limit. Do not declare a fix from lower-load success.
+  Repeat now reproduces premature completion of two streams and +61633
+  source TX drops; aborted/cleaned up. Final wire TX +95144, not 240000.
+  Matching VPP source inspected, but runtime pacing cause remains unproven.
+  R3 aborted-run counters were read; prioritize pacing diagnosis over
+  further uncontrolled high-load attempts.
+  R3 audit: ingress +95144 matches source; P1 new DPDK TX drops +3450,
+  hardware TX +71531 versus attempted +74981. Observer failed closed on
+  new tx-error field and stopped. Collector now preserves failed snapshots
+  in structured output; source pacing/runtime fault remains unresolved.
+
+- [~] Reduced-load source calibration completed: four ×6000 frames,
+  requested 100 pps each, hardware TX/RX both +24000, source TX-failure
+  counter unchanged at 30542. All streams removed. Source emission PASS
+  only; next audit R3 error-aware paired windows and DUT TX deltas. Higher
+  load failures remain archived and unresolved, not waived by calibration.
+  R3 audit now completes this low-load regression: +24000 ingress/return,
+  ECMP +18000/+6000, TX failure delta zero. Steady paired observations
+  399.65–400.33 pps and about 0.205 MAC Mbps, CPU 99.69–99.79%.
+  The 500-pps-per-flow next ladder step has since passed as recorded above;
+  this remains a bounded regression, not a capacity/latency qualification.
+
+- [!] New paired-rate follow-up source failure: R2 PG generated 240000,
+  hardware TX only 209458, DPDK TX drops 30542. One stream finished early;
+  rate stability/cause remains unverified. Test streams cleaned up, failure
+  archived in performance schema. Inspect R3 windows then reduce load;
+  previous successful functional probes remain valid for their own runs.
+  R3 return audit also finds P2 DPDK TX failure 183 despite unchanged drops;
+  ingress matches R2 emitted frames. New collector regression includes
+  tx-error/rx-error. This run remains FAIL, not a forwarding PASS.
+
+- [x] Three finite NIC-output probes (80/40000/240000 MAC frames) audited:
+  R4 UDP lookup 210060 + R1 70020 = all 280080 emitted frames. Both ECMP
+  egresses exercised; R3 forwarding drops/errors unchanged. All PG streams
+  removed. This supersedes older generator/receiver-not-yet-run statements.
+- [x] 240k run includes traffic-overlapping CPU samples, stable main PID
+  2312/start ticks and single thread CPU 0; approximately 99.69–99.89%.
+  Earlier nonoverlapping short observer remains idle-only evidence.
+- [x] Return discrepancy classified: R4 337 + R1 84 ICMP error responses
+  dropped for UDP ports without listeners, matching total 421 missing
+  returns. Original UDP ingress counts are complete, not UDP echo delivery.
+- [ ] Next: choose an actual receive/latency measurement method, retain
+  paired monotonic counter windows and artifact manifest, and run a bounded
+  load ladder. Do not convert requested PG rate or ICMP errors into measured
+  line-rate/echo performance. PCI release qualification remains OPEN.
+
+### 2026-10-10 current-source QEMU lifecycle requalification
+
+- [~] Actual R2 wire PG probe executed after MAC/address identification:
+  four flows ×20 frames, bounded 10 requested pps, all stopped at count 20.
+  Hardware TX/RX +80; TX bytes +5120. All streams cleaned up. Raw evidence
+  and digest in performance schema. This is wire-emission evidence, not
+  full PCI performance. R3 return capture now verifies the same PID 2312:
+  P4 RX/TX +80, P1 +60, P2 +20, FIB 8000→8080; drops/node errors unchanged.
+  Bounded wire transit is PASS; synchronized CPU, timing, decoded receiver
+  counts and latency remain open. See performance schema for evidence hashes.
+- [x] Remote `45d62b4` workflows verified completed success: CI run
+  `38041111065`, Coverage `38041111036`, Interop Gate `38041111051`.
+  Hosted CI does not replace physical performance qualification.
+
+- [x] Release gate default QEMU evidence updated to the archived shared-L2
+  `b3804e0` run. Learned-route ADD/WITHDRAW/RESTORE/POSTFRR validator is now
+  mandatory even when callers override the topology; an older basic-only
+  topology cannot silently satisfy the expanded software qualification.
+  Config regression checks the default and explicit learned-route subgate.
+- [x] Expanded unified gate completed at `666b40d`: software/virtualization
+  subgates PASS, including mandatory learned-route cycle and console/mgrd.
+  `build/v016-release-gate-shared-666b40d.env` remains FAIL, PCI OPEN without
+  waiver; no target BDF was supplied on the development host. Next physical
+  step remains R2 UART generator deployment and coincident actual metrics,
+  not another waiver or promotion of virtual/ICMP results to PCI performance.
+
+- [x] Shared-L2 clean `b3804e0` cold-boot requalification now PASS: actual
+  learned-route ADD 3/3, WITHDRAW 3/0 plus absent FIB prefix, RESTORE 3/3,
+  POSTFRR 3/3 with zebra reconnect; full topology gate and archived copy PASS.
+  Durable evidence: `build/qemu-shared-b3804e0-accepted/` including ISO, seeds,
+  manifests, serial and machine-readable result. Soak 4000/4000, 81.97 pps,
+  buckets 3000/1000; failover 798/800. Previous failed run stays archived.
+  Earlier pending items below describe execution history, not current verdict.
+  Physical PCI traffic/latency qualification remains open.
+
+- [~] First shared-L2 learned ADD runtime failed (3 TX / 0 RX). Installed
+  198.19.0.0/24 remained `arp-ipv4` via 172.31.0.3. Failure evidence preserved
+  in `build/qemu-shared-20261010-add-failed/`. Adding 172.31.0.1/24 to VPP's
+  second interface enabled next-hop diagnostic replies. Shared ISO profile now
+  supplies this address by default; cold-boot full-cycle requalification still
+  required. This diagnostic repair does not upgrade the failed run to PASS.
+
+- [~] Shared-L2 learned-route runtime follow-up launched separately at
+  `/dev/shm/danos-v016-shared-20261010` using the archived clean `7b10494` ISO
+  and runner `f7331e3`. Live cycle log:
+  `build/qemu-v016-shared-20261010-cycle.log`. Await ADD/WITHDRAW/RESTORE/POSTFRR
+  packet/FIB phases before claiming PASS. Previous completed topology stopped
+  after durable evidence archival; no physical node was restarted.
+- [x] Launcher now provides xHCI + USB HID for keyboard-driven learned-route
+  commands. Real existing QEMU hotplug plus canceled stale input produced the
+  shell marker; wiring regression and CTest 64/64 PASS. This console check
+  alone does not qualify learned-route forwarding.
+
+- [~] Bounded physical peer PG renderer: explicit NIC-output, finite count,
+  disabled by default, distinct UDP flows and intended 64-byte MAC frames.
+  Fixed multiline `vppctl exec` failure by emitting one command per line.
+  Physical VPP 26.10 parser verified two disabled/count-zero streams; cleanup
+  returned to no streams. Evidence/digest in performance schema. CTest 64/64
+  PASS. The QEMU input attempt remains unverified. Configuration acceptance
+  is not measured physical traffic, latency or performance PASS.
+
+- [x] 2026-10-14 R2 UART sender replay: bounded 64-byte UDP runner completed
+  3 × (4 flows × 256 frames); VPP-generated frames and I211 TX-good both
+  increased by 3,072, TX drops were unchanged, VPP process identity remained
+  stable, and streams were cleaned. Per-phase TX-good rates include CLI
+  overhead and are diagnostic only. Artifact and digest are indexed in the
+  physical traffic runbook. A fresh synchronized R3-before/R2-send/R3-after
+  bracket, receiver confirmation, latency, sustained performance and line-rate
+  qualification remain open.
+
+- [x] 2026-10-14 synchronized R2→R3 physical replay: source TX and R3 P4
+  ingress each increased by 3,072; R3 P1/P2 egress increased by 2,304/768,
+  the two-path sum matched ingress, relevant drops were unchanged, and VPP PID
+  remained stable. The R3 window was 788.54s and independent R1/R4 counters
+  were not captured; retain this as bounded path-use PASS only. Evidence hashes
+  are in `docs/i211-physical-traffic-runbook.md`. Repeat with tighter
+  independent receiver brackets before extending the performance claim.
+
+- [x] 2026-10-15 four-node larger UDP64 replay: 49,152 source TX-good frames,
+  R3 ingress +49,152 and egress +36,864/+12,288, independent R4/R1 RX
+  +36,864/+12,288, and zero relevant drop deltas. The verifier correctly
+  retained `OBSERVED` because R4's receiver interval was 13,285s (>1,800s),
+  despite exact counter totals. Keep line-rate/performance gate OPEN; repeat
+  with a synchronized receiver window. Evidence hashes are in the runbook.
+
+- [x] 2026-10-15 tight four-node 12,288-frame UDP64 replay: R2 hardware TX,
+  R3 ingress/ECMP egress, and independent R1/R4 RX counters matched exactly;
+  relevant drops were unchanged and R3/R1/R4 windows were 453/1,074/1,722s
+  (<1,800s). Unified verifier PASS for bounded functional forwarding only.
+  Performance remains OPEN because latency, phase-aligned forwarding CPU,
+  sustained load and line-rate were not qualified. Evidence hashes are in the
+  physical runbook.
+
+- [x] Real VPP process CPU sampler implemented with start-tick identity,
+  monotonic timing and one-logical-CPU normalization. Five deterministic
+  cases PASS; CTest 63/63 PASS. R3 deployed sampler digest matched local;
+  10-second idle polling sample measured 99.89394% (not traffic qualification).
+  Full details and command: `docs/v0.16-performance-result-schema.md`.
+- [x] CPU sampler now binds CLI thread LWP to process PID and records a stable
+  before/after thread/core mapping. ANSI listings, workers, malformed/duplicate
+  rows and CLI error cases covered: 8/8 deterministic tests PASS. Physical
+  remeasurement with the extended sampler remains pending; prior idle sample
+  is not upgraded retroactively. UART switch to R2 requested for generator
+  deployment while preserving all lab cables and routes.
+
+- [x] PCI result recorder now rejects mutually matching but malformed ISO
+  identities (SHA256 must contain 64 lowercase hex digits; source commit
+  7–40). Regression includes short/long/nonhex digests and commits, rather
+  than relying only on the equality check. Dedicated suite: 14/14 PASS.
+- [~] Physical serial inspection confirms clean `3f1691c`, generic DPDK r9
+  installed metadata; no iperf3/trafgen/pktgen executable found. This is
+  installed metadata, not fresh cold-boot ISO-digest qualification. Dedicated
+  traffic generation, CPU measurement and single-core proof remain required.
+
+- [x] ISO source `7b10494f93ff1dbcfa2ab3c7d84732ecca392bee`, clean;
+  host verifier `4238a76`: full FRR → DPA → VPP topology gate PASS.
+  Durable evidence: `build/qemu-v016-7b10494-accepted/` (ISO, seeds, serial
+  logs, original and relocated manifests); archived verifier also PASS.
+  Machine-readable result: `build/qemu-v016-7b10494-accepted/ecmp-result.env`.
+- [x] Four destinations received 4000/4000 soak probes, ECMP output deltas
+  3000/1000, elapsed 48460 ms (82.54 aggregate pps). Withdrawal and restoration
+  each passed all four destinations, 20/20 probes. Concurrent failover window
+  received 799/800 (0.12% loss), within the configured 15% gate, not lossless.
+- [x] VPP restart/replay and both post-restart peers passed; BGP add/withdraw,
+  OSPF adjacency, ZAPI 31/32, FRR add/withdraw/restore and daemon/zserv recovery
+  passed the full verifier. Local CTest: 62/62 PASS.
+- [ ] This functional QEMU lane does not qualify PCI line-rate performance,
+  physical whole-machine reboot, or the separate shared-L2 learned-route gate.
+  Preserve these scope boundaries in the release decision.
+- [x] Unified gate rerun: `build/v016-release-gate-7b10494-audit.env` and log.
+  Software/virtualization gates PASS, including r13 mgrd WAL recovery. VMware
+  is historical-log revalidation, not fresh traffic. Overall FAIL without
+  waiver: development-host PCI preflight SKIP (no explicit hardware BDF).
+  Next qualification must run against the physical runner and retain actual
+  64-byte traffic/CPU/identity evidence; lab ICMP is not a substitute.
+
+### 2026-10-09 installer performance follow-up
+
+- [x] Inspect r9 installer overhead and select offline rootfs installation
+  (ADR-0008). QEMU r9 qualification is retained; R3 completion is unconfirmed.
+- [ ] Define rootfs manifest and build an offline, metadata-preserving payload.
+  Initial builder and CTest fixture added: archive/OS/package digests, transient
+  exclusions, permissions and hard/symbolic links. Privileged ownership/xattr
+  qualification and real-runtime payload remain pending; manifest explicitly
+  sets `DANOS_ROOTFS_QUALIFIED=0`.
+- [ ] Implement safe partition/copy/bootloader installation with stage timings.
+- [ ] Test failure paths and qualify BIOS/UEFI separately in disposable QEMU.
+- [ ] Generate the qualified installable ISO and record its digest/evidence.
+- [ ] Measure R3 installation and verify installed boot/PCI traffic after
+  explicit target authorization. Do not interrupt the current installation.
+
+This checkpoint supersedes older installer recommendations, not previously
+recorded software or packet-test evidence.
+
+### 2026-10-10 physical recovery update
+
+QEMU recovery-gate hardening: post-restoration now requires exactly one
+5/5 lossless record for each of four destinations, rather than accepting any
+one sampled destination. Missing/duplicate/wrong-target/lossy or contradictory
+failure evidence is rejected. New deterministic tests and existing historical
+`qemu-frr-vpp-topology-705c70b-soak1000` log revalidation pass; CTest 62/62.
+Historical log revalidation is not a current-source runtime rerun. No guest
+was running during this check; fresh QEMU lifecycle evidence remains required
+before claiming current-source unified release qualification.
+
+Performance-gate hardening: PCI measurement validator now rejects non-finite
+acceptance thresholds (`NaN`, signaling NaN, positive/negative infinity)
+with structured FAIL rather than raising an uncaught Decimal exception or
+accepting an unbounded threshold. Regression covers all three threshold
+positions and preserves finite-threshold behavior; validator suite 13/13,
+configured CTest 61/61 PASS. This is validator qualification, not new PCI
+performance evidence; no missing CPU/throughput metrics were synthesized.
+
+Four-node I211 manual-CLI ECMP and bidirectional next-hop withdrawal/restore
+now have original endpoint logs and device-delta evidence. All four nodes
+have explicit lab startup profiles; independent VPP service restarts followed
+by all-restored 4000-probe dual-egress regression pass. This closes only
+lab-CLI warm-transit service recovery. Preserve cold-neighbor first-packet
+losses and do not upgrade the unified release gate. Next required work:
+whole-machine boot evidence, FRR/DPA-owned physical replay, reproducible
+machine-readable performance results with CPU/throughput and artifact identity.
+See `docs/i211-physical-traffic-runbook.md` for current scoped verdicts.
+
+### 2026-10-09 current v0.16 closeout checkpoint (`42d220e`)
+
+Authoritative current state is the latest project snapshot in
+`docs/project-status.md` and the acceptance matrix in
+`docs/v0.16-acceptance-matrix.md`; entries below this checkpoint are retained
+as dated history and must not override it.
+
+Completed and reverified:
+
+- Route/NH/NHGroup backend contract gate: PASS (DPA conformance, programming
+  pipeline/reconcile behavior, and composite lifecycle).
+- FRR/ZAPI/VPP route add/withdraw/restore, FRR/zserv reconnect, VPP restart
+  and replay, plus post-restart peer packets: PASS in the identity-bound QEMU
+  topology.
+- QEMU four-flow ECMP soak: 4000/4000, zero loss, 82.00 pps, bucket deltas
+  3000/1000. Path-down/withdraw/restore window: 798/800, 0.25% loss against
+  an explicit 15% budget.
+- VMware VMXNET3 polling-only regression: 2000/2000, zero loss, 98.23 pps;
+  this is functional regression data, not line-rate qualification.
+- I211 traffic LIVE runner r6: clean ISO provenance and embedded profile
+  verified, including dynamic ARP, 1000-probe soak and 200 failover probes per
+  flow. This is a test LIVE image, not an installer.
+- Generic DPDK installer r8 remains the separate QEMU-qualified installable
+  image (install, cold boot, reboot and persistence); no physical disk install
+  is claimed.
+- Local CTest 56/56 and GitHub CI, Coverage, Interop Gate pass on `42d220e`.
+
+Still open; do not waive or relabel:
+
+- Real PCI/VFIO DPDK preflight and 64-byte/multicore performance remain
+  `ENVIRONMENT-OPEN`. The latest full gate on `fd1d7eb` reports `FAIL` only
+  because no runner BDF was selected; no real-hardware throughput number is
+  available.
+- Physical I211 traffic/install acceptance is not complete. The physical UART
+  is currently assigned to another assistant; do not access it, reboot the
+  target, or write a disk until it is released and target/test topology are
+  confirmed.
+
+Next execution order: (1) after UART release, capture the current DANOS LIVE
+identity and PCI binding on the intended I211 machine; (2) validate two
+independent peer links and bidirectional reachability; (3) run the r6 add/
+withdraw/restore traffic verifier; (4) run the real PCI DPDK preflight and
+64-byte single-core result recorder, then multicore/ECMP distribution; (5)
+revisit release status only with identity-bound evidence. Keep QEMU/VMware
+results separate from PCI throughput. VLAN/VXLAN/EVPN/BFD remain deferred
+until the v0.16 hardware lane is closed or explicitly dispositioned.
+
+### 2026-10-09 unified release gate topology correction
+
+The complete unified gate on clean commit `5ca9303` exposed a stale default:
+topology-140's log had a VPP restart PASS marker but lacked required
+post-restart peer packets. The release gate previously selected that old
+evidence even though the newer identity-bound topology-705 baseline passes the
+full strict verifier. The default is now topology-705 and a regression test
+pins it. A full gate rerun then passed all software/runtime gates, CTest 55/55,
+QEMU FRR/VPP recovery and 4x1000 ECMP, VMware 2000-packet baseline, and live
+console/mgrd restart. Overall status remains FAIL by design because real PCI
+DPDK preflight is `ENVIRONMENT-OPEN` (no BDF/NIC/hugepages) and no waiver was
+applied. Result: `build/v016-release-gate-5ca9303.env`. CI (`37826105087`),
+Coverage (`37826104942`) and Interop Gate (`37826104905`) all passed. No UART,
+physical reboot, or disk write was used.
+
+### 2026-10-09 latest non-serial verification
+
+On clean pushed HEAD `947a600`, CTest passes 55/55 and the deterministic
+backend contract passes all three stages. The strict current-evidence QEMU
+verifier passes the full FRR/VPP restart and route lifecycle plus 4x1000 ECMP
+soak (4000/4000, zero loss, bucket deltas 3000/1000). The accepted VMware
+polling baseline revalidates at 2000/2000, zero loss, 98.23 pps, p50/p99
+206/449 us; it remains low-rate regression data only. Host PCI preflight
+returns structured schema-v1 `SKIP`/`ENVIRONMENT-OPEN` because there is no
+target BDF, PCI Ethernet function, or hugepages. CI, Coverage and Interop Gate
+all pass on this head (`37824042975`, `37824042760`, `37824042980`), including
+hosted VPP and netns/ping jobs.
+
+The physical installer attempt shown in the user's console photo stopped at
+the fail-safe confirmation guard; the disk was reported untouched. The image
+identity is unknown and no physical installation is accepted. Do not use the
+UART while it is assigned to another assistant. Resume physical install/DPDK
+qualification only with the correct clean installable ISO, explicit disk
+erasure authorization, released UART, and a real traffic generator/peer setup.
+
+### 2026-10-09 physical identity correction and next execution boundary
+
+The latest physical evidence separates two systems that were previously
+conflated. The DANOS-Open r5 traffic ISO booted successfully into LIVE with its
+VPP CLI socket and two I211 DPDK interfaces UP. A later UART prompt was a
+different machine, hostname `R2`, running DANOS Lancaster 2608; its four I211
+functions were bound to `uio_pci_generic`, and a routed ping to the development
+host succeeded 5/5. R2 has no VPP socket/CLI and is not a DANOS-Open artifact,
+so its reachability is useful physical-cabling evidence but cannot close this
+project's VPP/FRR or install gates. The UART is now in use by another assistant
+and must not be accessed until released.
+
+The route/NH/NHGroup contract, current-source QEMU FRR/VPP lifecycle, 4-flow
+ECMP regression baseline, and deterministic CTest are already passing. Keep
+the remaining lane truthful: physical DANOS-Open install/cold-boot and
+VPP/DPDK dataplane/performance remain open; use only the clean r8 installable
+ISO for disk installation and the r5 traffic ISO for LIVE traffic. Next safe
+work is local contract/recovery verification and plan/status synchronization;
+resume physical testing only after the UART owner releases it and the intended
+ISO/target identity is confirmed.
+
+This turn also caught and fixed a stale default in the standalone VMware
+verifier: it had selected old serial logs/ISO despite the unified gate using
+the accepted clean baseline. The verifier defaults now match the clean ISO and
+clean DANOS/peer logs; a CTest configuration assertion prevents regression.
+The default command passes with 2000/2000 packets, zero loss and 98.23 pps;
+full CTest is 53/53, while the stricter line-rate/ECMP-performance claim stays
+open.
+
+### 2026-10-09 follow-up: current-source contract/runtime recheck
+
+On clean `b86aa6d`, local CTest passed 53/53 and the three-stage backend contract
+gate passed (DPA 11/11, programming pipeline, composite Route/NH/NHGroup). The
+strict identity-bound QEMU verifier passed its four-flow soak, next-hop
+withdraw/restore, BGP/OSPF and FRR/zserv/VPP restart/replay checks. VMware's
+default clean-evidence verifier independently passed 2000/2000 with zero loss
+at 98.23 pps; this remains low-rate polling packet regression, not high-load
+ECMP or line rate. CI, Coverage and Interop Gate also pass (`37819360359`,
+`37819360271`, `37819360543`), including hosted VPP V1–V5 and K4/K5 netns/ping.
+
+No serial was accessed in this follow-up. These results close no physical gate:
+the generic installable r8 image has QEMU install/cold-boot evidence, but
+physical installation is unverified; the physical PCI I211 64-byte DPDK lane
+still requires an identified runner plus actual generator measurements.
+Continue keeping those as separate open acceptance items.
+
+The follow-up code change `b3efd92` fixes a preflight integration inconsistency:
+the host DPDK lane emitted schema v1 while the container lane omitted the
+version field. Both missing-BDF paths now share a regression test registered
+in CTest; local CTest is 54/54. This makes external runner output machine-
+consistent but does not supply the still-missing real traffic measurement.
+
+`1008898` closes the consumer side of that schema seam: the DPDK measurement
+recorder now rejects a missing or unsupported preflight schema, and its
+compatibility tests run under CTest. Full local CTest is 55/55; PCI hardware
+and real-generator performance remain open. Commit `c77bb32` also ensures
+validation failures themselves retain the current schema-v1 envelope.
+
+The pushed documentation head `73855dc` is clean and all three GitHub workflows
+pass: CI `37822407128`, Coverage `37822407089`, and Interop Gate `37822407155`.
+The latter completed hosted VPP V1–V5 plus K4/K5 netns/ping successfully. This
+closes the remote validation follow-up for the preflight schema work; it does
+not change the physical PCI/traffic-generator qualification boundary. Serial
+is currently occupied by another assistant, so no UART access, reboot, or
+physical installation was performed in this follow-up.
+
+### 2026-10-08 71361f5 current execution update
+
+The clean code/workflow commit is `71361f5d5ef833c7693a44ce70aa79fe09aae0bd`;
+subsequent `main` commits through `dd7f2bc` are documentation-only. GitHub CI,
+Coverage, and Interop Gate pass on the code commit and a later docs-only commit;
+local CTest is 52/52. The Interop failure on `3881730` was isolated to VPP
+26.06 probing a host NIC before the loopback fixture; disabling
+`dpdk_plugin.so` in this software-only job fixed the index collision, and the
+next workflow run passed.
+
+A clean, identity-bound ISO at `3881730e6b79c1dac41f58b767b86df5069f2d07` and
+isolated three-VM QEMU topology passed the strict lifecycle gate: BGP/OSPF,
+ZAPI add/withdraw/restore, ECMP path down/up, FRR/zserv restart, VPP
+restart/replay and post-restart packets. Four 1000-packet flows were lossless
+(4000/4000), 81.47 pps at 10 ms interval, RTT p50/p99 371.10/1694.50 us, and
+3000/1000 bucket deltas. This is a comparable QEMU functional baseline, not
+PCI throughput. Frozen evidence
+is under `build/qemu-frr-vpp-topology-705c70b-baseline/accepted-final/` and
+indexed in `docs/v0.16-acceptance-matrix.md`. Physical PCI/DPDK remains open.
+
+After the user confirmed serial and Ethernet leads were connected, the earlier
+60-second and a fresh 180-second passive `/dev/ttyUSB0` capture both received
+0 bytes; the latest `build/physical-current-20261008T1016Z.serial.log` records
+`SKIP` for missing `DANOS-INIT-ENTER`. No reboot, host-network change, or disk
+write was performed. Start serial capture before the next target cold boot,
+then check both peer links/carriers and configure two independent peer paths
+before attempting traffic/ECMP. Earlier r5 physical testing passed I211
+bind/runtime preflight but failed traffic because the second path/peer return
+path was unavailable. Do not infer hardware qualification from QEMU or no-byte
+serial output.
+
+### 2026-10-08 v0.16 runtime and release engineering closeout
+
+The tested source `b32204707ff8705bf47c134b5717bbb996316a3c` has 52/52 local
+CTest passes. The clean QEMU e1000 artifact
+`build/danos-vpp-dpdk-e1000-2port-ecmp-soak-1000-b322047.iso` is bound by
+SHA256 `dcce27ec3e49d8efcd4194c00e61eb92c0dcbd8fc606e47bd40fc339102512c1`.
+The strict FRR/VPP topology verifier passes, including BGP/OSPF readiness,
+ZAPI route add/withdraw/restore, FRR/zserv restart, VPP restart/replay,
+post-restart peer packets, ECMP next-hop down/up and a 4 x 1000 packet soak.
+The soak delivered 4000/4000, 0% loss, 81.58 pps, bucket deltas 3000/1000;
+RTT p50/p99 were 373.10/1689.50 us. This is QEMU functional regression data,
+not PCI throughput. The artifact, result, topology manifest and log hashes are
+recorded in `docs/v0.16-acceptance-matrix.md`.
+
+The unified release gate also passes backend contract, CTest, live-console/
+mgrd restart, QEMU FRR/VPP and VMware VMXNET3 polling (2000/2000, 0% loss,
+98.23 pps). It remains `FAIL` with `dpdk_status=ENVIRONMENT-OPEN`: the runner
+has no target `DPDK_PCI_BDF` and zero hugepages. No waiver was applied. The
+physical I211 UART was passively captured for 180 and 120 seconds with no
+bytes; a further 180-second capture on 2026-10-08 also received zero bytes
+(`build/physical-current-20261008T0758Z.serial.log`, UTC). The development host's
+`enp4s0` has carrier but is configured as `192.168.71.1/24`; an exploratory
+ping to `192.168.71.2` received no replies and does not establish the target's
+address or link-layer identity. Current physical boot identity, PCI forwarding
+and throughput therefore remain unverified. The next release-close action is
+to capture a physical cold boot and complete a supported PCI runner lane, not
+to promote QEMU values.
+
+### 2026-10-08 DPA conformance lifecycle assertions
+
+The previously thin VRF, ACL and QoS conformance cases now read back and
+compare object payloads, reject duplicate create, verify updates, and confirm
+delete plus missing-object behavior. ACL coverage includes table lifecycle and
+a full rule payload add/read/duplicate/delete cycle. These are storage/API
+contract checks, not backend forwarding qualification. Full Debug, ASan and
+TSan CTest suites each pass 48/48. ASan passed in a serialized rerun after a
+transient daemon shutdown timeout during concurrent sanitizer suites.
+
+### 2026-10-07 r5 QEMU learned-route lifecycle closeout
+
+Closed the same-prefix real FRR-learned add/withdraw/restore/post-FRR-restart
+packet gate with a fresh clean shared-L2 ISO and isolated three-guest QEMU
+topology. Strict verification passed on live logs and their frozen accepted
+copies; four-flow ECMP delivered 4000/4000 packets with zero loss, 3000/1000
+bucket deltas, and VPP restart/replay passed. Debug, ASan and TSan full CTest
+are each 48/48. Reproducibility identities and artifact digests are in the
+acceptance matrix. This closes the QEMU functional learned-route lifecycle
+item, not transit throughput or hardware qualification. VMware host modules
+and real PCI/DPDK performance remain open external lanes; keep them reported
+as ENVIRONMENT-OPEN and do not promote QEMU measurements to line-rate claims.
+
+### 2026-10-07 acceptance harness hardening
+
+The dynamic FRR log gate now requires separate add and delete commands, a
+positive withdrawal count with no sweep failures, and one successful bridge
+summary. Zero withdrawals, one-sided events, processing failures and duplicate
+summaries are rejected by a new regression test. Its successful output is
+`OBSERVED`, not full runtime acceptance: independent VPP FIB checks and a
+current-artifact topology are still required. QEMU launch output is `STARTED`,
+not `PASS`. Debug CTest passes 42/42; shell syntax and diff checks pass.
+These deterministic checks do not close FRR/restart, packet or PCI gates.
+
+The LIVE builder now compiles `fib_live_bridge` alongside `danos-mgrd` inside
+the same trixie container and copies that fresh binary into the initramfs.
+Host build fallbacks have been removed: they could import stale sources or a
+newer host libc ABI. A dedicated current-source e1000 ISO build and separate
+FRR disk copies were started for topology qualification. Build startup is
+not evidence of successful ISO generation or runtime acceptance; a dirty
+source identity must not be promoted to the clean release performance gate.
+
+Topology verification now reads the manifest without executing shell content,
+hashes the actual ISO, and requires exactly one clean DANOS boot whose commit
+and ISO name match the manifest. Missing/mismatched/dirty identities, duplicate
+manifest keys, changed ISO contents and concatenated boot logs fail closed.
+This identity check precedes the existing lifecycle assertions. Debug CTest
+passes 43/43, including rejection fixtures; it does not itself prove runtime
+forwarding. The dedicated build remains a diagnostic build until regenerated
+from a clean, matching commit.
+
+The first trixie Release build failed on GCC 14's `-Wformat-truncation` in
+`resolve_rpc_path`. Origin copying now uses the fixed-size path field and
+explicit termination; both mgrd and fib_live_bridge rebuild successfully in
+the preserved trixie environment. Debug CTest remains 43/43 PASS. The ISO
+builder now exposes CMake output and fails immediately if its build container
+exits. `DANOS_ISO_BUILD_IMAGE` can select a pre-provisioned trixie build image;
+source targets are still rebuilt and dependencies checked, never taken from
+host build outputs. ISO generation and topology runtime remain unverified.
+
+Follow-up: clean source commit `6d4563a8d8a577dbb2e684fec5ddb99b546c45d0`
+produced `build/danos-clean-frr-20261007.iso` (193986560 bytes), SHA256
+`1ca996ad5879aef862af954690f08f272fa02e310b284471340427d09f1d4349`.
+Build returned zero. The fresh bridge is included; the optional gnmic demo
+is omitted because no gnmic binary was supplied. Three dedicated QEMU guests
+were launched under `build/qemu-current-frr-20261007`, using separate port
+31001/31002/32001/33001/34001 segments and snapshot copies of the historical
+FRR disks, with fresh cloud-init seeds. The manifest binds this ISO/commit.
+Startup is **not PASS**: lifecycle, four-flow 1000-packet soak, independent
+identity verification and recovery assertions are still pending runtime
+events. Physical serial and other assistants' guests were not used.
+
+Runtime observation: ISO content and clean boot identity verification passes;
+VPP API/stat sockets and both e1000 ports are ready. FRR-2 emitted dataplane
+readiness, while FRR-1 remained before cloud-final with the reused disk's long
+route-cycle oneshot already starting. The fresh traffic listener was not yet
+ready. Seeds now runtime-mask that old service in bootcmd (nonblocking stop),
+then unmask it only after fresh dataplane provisioning in runcmd. Revised
+artifacts are prepared under `build/qemu-current-frr-20261007-r2`; both cloud
+config YAML files parse, shell syntax and diff checks pass. They have not yet
+been booted, so the ordering repair remains runtime-unverified. Original
+guest PIDs remain live and are not restarted for an observation timeout.
+Disk headroom dropped to approximately 1.8 GiB; do not launch additional
+builds or broadly prune another assistant's artifacts.
+
+The original run subsequently progressed without intervention: FRR-1
+readiness passed before the 180-second deadline, both path pings passed,
+all four three-packet ECMP probes were loss-free, and bucket deltas were
+11/3. The 1000-packet-per-flow soak started. Thus the earlier provisioning
+delay was not a terminal failure in this run; do not attribute successful
+traffic to the revised, unbooted seed or restart the original guests.
+
+The same original topology completed the four-flow soak (4000/4000, zero
+loss, 49090 ms, 81.48 pps, buckets 3000/1000), ECMP next-hop withdraw/restore
+probes, and an actual VPP restart/replay of four objects. The current adapter
+recorded `ecmp-result.env` under that topology, including complete-sample RTT
+p50/p99 407.30/2924.30 us and a clean ISO identity. CPU/Mbps are unmeasured;
+PCI performance remains ENVIRONMENT-OPEN. Full verifier next stops on the
+pending FRR route-cycle add marker; BGP add/withdraw and OSPF Full were already
+observed. Guests remain live for the scheduled FRR cycle and daemon restart.
+
+At approximately seven minutes the original guests remain active; full
+verification still lacks the FRR route-cycle markers. Source inspection
+found that route-cycle script and unit generation appended to pre-existing
+files on reused disks (unlike the other explicitly truncated generated
+files). These two writes now replace their files, preventing duplicated
+script bodies and multiple oneshot ExecStart entries on subsequent boots.
+Shell syntax and diff checks pass. This is a definite provisioning
+idempotency defect, but no guest-side inspection yet establishes that it
+caused this run's delay; the fix has not been boot-qualified. Do not count
+pending FRR completion as PASS or restart live guests based only on elapsed
+observation time.
+
+Seed-generation verification: `FRR_SEED_ONLY=1` regenerates seeds against
+existing disks without copying them, and refuses a topology whose recorded
+guest PID is live. The idle r2 artifacts were regenerated successfully;
+attempting the mode against the original live topology was rejected with
+exit 2 before seed replacement. Both actual cloud-init route-cycle generation
+commands were executed twice in an isolated temporary directory with systemctl
+stubbed: exactly one script body, one registration delay and one unit ExecStart
+remained. This proves generation idempotency, not guest recovery. Original
+guest processes and completed route-cycle evidence remain intact; the FRR
+restart phase is still pending. No physical serial or external VM was touched.
+
+FRR recovery evidence is now enforced beyond the service PASS marker: an
+ordered restart begin/request-success/completion, latest zebra disconnect
+followed by successful re-registration, positive successful VPP replay and
+subsequent route notification/programming are required. Zero-object replay,
+unrecovered later disconnect and post-reconnect processing errors fail the
+gate. Debug CTest 45/45 passes including negative fixtures. These are log
+ordering checks, not an independent post-restart FIB/packet inspection.
+The original running topology has not yet emitted FRR restart begin; it is
+not qualified by the new deterministic tests.
+
+Independent post-VPP-restart inspection via this topology's own QEMU HMP
+keyboard obtained CLI `show ip fib table 0 198.51.100.0/24`. A bounded
+FIB-CAPTURE-BEGIN/END block after the restart PASS contains the exact prefix,
+API refs:1 and dpo-drop ip4, consistent with this static blackhole test
+prefix. The assertion passed against real output, not bridge programming
+logs. This does not prove forwarding through FRR-learned next hops, or the
+still-unobserved FRR daemon restart. Only the dedicated guest was inspected;
+no physical serial was accessed.
+
+The original FRR log subsequently emitted a second full route-cycle
+add/withdraw/restore/cycle-done sequence. This confirms repeated cycle
+execution in this run, rather than a dead guest; daemon restart remains
+pending behind it. The original guests were not restarted.
+
+A clean current-source VMware polling ISO also completed build:
+`build/danos-vmware-current-20261007.iso`, commit
+`850f60f55c84ecc610ca0f8e51fb30b11fe94bf6`, source_dirty=0, SHA256
+`a900904bb06741f54e1faead345c423c919a42245bff76280bd7c731f067f523`.
+The project runtime profile retains VMXNET3 BDFs 0b:00.0/13:00.0 and
+no-rx-interrupts. No VMware guest was started yet, so build completion is
+not runtime/packet PASS. vmrun was available and reported zero running VMs
+at inspection. Existing project VM configurations remain untouched.
+
+The original FRR restart eventually emitted BEGIN/request rc=0/PASS and
+the bridge observed EOF/disconnect/reconnect. **Full recovery gate FAIL**:
+the strengthened verifier caught three `ZAPI command 31 transaction failed:
+EXISTS` messages after re-registration. Native FRR add dispatch currently
+calls route_create, including blackhole routes, so replay of existing desired
+routes is not idempotent. Do not promote the service marker to full PASS.
+Next fix must handle route replace/replay and NH/NHGroup ownership/cleanup
+transactionally, with tests before a fresh runtime replay.
+
+Matched current-source VMware images were also generated (no guests started):
+`danos-vmware-current-r2-20261007.iso`, SHA256
+`9157a6ea71481601714281e1842c0e0b1021f7c6bf758c4009ec7fdd66c082aa`,
+and `danos-vmware-peer-current-20261007.iso`, SHA256
+`5f7b31cf396eeb8f5f58b5895ae9c39c3df7afd5b9e987fd0b3f009dd1a6a7a6`.
+Both originate from clean a7fec40; DUT uses 192.168.45.3/46.3 with dynamic
+neighbor resolution, peer 192.168.45.2/46.2 with 1000 probes per target.
+The first default-address VMware ISO is not a matched-topology result.
+
+Native FRR dispatch now reads candidate/committed route state before add:
+existing routes update instead of returning EXISTS. Mapper-private NHGroup
+and NH identities remain stable on replay; removed ECMP paths, blackhole
+conversion and route withdrawal retire the old graph in the same transaction.
+Repeated withdraw of an absent route is a no-op. New tests cover candidate
+replay, committed replay, 2-to-1 path shrink, blackhole conversion, restoration
+and full dependency cleanup. Debug CTest 45/45 passes. This closes deterministic
+mapper behavior, not the failed running ISO: rebuild and real FRR restart
+qualification are still required. Externally shared graph ownership and the
+legacy clean-room route mapper are not expanded by this native-FRR change.
+
+The fix is in clean commit `a783c73`; ASan and TSan mapper/e2e subsets each
+pass 3/3. A fresh trixie build produced
+`build/danos-frr-replay-fixed-20261007.iso`, SHA256
+`4a28468d948fc8e2fdf9848d2ffb19a03353bb7b022ca28b3d03f8b10400da27`.
+Old failing-run QEMU PIDs 527171/527184/527194 were stopped after confirming
+their owned topology paths; logs and disks were retained. Corrected seed
+generation was reapplied to idle r2, then new PIDs 577191/577204/577215 were
+launched under `build/qemu-current-frr-20261007-r2`. Manifest matches the
+clean fix commit and actual ISO digest. Runtime validation is pending; no
+restart PASS is inferred from the deterministic checks or launch success.
+
+VMware preflight found that matched-interface DUT/peer r2 images alone do
+not enable the existing four-destination ECMP gate. LIVE peer profiles now
+optionally serialize `DANOS_PEER_EXTRA_ADDRS` (space-separated CIDRs on eth0)
+and `DANOS_PEER_RETURN_GW` (return path for 30.30.30.1/32). Both default empty;
+normal management and physical runner networking are unchanged. The next
+VMware peer profile needs 30.30.30.2–5/24 and return via 192.168.45.3, while
+the DUT must enable the existing traffic/ECMP test. No gate is weakened to
+accept mere local-address pings; these new profiles remain runtime-unverified.
+The current QEMU r2 already reports peer readiness and is running its soak
+without an observed transaction failure at this stage.
+
+Current full-profile VMware ISO generation completed from ceaf482:
+`danos-vmware-ecmp-20261007.iso` SHA256
+`97b55371537c6508ee259a56bcc4c45a1e405a342cf99062baa2036ba341b1ee`,
+peer `danos-vmware-ecmp-peer-20261007.iso` SHA256
+`53e275811b1a3cad097eca97437de893ed8e0c71b43e18f710a81f1447a4daa5`.
+Dedicated VM configurations are under `build/vmware-current-20261007`;
+historical VM configs are unchanged. vmrun start failed before guest boot:
+the VMX diagnostic log reports missing /dev/vmmon, and modinfo reports no
+vmmon module for host kernel 7.0.0-38-generic. Noninteractive sudo modprobe
+requires authentication. VMware is ENVIRONMENT-OPEN, not packet PASS; host
+module installation/loading requires privileged environment preparation.
+Only two owned obsolete unpacked initramfs trees were removed to free about
+1 GiB; retained ISO contents allow re-extraction. No logs/disks were removed.
+The isolated QEMU r2 continues running independently.
+
+Final r2: full strengthened verifier returned zero on live logs and frozen
+`build/qemu-current-frr-20261007-r2/accepted` copies after actual FRR restart,
+zebra disconnect/reconnect and route replay. No replay EXISTS occurred.
+Frozen hashes: DANOS log
+`b8727c082c165652da435691ea506a6a1eff6f43f642683ebc31afd211d70e7d`,
+FRR-1 log `04a945767299b7c706fbab8e308f9a916795fb26dd183bc6739fcaaac7a5219d`,
+ECMP result `41e338d7bd24cd4300586ff31406aa39a5b652904c5da1275c49e20612fe3daa`.
+Debug/ASan/TSan full suites each 45/45 and deterministic/mock contract gate
+PASS. QEMU control-plane/functional recovery qualification closes for this
+clean a783c73 ISO. VMware and real PCI remain open, and neither line rate nor
+independent packet forwarding through FRR-learned paths is inferred from the
+CLI-seeded ECMP packet lane. The full project goal remains incomplete.
+
+VMware host preparation follow-up (2026-10-07): both vendor source archives
+from `/usr/lib/vmware/modules/source` compiled successfully, without source
+patches or system installation, against installed kernel headers. Artifacts:
+`build/vmware-modules-20261007-5MG2Kf/vmmon-only/vmmon.ko` and
+`build/vmware-modules-20261007-5MG2Kf/vmnet-only/vmnet.ko`. Both report vermagic
+`7.0.0-38-generic SMP preempt mod_unload modversions`, matching the running
+kernel. Missing vmlinux only skipped BTF generation; both builds returned zero.
+This closes the local compilation prerequisite, not module loading or VMware
+packet acceptance. `sudo -n /sbin/modprobe vmmon` still requires interactive
+authentication. An administrator must install/load these modules and restore
+VMware host-only networking before the dedicated DUT/peer VMs can run. If
+Secure Boot rejects the modules, administrator-managed signing is also needed;
+do not disable host security automatically. Physical serial remains untouched.
+
+Post-restart packet follow-up: live r2 VPP inspection found both interfaces
+down without addresses; a real ping reported no source address and sent zero
+packets. Historical frozen PASS covers the older replay/reconnect gate, not
+post-restart forwarding. Fix 4cd9585 restores LIVE-owned interface/address/
+neighbor fixtures after VPP restart and requires both peers 3/3 before marking
+restart PASS. Ordered evidence tests reject probes before restart, after PASS,
+latest incomplete restart, failure markers, zero packets and packet loss.
+Debug CTest remains 45/45. The strengthened verifier correctly rejects the old
+frozen log, which remains unchanged. Rebuilt clean ISO:
+`build/danos-post-restart-20261007.iso`, SHA256
+`b8fb6ad44afd7077879bd5c2f07ade75e14e21765f233e47d2303fdc94d26c79`.
+Fresh r3 topology is running under `build/qemu-current-frr-20261007-r3` with
+snapshot overlays backed by retained r2 disks (no large copies). Only the
+three owned, now obsolete r2 processes were terminated; logs/disks remain.
+r3 runtime acceptance is pending; fixture restoration does not prove DPA
+interface persistence or forwarding through FRR-learned paths.
+
+r3 final: live and frozen `accepted/` logs both pass the strengthened full gate.
+Actual VPP restart restores LIVE fixtures and probes both peers 3/3 before PASS;
+FRR restart, zebra reconnect and subsequent positive replay/programming pass.
+ECMP result: 4000/4000, zero loss, 48360 ms, 82.71 pps, buckets 3000/1000,
+RTT p50/p99 346.20/762.00 us. ASan/TSan full suites each 45/45; latest stricter
+ECMP-result/recovery subsets 2/2 in Debug/ASan/TSan. Deterministic contract PASS.
+Frozen SHA256: DANOS log
+`7ddb7f8cb50d6936b8b94b72d89613b6a19f0c8bb0ee8546ddfdb028e30d3b0c`,
+FRR-1 `acefeb7e9f9773bc4bd7f1bf030ea7605678564ab2aeb56ef3fca0e0340fbba4`,
+result `bd7465fcd0ca46e9880107ba63016456f8d67357524aede4bd1503919090c407`.
+Only the obsolete owned `iso-clean-frr-20261007/initramfs` extraction was removed
+to reclaim 541 MiB; its ISO, logs and disks remain for recovery/re-extraction.
+Scope limits above remain: no FRR-learned packet proof, VMware or PCI qualification.
+
+Learned-route forwarding diagnosis: current r3 detailed VPP FIB for
+198.18.0.0/24 is API-owned but its forwarding bucket is `arp-ipv4` via
+172.31.0.3 on GigabitEthernet0/3/0. FRR-1's ens4 peer link carries
+172.31.0.0/24; VPP port 2 instead connects to FRR-2 ens3 on 10.20.0.0/24.
+The existing numeric ifindex map does not make these separate L2 segments
+equivalent. The original advertised 198.18 prefix is also backed by a
+blackhole, not an echo endpoint. Thus adding ping to the current setup cannot
+close the learned-route packet gate without fixing topology and destinations.
+
+Next implementation: introduce an isolated shared L2 qualification segment
+that gives the FRR peer and mapped VPP port the same reachable next hop;
+provide a real endpoint behind an advertised prefix and a symmetric return
+path, then require learned API-owned resolved FIB, actual add/reachability,
+withdraw/non-reachability, restore/reachability and restart recovery. Preserve
+the existing two-port lane as its own historical/control-plane regression.
+Do not rewrite learned gateways or forge neighbors to hide a topology mismatch.
+New `verify_learned_route_fib.py` is only a resolved-FIB prerequisite, explicitly
+not packet acceptance. It checks the latest detailed target entry, API ownership,
+expected gateway/interface and rejects ARP/drop; four fixture tests include
+wrong gateway/interface, stale entry and an unrelated route's adjacency.
+The real r3 diagnostic correctly returns FAIL. Debug CTest now 46/46 PASS;
+this unit result does not close the real learned-route qualification.
+
+Shared-L2 implementation (qualification pending): opt-in
+`FRR_SHARED_PEER_L2=1` joins DUT port 2, FRR-2's dataplane socket and both
+FRR peer sockets on a QEMU hub. All sockets bind/connect only 127.0.0.1;
+the original point-to-point layout stays the default. The seed builder records
+its profile, and launch rejects a shared-mode/legacy-seed mismatch before
+starting guests. Shared-mode FRR seeds suppress weak-host ARP replies and
+provide a real local 198.18.0.1/32 endpoint behind the advertised aggregate.
+Build the DUT with `VPP_IF2_EXTRA_ADDRS=172.31.0.1/24`; the extra address is
+embedded in build identity/network config and restored after VPP restart.
+This changes test fixtures, not learned gateways or production route mapping.
+
+Implementation reference: [QEMU emulated hubs](https://www.qemu.org/docs/master/system/devices/net.html).
+Four launcher assembly tests cover default/shared wiring, invalid mode and
+seed mismatch. A real paused local QEMU accepted three loopback socket hub
+backends and a NIC and remained alive; that is network-startup proof only,
+not guest routing/packet acceptance. Debug CTest is 47/47 PASS. A fresh clean
+ISO and isolated three-guest run are still needed; add/withdraw/restore and
+learned-route post-restart packet probes must follow, not be inferred.
+Only old owned `iso-frr-replay-fixed-20261007/initramfs` was removed for
+541 MiB of build headroom; its ISO, frozen logs and disks are retained.
+
+Shared-mode clean build completed: `build/danos-shared-peer-20261007.iso`,
+source 81a3821 (dirty=0), SHA256
+`e59bda64ba96d6409c44c1866af9e9ca146492cea544a640210410512ec6a15b`.
+Identity reader now exposes `danos_build_if2_extra_addrs=172.31.0.1/24`;
+the primary 10.20.0.1/24 remains unchanged. Isolated r4 topology under
+`build/qemu-current-frr-20261007-r4` launched all three guests using fresh
+snapshot overlays and matching shared-mode seeds. Both FRR guests emit their
+shared-L2 marker and BGP readiness passes. The original r3 owned guests were
+terminated after their logs were frozen; no disks/logs were removed.
+Generated YAML parses correctly; Debug 47/47 PASS, new FIB/wiring subsets
+2/2 in both sanitizer trees. Network boot and unit evidence do not yet qualify
+the learned-route packet lifecycle; current r4 endpoint probe is in progress.
+
+r4 initial learned-route probe now completed: API-owned 198.18.0.0/24 FIB
+resolves via 172.31.0.3 on GigabitEthernet0/3/0; strict FIB prerequisite PASS.
+Between FRR-LEARNED-PROBE-BEGIN/END, actual VPP ping to 198.18.0.1 is 3/3,
+zero loss. Snapshot `learned-initial/` preserves the log/manifest; it is not
+full lifecycle acceptance. Next required work remains withdraw/restore and
+post-VPP/FRR-restart learned-route packet probes, plus independent transit
+traffic as appropriate. Do not infer VMware/PCI or line rate from this probe.
+
+Learned-route lifecycle follow-up: actual r4 VPP restart completed; dynamic
+198.19.0.1 remained reachable 3/3 with API-owned resolved FIB after restart.
+After BGP withdrawal, a source-bound probe sent 3 and received 0, with the
+target FIB entry absent. After actual FRR/zserv restart, the persistent
+198.18.0.1 endpoint again replied 3/3. These are different-prefix partial
+checks, not one complete restored-prefix lifecycle. Frozen partial log:
+`build/qemu-current-frr-20261007-r4/learned-partial/danos.serial.log`, SHA256
+`5e031b13263bcb64bc4c4835f166ff6cb1fe14edc35fbd64856a67f0b9359c0e`.
+
+Implementation for the next fresh run: shared-mode FRR-2 restores its real
+198.19.0.1 endpoint/advertisement after a 60-second withdrawn window. New
+`run_learned_route_cycle.py --topology ... --run` waits for real events,
+checks ownership/liveness of all three guest PIDs, and drives ADD, WITHDRAW,
+RESTORE and POSTFRR probes via the owned DUT HMP keyboard channel. Every phase
+requires exact three-packet statistics and positive phases require target
+replies plus API-owned resolved FIB; withdrawal requires no target entry.
+Validation-only mode runs on frozen logs. Shared-L2 topology verifier requires
+this full cycle, so r4 cannot pass by borrowing another prefix's restart
+result. The tool is VPP-originated functional proof, not transit/PPS.
+Launcher now binds git_commit to embedded ISO identity and records runner
+commit separately, allowing safe reuse of an unchanged clean ISO with new
+seeds/tools. New manifests also hash both seed ISOs; changed/missing seed
+content fails identity checks. Fresh r5 runtime subsequently passed the strict
+live and frozen verifier; see the closeout above and
+`docs/v0.16-acceptance-matrix.md` for identities and digests.
+
