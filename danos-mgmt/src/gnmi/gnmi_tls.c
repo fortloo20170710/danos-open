@@ -8,10 +8,17 @@
 #include <sys/stat.h>
 
 #define MAX_IDENTITIES 256
+#define MAX_ROLE_MAP_BYTES (64 * 1024)
+
+struct tls_identity {
+    unsigned char digest[32];
+    danos_sec_role_t role;
+};
+
 struct danos_gnmi_tls {
     SSL_CTX *ctx;
     size_t count;
-    struct { unsigned char digest[32]; danos_sec_role_t role; } identities[MAX_IDENTITIES];
+    struct tls_identity identities[MAX_IDENTITIES];
 };
 
 static int select_h2(SSL *ssl, const unsigned char **out, unsigned char *len,
@@ -34,6 +41,61 @@ static int hex_digit(char c)
     return -1;
 }
 
+/* Parse one role map from memory. Lines are consumed in the same 255-byte
+ * windows that fgets(3) with a 256-byte buffer produced, so the accepted
+ * language does not change. Returns the identity count, or 0 when the map is
+ * empty, malformed, names an unknown role, or repeats a fingerprint. */
+static size_t parse_role_map(const char *buf, size_t len,
+                             struct tls_identity *out, size_t max)
+{
+    size_t count = 0;
+    size_t pos = 0;
+    while (pos < len) {
+        size_t window_end = pos + 255 < len ? pos + 255 : len;
+        size_t end = pos;
+        while (end < window_end && buf[end] != '\n') end++;
+        bool newline = end < window_end && buf[end] == '\n';
+        size_t line_len = end - pos;
+        if (line_len && buf[pos + line_len - 1] == '\r') line_len--;
+
+        char line[256];
+        memcpy(line, buf + pos, line_len);
+        line[line_len] = '\0';
+        char *p = line + strspn(line, " \t\r\n");
+        if (*p && *p != '#') {
+            char hex[65], role[32], extra;
+            if (count == max ||
+                sscanf(p, "%64s %31s %c", hex, role, &extra) != 2 ||
+                strlen(hex) != 64) return 0;
+            if (strcmp(role, "admin") && strcmp(role, "operator") &&
+                strcmp(role, "viewer")) return 0;
+            danos_sec_role_t r;
+            if (danos_rbac_role_by_name(role, &r)) return 0;
+
+            struct tls_identity id;
+            memset(&id, 0, sizeof(id));
+            for (size_t i = 0; i < 32; i++) {
+                int a = hex_digit(hex[2 * i]), b = hex_digit(hex[2 * i + 1]);
+                if (a < 0 || b < 0) return 0;
+                id.digest[i] = (unsigned char)((a << 4) | b);
+            }
+            for (size_t i = 0; i < count; i++)
+                if (!memcmp(out[i].digest, id.digest, 32)) return 0;
+            id.role = r;
+            out[count++] = id;
+        }
+        pos = newline ? end + 1 : end;
+        if (!newline && end == len) break;
+    }
+    return count;
+}
+
+int danos_gnmi_tls_role_map_valid(const char *text, size_t len)
+{
+    struct tls_identity ids[MAX_IDENTITIES];
+    return parse_role_map(text, len, ids, MAX_IDENTITIES) > 0;
+}
+
 danos_gnmi_tls_t *danos_gnmi_tls_new(const char *cert, const char *key,
                                    const char *ca, const char *roles)
 {
@@ -51,35 +113,15 @@ danos_gnmi_tls_t *danos_gnmi_tls_new(const char *cert, const char *key,
     if (!t) return NULL;
     FILE *f = fopen(roles, "r");
     if (!f) goto fail;
-    char line[256], hex[65], role[32], extra;
-    bool valid = true;
-    while (fgets(line, sizeof(line), f)) {
-        char *p = line + strspn(line, " \t\r\n");
-        if (!*p || *p == '#') continue;
-        if (t->count == MAX_IDENTITIES ||
-            sscanf(p, "%64s %31s %c", hex, role, &extra) != 2 ||
-            strlen(hex) != 64) { valid = false; break; }
-        danos_sec_role_t r;
-        if (strcmp(role, "admin") && strcmp(role, "operator") && strcmp(role, "viewer")) {
-            valid = false; break;
-        }
-        if (danos_rbac_role_by_name(role, &r)) { valid = false; break; }
-        for (size_t i = 0; i < 32; i++) {
-            int a = hex_digit(hex[2*i]), b = hex_digit(hex[2*i+1]);
-            if (a < 0 || b < 0) { valid = false; break; }
-            t->identities[t->count].digest[i] = (unsigned char)((a << 4) | b);
-        }
-        if (!valid) break;
-        for (size_t i = 0; i < t->count; i++) {
-            if (!memcmp(t->identities[i].digest, t->identities[t->count].digest, 32))
-                valid = false;
-        }
-        if (!valid) break;
-        t->identities[t->count++].role = r;
-    }
-    if (ferror(f)) valid = false;
+    char *text = malloc(MAX_ROLE_MAP_BYTES + 1);
+    if (!text) { fclose(f); goto fail; }
+    size_t text_len = fread(text, 1, MAX_ROLE_MAP_BYTES + 1, f);
+    bool overflow = ferror(f) || text_len > MAX_ROLE_MAP_BYTES;
     fclose(f);
-    if (!valid || !t->count) goto fail;
+    if (overflow) { free(text); goto fail; }
+    t->count = parse_role_map(text, text_len, t->identities, MAX_IDENTITIES);
+    free(text);
+    if (!t->count) goto fail;
     t->ctx = SSL_CTX_new(TLS_server_method());
     if (!t->ctx || !SSL_CTX_set_min_proto_version(t->ctx, TLS1_2_VERSION) ||
         !SSL_CTX_set_cipher_list(t->ctx,

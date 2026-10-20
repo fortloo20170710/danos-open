@@ -94,13 +94,14 @@ jobs:
       - name: Build
         run: |
           cmake --build build-fuzz -j$(nproc) --target fuzz_decoders
-          cmake --build build-fuzz -j$(nproc) --target fuzz_gnmi_pb fuzz_hpack fuzz_h2_header
+          cmake --build build-fuzz -j$(nproc) --target fuzz_gnmi_pb fuzz_hpack fuzz_h2_header fuzz_tls
       - name: Fuzz smoke
         run: |
           ./build-fuzz/danos-test/fuzz_decoders -runs=1000
           ./build-fuzz/danos-test/fuzz_gnmi_pb -runs=10000
           ./build-fuzz/danos-test/fuzz_hpack -runs=10000
           ./build-fuzz/danos-test/fuzz_h2_header -runs=10000
+          ./build-fuzz/danos-test/fuzz_tls -runs=10000 danos-test/fuzz/corpus_tls
 
   concurrent-scale:
     name: Scale (32 concurrent gNMI connections)
