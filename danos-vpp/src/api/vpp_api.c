@@ -208,7 +208,9 @@ static int vpp_handshake(void)
     int n = vpp_wire_recv_fd(g_ctx.msg_fd, rbuf, sizeof(rbuf));
     if (n <= 2) return -1;
 
-    uint32_t frame_len = (uint32_t)n;
+    /* rbuf[0..1] is the 16-bit frame length prefix; the reader must stop
+     * at n-2, exactly like the transact path below. */
+    uint32_t frame_len = (uint32_t)n - 2;
     uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
     /* VPP assigns socket-control reply IDs from the runtime API table; they
      * are not necessarily request_id + 1 (26.10 returns a dynamic ID). */
