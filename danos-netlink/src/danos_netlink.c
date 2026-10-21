@@ -371,10 +371,13 @@ static danos_status_t nl_route_read(const danos_route_t *desired)
                 ? RT_TABLE_MAIN : desired->vrf_id;
         bool expected_blackhole =
             (desired->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
+        bool route_type_matches = expected_blackhole
+            ? rt->rtm_type == RTN_BLACKHOLE
+            : rt->rtm_type == RTN_UNICAST;
         if (table != expected_table ||
             !ipv4_prefix_equal(dst_addr, desired->prefix.addr.addr,
                                desired->prefix.prefix_len) ||
-            (rt->rtm_type == RTN_BLACKHOLE) != expected_blackhole)
+            !route_type_matches)
             continue;
         return DANOS_OK;
     }

@@ -94,6 +94,12 @@ add_executable(programming_pipeline_test integration_test/programming_pipeline_t
 target_link_libraries(programming_pipeline_test PRIVATE danos-netlink danos-vpp danos-mgmt danos-core danos-dpa pthread)
 target_compile_options(programming_pipeline_test PRIVATE -UNDEBUG)
 add_test(NAME programming_pipeline COMMAND programming_pipeline_test)
+add_executable(netlink_route_readback_test
+  integration_test/netlink_route_readback_test.c)
+target_link_libraries(netlink_route_readback_test PRIVATE danos-netlink danos-core pthread)
+target_compile_options(netlink_route_readback_test PRIVATE -UNDEBUG)
+add_test(NAME netlink_route_readback COMMAND netlink_route_readback_test)
+set_tests_properties(netlink_route_readback PROPERTIES TIMEOUT 10)
 
 # v0.12: gNMI composite route write end to end
 add_executable(route_composite_test integration_test/route_composite_test.c)
