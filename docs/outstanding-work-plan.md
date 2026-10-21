@@ -35,9 +35,12 @@
   duplicate route add.
 - The deterministic pipeline regression deletes a programmed mock-kernel
   route out of band, confirms it is restored on the next pass, and checks the
-  OPER snapshot is repopulated. Full route-attribute/NHGroup equality, VRF
-  readback and VPP route/interface dump bindings remain open; this change is
-  presence/drift repair, not complete hardware FIB truth.
+  OPER snapshot is repopulated. A separate read-only RTM_GETROUTE test on the
+  host confirms an absent exact TEST-NET prefix is reported as `NOT_FOUND`.
+  CTest is 85/85; backend contract and both targeted ASan/UBSan tests pass.
+  Full route-attribute/NHGroup equality, VRF readback and VPP route/interface
+  dump bindings remain open; this change is presence/drift repair, not
+  complete hardware FIB truth.
 
 ### 2026-10-20 hardening, coverage and repository hygiene
 

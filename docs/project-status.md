@@ -16,7 +16,7 @@
 已通过的工程验证：
 
 - x86_64 / aarch64 构建，`-Wall -Wextra -Wpedantic -Werror`
-- 全量 CTest 84 项（普通构建 2026-10-21；ASan+UBSan 81 项，2026-10-20）
+- 全量 CTest 85 项（普通构建 2026-10-21；ASan+UBSan 81 项，2026-10-20；本轮两个定向 ASan 用例通过）
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
