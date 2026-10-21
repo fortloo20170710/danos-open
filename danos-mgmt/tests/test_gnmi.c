@@ -109,7 +109,9 @@ int test_gnmi_not_found(void)
 int test_gnmi_server_lifecycle(void)
 {
     danos_gnmi_ctx_t ctx;
-    danos_gnmi_init(&ctx, 18080);
+    /* Port zero asks the kernel for an ephemeral port.  The lifecycle test
+     * only checks start/stop and must not collide with unrelated local apps. */
+    danos_gnmi_init(&ctx, 0);
     assert(ctx.listen_fd == -1);
     assert(ctx.running == false);
 
