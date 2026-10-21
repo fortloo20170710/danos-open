@@ -16,6 +16,9 @@
   aggregate JSON preserves `ENVIRONMENT-OPEN` and never claims physical
   performance acceptance. Release build and CTest passed 84/84 after one
   transient `gnmi_grpc` SIGPIPE; the isolated test and full rerun both passed.
+  The gNMI connection-level incremental parser/per-stream dispatch regression
+  then passed 10 consecutive runs; `TODO.md` and `threading.md` now reflect
+  that implementation rather than listing it as unstarted.
   The deterministic backend contract passed all three stages (DPA 11/11,
   programming pipeline, composite Route/NH/NHGroup).
 - Current workspace no longer contains the archived QEMU topology or ISO
@@ -260,7 +263,9 @@ Execution priority, as confirmed on 2026-10-15:
    complete identity-bound four-node checks, test live VPP reconnect/recovery
    with mgrd active, and deploy/verify production PKI/mTLS before enabling
    physical management.
-2. **gNMI Subscribe semantics / user experience (in progress).** The committed
+2. **gNMI Subscribe semantics / user experience.** Connection-level incremental
+   parsing and per-stream dispatch are implemented; the older unchecked TODO
+   and threading note have now been reconciled. The committed
    implementation now honors STREAM `updates_only`, emits the required
    initial `sync_response`, applies JSON versus JSON_IETF TypedValue selection,
    and removes an unconditional sleep after event/timed waits. Protocol tests

@@ -60,8 +60,9 @@
       （仅为 ISO 网络 smoke test，不替代 VPP/DPDK 验收）
 - [x] 为 live ISO 增加 `virtio-net` 及 failover 依赖并完成 QEMU virtio 网络 smoke test
 - [ ] v0.16 收敛前冻结 OVS/P4、BFD 及大范围模型扩展，避免主链路分散
-- [ ] gNMI Subscribe STREAM 多订阅状态机(单连接多流;
-      threading.md 已列为候选)
+- [x] gNMI Subscribe STREAM 单连接多流状态机：增量 HEADERS/CONTINUATION 与
+      DATA/gRPC 解析、per-stream 分派/取消、同连接 unary RPC 及多 STREAM 回归均已实现；
+      剩余订阅语义限制（`use_models`、异构路径合同等）另行跟踪
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)

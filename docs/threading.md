@@ -43,5 +43,8 @@
 
 ## 待扩展
 
-- gNMI Subscribe STREAM 长连接占用其连接线程;若需单连接多订阅,
-  需引入每流状态机(记录于 v0.9 候选)。
+- gNMI Subscribe STREAM 已由连接拥有增量 HTTP/2/gRPC 解码状态，并按
+  stream id 保存分派/取消状态；单连接可并行服务多个 STREAM 与 unary RPC。
+  HTTP/2 parser 最多跟踪 256 个 stream，活动订阅按
+  [`management-resource-limits.md`](management-resource-limits.md) 限制为 32。
+  `use_models`、异构路径合同等未支持的订阅语义仍明确拒绝，不静默降级。
