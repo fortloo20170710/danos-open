@@ -1,5 +1,28 @@
 # Outstanding work plan
 
+### 2026-10-21 NETCONF consolidation and virtual-evidence preflight
+
+- Consolidated and pushed the NETCONF `validate` / confirmed-commit
+  prototype (`8a58aa7`) and ephemeral gNMI test-port fix (`3228741`). The
+  latter's GitHub CI, Coverage and Interop Gate workflows all completed
+  successfully. NETCONF confirmed-commit remains a prototype: session-local
+  state means cross-session/reboot persistence and rollback are not yet
+  production-qualified.
+- Added a virtual-lane preflight so a cleaned/missing QEMU archive is recorded
+  as structured `ENVIRONMENT-OPEN`, like missing VMware evidence, instead of
+  being misreported as a product/test `FAIL`. Malformed or failing evidence
+  that is actually present still goes through the strict result verifier.
+- Added a regression test that exercises both missing lanes and verifies the
+  aggregate JSON preserves `ENVIRONMENT-OPEN` and never claims physical
+  performance acceptance. Release build and CTest passed 84/84 after one
+  transient `gnmi_grpc` SIGPIPE; the isolated test and full rerun both passed.
+  The deterministic backend contract passed all three stages (DPA 11/11,
+  programming pipeline, composite Route/NH/NHGroup).
+- Current workspace no longer contains the archived QEMU topology or ISO
+  artifacts, and VMware `vmmon`/`vmnet` plus a fresh paired guest run remain
+  unavailable. Revalidation therefore correctly stays `ENVIRONMENT-OPEN`;
+  physical PCI performance and live R2/R3 recovery remain open as well.
+
 ### 2026-10-20 hardening, coverage and repository hygiene
 
 - Applied the P0–P2 review findings in grouped commits: WAL replay health and

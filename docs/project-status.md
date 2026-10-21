@@ -1,6 +1,6 @@
 # DANOS-Open 项目状态
 
-> 版本：v0.16.0-rc1 ｜ 更新：2026-10-20
+> 版本：v0.16.0-rc1 ｜ 更新：2026-10-21
 >
 > 本页只保留**当前状态**。按日期追加的完整验证记录已归档到
 > [`docs/archive/project-status-log.md`](archive/project-status-log.md)。
@@ -16,7 +16,7 @@
 已通过的工程验证：
 
 - x86_64 / aarch64 构建，`-Wall -Wextra -Wpedantic -Werror`
-- 全量 CTest 81 项（普通构建与 ASan+UBSan 构建）
+- 全量 CTest 84 项（普通构建 2026-10-21；ASan+UBSan 81 项，2026-10-20）
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
