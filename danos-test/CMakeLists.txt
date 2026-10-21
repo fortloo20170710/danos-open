@@ -220,9 +220,12 @@ set_tests_properties(qemu_ecmp_failover_window PROPERTIES TIMEOUT 30)
 
 add_test(NAME performance_baseline_report
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_report_baselines.py)
+add_test(NAME virtual_baseline_missing_artifacts
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_virtual_baseline_lanes.py)
 add_test(NAME physical_pci_identity
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_physical_pci_id.py)
-set_tests_properties(performance_baseline_report physical_pci_identity PROPERTIES TIMEOUT 30)
+set_tests_properties(performance_baseline_report virtual_baseline_missing_artifacts
+  physical_pci_identity PROPERTIES TIMEOUT 30)
 add_test(NAME virtual_cpu_capture
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_capture_vm_cpu.py)
 set_tests_properties(virtual_cpu_capture PROPERTIES TIMEOUT 30)
