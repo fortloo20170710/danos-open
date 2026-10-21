@@ -298,11 +298,15 @@ Execution priority, as confirmed on 2026-10-15:
 4. **NETCONF SSH transport.** Done. OpenSSH provides transport and
    authentication; `danos-netconf-subsystem` implements RFC 6242 end-of-message
    and chunked framing, negotiates base 1.1, and maps the SSH user plus
-   `DANOS_NETCONF_ROLE` into RBAC. Advertised capabilities now match behavior
-   (`commit`, `discard-changes`, `lock`, `unlock`, `kill-session` answer
-   `operation-not-supported`), and `edit-config` applies every interface block
-   atomically. See `docs/management-netconf-ssh.md`. The Interop workflow runs
-   the subsystem over a loopback `sshd`.
+   `DANOS_NETCONF_ROLE` into RBAC. Advertised capabilities match behavior
+   (`kill-session` answers `operation-not-supported`), and `edit-config`
+   applies every interface block atomically. Datastores include candidate and
+   startup, and `validate` is implemented. Confirmed commit has an in-process
+   timeout/session-close prototype only; persistent token confirmation across
+   SSH sessions and restart rollback remain open because each subsystem is a
+   separate process. Keep it out of release acceptance. See
+   `docs/management-netconf-ssh.md`. The Interop workflow runs the subsystem
+   over a loopback `sshd`.
 5. **Supply-chain and repository hygiene.** Pin remaining dependencies and
    base images, add SBOM and artifact provenance/signing, and decide separately
    whether to rewrite history to remove the tracked large document.
@@ -599,9 +603,12 @@ identity, mapped to RBAC by `DANOS_NETCONF_ROLE`.
 The candidate and startup datastores followed: candidate edits are published
 by `commit` in one DPA transaction, `discard-changes` drops them, `lock` and
 `unlock` track per-session ownership, `copy-config` moves data among the three
-datastores, and startup is a checksummed, atomically replaced file. Candidate
-state and locks are process-local because each SSH session is its own
-subsystem process; hosting NETCONF in one daemon remains open.
+datastores, and startup is a checksummed, atomically replaced file. `validate`
+checks a named datastore or an inline config, and confirmed commit rolls back
+on timeout, `cancel-commit`, or session close unless a persist token keeps it
+pending. Candidate state, locks and pending confirmed commits are
+process-local because each SSH session is its own subsystem process; hosting
+NETCONF in one daemon remains open.
 
 Remaining scope for `edit-config` is the modeled subtree: it covers only the
 interface `mtu`/`enabled` leaves, on interfaces that already exist.

@@ -37,6 +37,14 @@ COPY_TO_STARTUP = (
 LOCK = b"<rpc><lock><target><running/></target></lock></rpc>"
 UNLOCK = b"<rpc><unlock><target><running/></target></unlock></rpc>"
 COMMIT = b"<rpc><commit/></rpc>"
+VALIDATE = b"<rpc><validate><source><running/></source></validate></rpc>"
+CONFIRM_PERSIST = (
+    b"<rpc><commit><confirmed/><confirm-timeout>30</confirm-timeout>"
+    b"<persist>integ1</persist></commit></rpc>"
+)
+CANCEL_PERSIST = (
+    b"<rpc><cancel-commit><persist-id>integ1</persist-id></cancel-commit></rpc>"
+)
 CLOSE = b"<rpc><close-session/></rpc>"
 
 
@@ -125,6 +133,8 @@ def run(host, port, key, user, base11):
     assert b"capability:writable-running" in hello
     assert b"capability:candidate" in hello
     assert b"capability:startup" in hello
+    assert b"capability:validate" in hello
+    assert b"confirmed-commit" in hello
     assert b"session-id" in hello
 
     if base11:
@@ -136,15 +146,16 @@ def run(host, port, key, user, base11):
     assert b"<data>" in reply and b"<interfaces" in reply, reply
 
     # Datastore surface: copy running to startup, read it back, lock and
-    # unlock, then commit an empty candidate.
-    extra = [COPY_TO_STARTUP, GET_STARTUP, LOCK, UNLOCK, COMMIT]
+    # unlock, validate, then exercise a persisted confirmed commit.
+    extra = [COPY_TO_STARTUP, GET_STARTUP, LOCK, UNLOCK, VALIDATE,
+             CONFIRM_PERSIST, CANCEL_PERSIST, COMMIT]
     if base11:
         s.write(b"".join(chunked(rpc) for rpc in extra))
         replies = [s.read_chunked() for _ in extra]
     else:
         s.write(b"".join(rpc + EOM for rpc in extra))
         replies = [s.read_eom() for _ in extra]
-    for idx in (0, 2, 3, 4):
+    for idx in (0, 2, 3, 4, 5, 6, 7):
         assert b"<ok/>" in replies[idx], replies[idx]
     assert b"<data>" in replies[1], replies[1]
 

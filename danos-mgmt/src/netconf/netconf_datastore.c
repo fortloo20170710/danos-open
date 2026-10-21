@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #define DS_PATH_MAX       4096
@@ -23,6 +24,8 @@
 #define DS_FILE_VERSION   1u
 #define DS_HEADER_SIZE    16u
 #define DS_RECORD_SIZE    20u
+#define DS_PERSIST_MAX    64u
+#define DS_CONFIRM_TIMEOUT_DEFAULT 600u
 
 typedef struct {
     bool              initialized;
@@ -30,6 +33,13 @@ typedef struct {
     danos_object_store_t *startup;
     bool              startup_valid;   /* false when the file is corrupt */
     danos_object_store_t *candidate;   /* NULL means "equal to running" */
+
+    /* Pending confirmed commit. */
+    bool                  confirmed;
+    danos_object_store_t *confirmed_baseline;
+    uint64_t              confirmed_session;
+    char                  confirmed_persist[DS_PERSIST_MAX + 1];
+    struct timespec       confirmed_deadline;
 
     struct {
         uint64_t session;
@@ -40,8 +50,20 @@ typedef struct {
 static ds_state_t g_ds;
 static pthread_mutex_t g_ds_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* One timer thread handles every pending confirmed commit.  A generation
+ * counter lets a replaced or confirmed commit disarm the previous wait. */
+static pthread_cond_t  g_confirmed_cv = PTHREAD_COND_INITIALIZER;
+static pthread_t       g_confirmed_thread;
+static bool            g_confirmed_thread_started;
+static bool            g_confirmed_stop;
+static uint64_t        g_confirmed_gen;
+
 static netconf_ds_status_t status_from_danos(danos_status_t st);
 static bool write_allowed_locked(netconf_datastore_t ds, uint64_t session_id);
+static netconf_ds_status_t apply_snapshot_locked(danos_object_store_t *snapshot,
+                                                 uint64_t session_id,
+                                                 bool enforce_lock);
+static void confirmed_disarm_locked(void);
 
 /* ---- little-endian helpers --------------------------------------------- */
 
@@ -388,9 +410,28 @@ void netconf_ds_init(const char *startup_path)
 void netconf_ds_fini(void)
 {
     pthread_mutex_lock(&g_ds_lock);
+    if (g_confirmed_thread_started) {
+        g_confirmed_stop = true;
+        g_confirmed_gen++;
+        pthread_cond_broadcast(&g_confirmed_cv);
+    }
+    pthread_mutex_unlock(&g_ds_lock);
+
+    if (g_confirmed_thread_started) {
+        (void)pthread_join(g_confirmed_thread, NULL);
+        g_confirmed_thread_started = false;
+    }
+
+    pthread_mutex_lock(&g_ds_lock);
+    if (g_ds.confirmed) {
+        /* No session remains to confirm, so revert before dropping state. */
+        (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+        danos_object_store_destroy(g_ds.confirmed_baseline);
+    }
     danos_object_store_destroy(g_ds.startup);
     danos_object_store_destroy(g_ds.candidate);
     free(g_ds.path);
+    g_confirmed_stop = false;
     memset(&g_ds, 0, sizeof(g_ds));
     pthread_mutex_unlock(&g_ds_lock);
 }
@@ -540,12 +581,14 @@ static netconf_ds_status_t status_from_danos(danos_status_t st)
 }
 
 /* Caller holds g_ds_lock.  Stages the difference between `snapshot` and
- * running into a single transaction and publishes it atomically. */
+ * running into a single transaction and publishes it atomically.  Lock
+ * enforcement is skipped for the confirmed-commit timeout rollback. */
 static netconf_ds_status_t apply_snapshot_locked(danos_object_store_t *snapshot,
-                                                 uint64_t session_id)
+                                                 uint64_t session_id,
+                                                 bool enforce_lock)
 {
     if (!snapshot || !g_default_store) return NETCONF_DS_INVALID;
-    if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id))
+    if (enforce_lock && !write_allowed_locked(NETCONF_DS_RUNNING, session_id))
         return NETCONF_DS_LOCKED;
 
     struct ref_list running = {0}, wanted = {0};
@@ -672,6 +715,13 @@ void netconf_ds_release_session(uint64_t session_id)
             g_ds.lock[i].identity[0] = '\0';
         }
     }
+    /* RFC 6241 8.4: a non-persisted confirmed commit is rolled back when the
+     * issuing session ends. */
+    if (g_ds.confirmed && g_ds.confirmed_persist[0] == '\0' &&
+        g_ds.confirmed_session == session_id) {
+        (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+        confirmed_disarm_locked();
+    }
     pthread_mutex_unlock(&g_ds_lock);
 }
 
@@ -696,22 +746,200 @@ static bool write_allowed_locked(netconf_datastore_t ds, uint64_t session_id)
 
 /* ---- commit / discard / copy -------------------------------------------- */
 
-netconf_ds_status_t netconf_ds_commit(uint64_t session_id)
+static void confirmed_disarm_locked(void)
 {
+    g_ds.confirmed = false;
+    danos_object_store_destroy(g_ds.confirmed_baseline);
+    g_ds.confirmed_baseline = NULL;
+    g_ds.confirmed_session = 0;
+    g_ds.confirmed_persist[0] = '\0';
+    g_confirmed_gen++;
+    pthread_cond_broadcast(&g_confirmed_cv);
+}
+
+static bool confirm_allowed_locked(uint64_t session_id, const char *persist_id)
+{
+    if (!g_ds.confirmed) return false;
+    if (g_ds.confirmed_persist[0] != '\0')
+        return persist_id && strcmp(persist_id, g_ds.confirmed_persist) == 0;
+    return g_ds.confirmed_session == session_id;
+}
+
+/* Reverts running to the baseline when no confirming commit arrives. */
+static void *confirmed_timer_fn(void *arg)
+{
+    (void)arg;
+    pthread_mutex_lock(&g_ds_lock);
+    while (!g_confirmed_stop) {
+        if (!g_ds.confirmed) {
+            pthread_cond_wait(&g_confirmed_cv, &g_ds_lock);
+            continue;
+        }
+
+        uint64_t gen = g_confirmed_gen;
+        struct timespec deadline = g_ds.confirmed_deadline;
+        int rc = pthread_cond_timedwait(&g_confirmed_cv, &g_ds_lock, &deadline);
+        if (g_confirmed_stop) break;
+        if (!g_ds.confirmed || g_confirmed_gen != gen) continue;
+
+        if (rc == ETIMEDOUT) {
+            netconf_ds_status_t st =
+                apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+            if (st != NETCONF_DS_OK)
+                fprintf(stderr,
+                        "netconf: confirmed commit rollback failed (status %d)\n",
+                        (int)st);
+            confirmed_disarm_locked();
+        }
+    }
+    pthread_mutex_unlock(&g_ds_lock);
+    return NULL;
+}
+
+static bool ensure_timer_locked(void)
+{
+    if (g_confirmed_thread_started) return true;
+    g_confirmed_stop = false;
+    if (pthread_create(&g_confirmed_thread, NULL, confirmed_timer_fn, NULL)
+        != 0)
+        return false;
+    g_confirmed_thread_started = true;
+    return true;
+}
+
+bool netconf_ds_confirmed_pending(void)
+{
+    pthread_mutex_lock(&g_ds_lock);
+    bool pending = g_ds.confirmed;
+    pthread_mutex_unlock(&g_ds_lock);
+    return pending;
+}
+
+netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
+                                      const netconf_commit_opts_t *opts)
+{
+    const bool confirmed = opts && opts->confirmed;
+    const char *persist = opts ? opts->persist : NULL;
+    const char *persist_id = opts ? opts->persist_id : NULL;
+
+    if (persist_id && confirmed) return NETCONF_DS_INVALID;
+    if (persist && !confirmed) return NETCONF_DS_INVALID;
+    if (persist && (persist[0] == '\0' ||
+                    strlen(persist) > DS_PERSIST_MAX))
+        return NETCONF_DS_INVALID;
+
     pthread_mutex_lock(&g_ds_lock);
     netconf_ds_status_t rc = NETCONF_DS_OK;
 
     if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
         !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
         rc = NETCONF_DS_LOCKED;
-    } else if (g_ds.candidate) {
-        rc = apply_snapshot_locked(g_ds.candidate, session_id);
+    } else if (!confirmed) {
+        /* A plain commit confirms a pending confirmed commit, if this
+         * session is allowed to confirm it. */
+        if (g_ds.confirmed) {
+            if (!confirm_allowed_locked(session_id, persist_id))
+                rc = NETCONF_DS_DENIED;
+        } else if (persist_id) {
+            rc = NETCONF_DS_INVALID;    /* nothing to confirm */
+        }
+
         if (rc == NETCONF_DS_OK) {
-            /* The candidate now equals running; drop the snapshot and let
-             * the next edit take a fresh one. */
+            if (g_ds.candidate)
+                rc = apply_snapshot_locked(g_ds.candidate, session_id, true);
+            if (rc == NETCONF_DS_OK) {
+                /* The candidate now equals running; drop the snapshot and
+                 * let the next edit take a fresh one. */
+                danos_object_store_destroy(g_ds.candidate);
+                g_ds.candidate = NULL;
+                if (g_ds.confirmed) confirmed_disarm_locked();
+            }
+        }
+    } else {
+        const bool replacing = g_ds.confirmed;
+        if (replacing && g_ds.confirmed_session != session_id) {
+            rc = NETCONF_DS_DENIED;
+        }
+
+        danos_object_store_t *baseline = NULL;
+        if (rc == NETCONF_DS_OK && !replacing) {
+            baseline = store_clone(g_default_store);
+            if (!baseline) rc = NETCONF_DS_NOMEM;
+        }
+        if (rc == NETCONF_DS_OK && !ensure_timer_locked())
+            rc = NETCONF_DS_FAILED;
+        if (rc == NETCONF_DS_OK && g_ds.candidate)
+            rc = apply_snapshot_locked(g_ds.candidate, session_id, true);
+
+        if (rc == NETCONF_DS_OK) {
             danos_object_store_destroy(g_ds.candidate);
             g_ds.candidate = NULL;
+            if (!replacing) g_ds.confirmed_baseline = baseline;
+            g_ds.confirmed = true;
+            g_ds.confirmed_session = session_id;
+            snprintf(g_ds.confirmed_persist,
+                     sizeof(g_ds.confirmed_persist), "%s",
+                     persist ? persist : "");
+            uint32_t timeout = opts->timeout_s ? opts->timeout_s
+                                               : DS_CONFIRM_TIMEOUT_DEFAULT;
+            (void)clock_gettime(CLOCK_REALTIME, &g_ds.confirmed_deadline);
+            g_ds.confirmed_deadline.tv_sec += (time_t)timeout;
+            g_confirmed_gen++;
+            pthread_cond_broadcast(&g_confirmed_cv);
+        } else if (!replacing) {
+            danos_object_store_destroy(baseline);
         }
+    }
+
+    pthread_mutex_unlock(&g_ds_lock);
+    return rc;
+}
+
+netconf_ds_status_t netconf_ds_cancel_commit(uint64_t session_id,
+                                             const char *persist_id)
+{
+    pthread_mutex_lock(&g_ds_lock);
+    netconf_ds_status_t rc = NETCONF_DS_OK;
+
+    if (!g_ds.confirmed) {
+        rc = NETCONF_DS_INVALID;
+    } else if (!confirm_allowed_locked(session_id, persist_id)) {
+        rc = NETCONF_DS_DENIED;
+    } else {
+        rc = apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+        if (rc == NETCONF_DS_OK) confirmed_disarm_locked();
+    }
+
+    pthread_mutex_unlock(&g_ds_lock);
+    return rc;
+}
+
+/* ---- validation --------------------------------------------------------- */
+
+struct validate_ctx {
+    bool ok;
+};
+
+static void validate_iter(danos_object_entry_t *e, void *user)
+{
+    struct validate_ctx *v = user;
+    if (!v->ok) return;
+    if (!payload_valid((uint16_t)e->type, e->data, e->data_size))
+        v->ok = false;
+}
+
+netconf_ds_status_t netconf_ds_validate(netconf_datastore_t ds)
+{
+    pthread_mutex_lock(&g_ds_lock);
+    bool nomem = false;
+    danos_object_store_t *store = ds_store_locked(ds, &nomem);
+    netconf_ds_status_t rc;
+    if (!store) {
+        rc = nomem ? NETCONF_DS_NOMEM : NETCONF_DS_INVALID;
+    } else {
+        struct validate_ctx v = { .ok = true };
+        danos_object_iterate(store, validate_iter, &v);
+        rc = v.ok ? NETCONF_DS_OK : NETCONF_DS_INVALID;
     }
     pthread_mutex_unlock(&g_ds_lock);
     return rc;
@@ -750,7 +978,7 @@ netconf_ds_status_t netconf_ds_copy(netconf_datastore_t from,
     } else if (!write_allowed_locked(to, session_id)) {
         rc = NETCONF_DS_LOCKED;
     } else if (to == NETCONF_DS_RUNNING) {
-        rc = apply_snapshot_locked(src, session_id);
+        rc = apply_snapshot_locked(src, session_id, true);
     } else if (to == NETCONF_DS_CANDIDATE) {
         danos_object_store_t *copy = store_clone(src);
         if (!copy) rc = NETCONF_DS_NOMEM;

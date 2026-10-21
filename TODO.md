@@ -67,6 +67,8 @@
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
+- [x] NETCONF validate（具名 datastore 与 inline config；对 modeled interface leaves 做语义校验）
+- [~] NETCONF confirmed commit：单进程超时/会话关闭原型已实现；跨 SSH 会话的 persist/persist-id、进程/重启恢复和共享 running datastore 未完成，不作为生产验收
 - [ ] NETCONF 单守护进程托管：让 candidate 与锁跨 SSH 会话共享（当前每会话一个进程）
 
 ## 质量

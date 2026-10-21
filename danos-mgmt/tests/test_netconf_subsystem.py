@@ -118,7 +118,8 @@ def test_base_1_0(binary, startup_path):
     assert b"capability:candidate" in hello
     assert b"capability:startup" in hello
     assert b"rollback-on-error" not in hello
-    assert b"capability:validate" not in hello
+    assert b"capability:validate" in hello
+    assert b"confirmed-commit" in hello
     assert b"<session-id>" in hello
 
     # Client hello and pipelined RPCs in one write: the bytes after the
@@ -155,13 +156,49 @@ def test_bad_chunk(binary):
 def test_unknown_rpc(binary):
     s = Session(binary, env_for())
     s.read_eom()
-    s.write(HELLO_10 + EOM + b"<rpc><validate><source><running/></source></validate></rpc>" + EOM)
+    s.write(HELLO_10 + EOM + b"<rpc><kill-session/></rpc>" + EOM)
     reply = s.read_eom()
     assert b"operation-not-supported" in reply
     s.write(CLOSE + EOM)
     assert b"<ok/>" in s.read_eom()
     s.finish(0)
     print("[PASS] test_unknown_rpc: unimplemented RPC is refused")
+
+
+def test_validate_and_confirm(binary):
+    s = Session(binary, env_for())
+    s.read_eom()
+
+    # Validate the empty running store and an empty inline config.
+    s.write(HELLO_10 + EOM +
+            b"<rpc><validate><source><running/></source></validate></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><validate><config><interfaces/></config></validate></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><validate/></rpc>" + EOM)
+    assert b"invalid-value" in s.read_eom()
+
+    # A persisted confirmed commit can only be cancelled by its token.
+    s.write(b"<rpc><commit><confirmed/><confirm-timeout>30</confirm-timeout>"
+            b"<persist>wire1</persist></commit></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><cancel-commit><persist-id>nope</persist-id>"
+            b"</cancel-commit></rpc>" + EOM)
+    assert b"access-denied" in s.read_eom()
+    s.write(b"<rpc><cancel-commit><persist-id>wire1</persist-id>"
+            b"</cancel-commit></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+
+    # A plain commit confirms a pending confirmed commit.
+    s.write(b"<rpc><commit><confirmed/></commit></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.write(b"<rpc><commit/></rpc>" + EOM)
+    assert b"<ok/>" in s.read_eom()
+
+    s.write(CLOSE + EOM)
+    assert b"<ok/>" in s.read_eom()
+    s.finish(0)
+    print("[PASS] test_validate_and_confirm: validate, persist, cancel, confirm")
 
 
 def test_datastores(binary, startup_path):
@@ -213,6 +250,7 @@ def main():
         test_base_1_1(binary)
         test_bad_chunk(binary)
         test_unknown_rpc(binary)
+        test_validate_and_confirm(binary)
         test_datastores(binary, startup_path)
     finally:
         shutil.rmtree(startup_dir, ignore_errors=True)

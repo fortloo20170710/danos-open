@@ -22,6 +22,7 @@ int test_netconf_parse(void)
     assert(netconf_parse_rpc("<rpc><copy-config/></rpc>") == NETCONF_RPC_COPY_CONFIG);
     assert(netconf_parse_rpc("<rpc><delete-config/></rpc>") == NETCONF_RPC_DELETE_CONFIG);
     assert(netconf_parse_rpc("<rpc><validate/></rpc>") == NETCONF_RPC_VALIDATE);
+    assert(netconf_parse_rpc("<rpc><cancel-commit/></rpc>") == NETCONF_RPC_CANCEL_COMMIT);
     assert(netconf_parse_rpc("<rpc><unknown-op/></rpc>") == NETCONF_RPC_UNKNOWN);
     assert(netconf_parse_rpc(NULL) == NETCONF_RPC_UNKNOWN);
 
@@ -45,8 +46,8 @@ int test_netconf_hello(void)
     assert(strstr(hello, "capability:candidate") != NULL);
     assert(strstr(hello, "capability:startup") != NULL);
     assert(strstr(hello, "rollback-on-error") == NULL);
-    assert(strstr(hello, "capability:validate") == NULL);
-    assert(strstr(hello, "confirmed-commit") == NULL);
+    assert(strstr(hello, "capability:validate") != NULL);
+    assert(strstr(hello, "confirmed-commit") != NULL);
 
     uint64_t sid = netconf_new_session_id();
     assert(sid >= 1 && sid <= 0x7fffffffULL);
@@ -91,10 +92,10 @@ int test_netconf_handle_rpc(void)
     assert(strstr(resp, "<ok/>") != NULL);
     free(resp);
 
-    /* validate stays unadvertised. */
+    /* validate a datastore without changing it. */
     resp = netconf_handle_rpc(&ctx, "<rpc><validate><source><running/></source></validate></rpc>");
     assert(resp != NULL);
-    assert(strstr(resp, "operation-not-supported") != NULL);
+    assert(strstr(resp, "<ok/>") != NULL);
     free(resp);
 
     /* unknown */
@@ -107,7 +108,7 @@ int test_netconf_handle_rpc(void)
     uint64_t rpc_count, error_count;
     netconf_get_stats(&ctx, &rpc_count, &error_count);
     assert(rpc_count == 7);
-    assert(error_count == 2);
+    assert(error_count == 1);
     netconf_fini(&ctx);
 
     printf("[PASS] test_netconf_handle_rpc: RPC dispatch works\n");
@@ -361,10 +362,21 @@ int test_netconf_candidate(void)
     assert(find_iface("cand0", &ifc));
     assert(ifc.mtu == 9000);
 
-    /* Confirmed commit is not advertised, so it must not commit. */
+    /* A confirmed commit succeeds and stays pending until confirmed. */
     resp = nc_call(&ctx, "<rpc><commit><confirmed/></commit></rpc>");
-    assert(strstr(resp, "operation-not-supported") != NULL);
+    assert(strstr(resp, "<ok/>") != NULL);
     free(resp);
+    assert(netconf_ds_confirmed_pending());
+    assert(find_iface("cand0", &ifc));
+    assert(ifc.mtu == 9000);
+
+    /* The confirming commit keeps the configuration and disarms the timer. */
+    resp = nc_call(&ctx, "<rpc><commit/></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(!netconf_ds_confirmed_pending());
+    assert(find_iface("cand0", &ifc));
+    assert(ifc.mtu == 9000);
 
     assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 7001)
            == DANOS_OK);
@@ -597,6 +609,173 @@ int test_netconf_corrupt_startup(const char *path)
     return 0;
 }
 
+/* ---- validate and confirmed commit -------------------------------------- */
+
+int test_netconf_validate(void)
+{
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 71;
+    seed_iface(7201, "val0", 1500, true);
+
+    char *resp = nc_call(&ctx,
+        "<rpc><validate><source><running/></source></validate></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+
+    resp = nc_call(&ctx,
+        "<rpc><validate><source><candidate/></source></validate></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+
+    /* An inline config is checked without being applied. */
+    resp = nc_call(&ctx,
+        "<rpc><validate><config>"
+        "<interfaces xmlns=\"urn:danos:yang:danos-iface\">"
+        "<interface><name>val0</name><mtu>1400</mtu></interface>"
+        "</interfaces></config></validate></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    danos_iface_t ifc;
+    assert(find_iface("val0", &ifc));
+    assert(ifc.mtu == 1500);
+
+    resp = nc_call(&ctx,
+        "<rpc><validate><config>"
+        "<interfaces xmlns=\"urn:danos:yang:danos-iface\">"
+        "<interface><name>val-missing</name><mtu>1400</mtu></interface>"
+        "</interfaces></config></validate></rpc>");
+    assert(strstr(resp, "rpc-error") != NULL);
+    free(resp);
+
+    resp = nc_call(&ctx,
+        "<rpc><validate><config>"
+        "<interfaces xmlns=\"urn:danos:yang:danos-iface\">"
+        "<interface><name>val0</name><mtu>bogus</mtu></interface>"
+        "</interfaces></config></validate></rpc>");
+    assert(strstr(resp, "rpc-error") != NULL);
+    free(resp);
+
+    resp = nc_call(&ctx, "<rpc><validate/></rpc>");
+    assert(strstr(resp, "invalid-value") != NULL);
+    free(resp);
+
+    assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 7201)
+           == DANOS_OK);
+    netconf_fini(&ctx);
+
+    printf("[PASS] test_netconf_validate: datastore and inline validation\n");
+    return 0;
+}
+
+static void edit_candidate_mtu(netconf_ctx_t *ctx, int ifindex,
+                               const char *name, const char *mtu)
+{
+    char xml[512];
+    snprintf(xml, sizeof(xml),
+             "<rpc><edit-config><target><candidate/></target><config>"
+             "<interfaces xmlns=\"urn:danos:yang:danos-iface\">"
+             "<interface><name>%s</name><mtu>%s</mtu></interface>"
+             "</interfaces></config></edit-config></rpc>",
+             name, mtu);
+    (void)ifindex;
+    char *resp = nc_call(ctx, xml);
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+}
+
+int test_netconf_confirmed_commit(void)
+{
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 81;
+    seed_iface(7202, "cc0", 1500, true);
+    /* Drop any candidate snapshot left by earlier tests so the next edit
+     * starts from the current running store, which now holds cc0. */
+    assert(netconf_ds_discard(ctx.session_id) == NETCONF_DS_OK);
+    danos_iface_t ifc;
+
+    /* A persisted confirmed commit publishes immediately and stays armed. */
+    edit_candidate_mtu(&ctx, 7202, "cc0", "9000");
+    char *resp = nc_call(&ctx,
+        "<rpc><commit><confirmed/><confirm-timeout>60</confirm-timeout>"
+        "<persist>tok1</persist></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(netconf_ds_confirmed_pending());
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 9000);
+
+    /* Only the matching persist-id may cancel or confirm. */
+    resp = nc_call(&ctx,
+        "<rpc><cancel-commit><persist-id>wrong</persist-id></cancel-commit></rpc>");
+    assert(strstr(resp, "access-denied") != NULL);
+    free(resp);
+    assert(netconf_ds_confirmed_pending());
+
+    resp = nc_call(&ctx,
+        "<rpc><cancel-commit><persist-id>tok1</persist-id></cancel-commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(!netconf_ds_confirmed_pending());
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 1500);
+
+    /* Confirming commit keeps the published configuration. */
+    edit_candidate_mtu(&ctx, 7202, "cc0", "8000");
+    resp = nc_call(&ctx,
+        "<rpc><commit><confirmed/><persist>tok2</persist></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(netconf_ds_confirmed_pending());
+
+    resp = nc_call(&ctx,
+        "<rpc><commit><persist-id>wrong</persist-id></commit></rpc>");
+    assert(strstr(resp, "access-denied") != NULL);
+    free(resp);
+
+    resp = nc_call(&ctx,
+        "<rpc><commit><persist-id>tok2</persist-id></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(!netconf_ds_confirmed_pending());
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 8000);
+
+    /* Without a confirming commit the timer restores the baseline. */
+    edit_candidate_mtu(&ctx, 7202, "cc0", "7000");
+    resp = nc_call(&ctx,
+        "<rpc><commit><confirmed/><confirm-timeout>1</confirm-timeout></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 7000);
+
+    usleep(1500000);
+    assert(!netconf_ds_confirmed_pending());
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 8000);
+
+    /* Closing the issuing session also rolls a non-persisted commit back. */
+    edit_candidate_mtu(&ctx, 7202, "cc0", "6000");
+    resp = nc_call(&ctx, "<rpc><commit><confirmed/></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 6000);
+    netconf_fini(&ctx);
+    assert(!netconf_ds_confirmed_pending());
+    assert(find_iface("cc0", &ifc));
+    assert(ifc.mtu == 8000);
+
+    assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 7202)
+           == DANOS_OK);
+
+    printf("[PASS] test_netconf_confirmed_commit: persist, confirm, cancel, "
+           "timeout, session close\n");
+    return 0;
+}
+
 int main(void)
 {
     char path[128];
@@ -619,6 +798,8 @@ int main(void)
     if (test_netconf_locks() != 0) failed++;
     if (test_netconf_copy_and_startup(path) != 0) failed++;
     if (test_netconf_corrupt_startup(path) != 0) failed++;
+    if (test_netconf_validate() != 0) failed++;
+    if (test_netconf_confirmed_commit() != 0) failed++;
 
     netconf_ds_fini();
     unlink(path);

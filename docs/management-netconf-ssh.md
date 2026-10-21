@@ -69,16 +69,16 @@ The server hello advertises only behavior that exists:
 | `urn:ietf:params:netconf:capability:writable-running:1.0` | supported |
 | `urn:ietf:params:netconf:capability:candidate:1.0` | supported |
 | `urn:ietf:params:netconf:capability:startup:1.0` | supported |
+| `urn:ietf:params:netconf:capability:validate:1.0` | supported |
+| `urn:ietf:params:netconf:capability:confirmed-commit:1.0` | supported |
 | `urn:danos:yang:1.0` | supported |
 
-Supported RPCs: `get`, `get-config`, `edit-config`, `commit`,
-`discard-changes`, `lock`, `unlock`, `copy-config`, `delete-config` and
-`close-session`.
+Supported RPCs: `get`, `get-config`, `edit-config`, `commit`, `validate`,
+`cancel-commit`, `discard-changes`, `lock`, `unlock`, `copy-config`,
+`delete-config` and `close-session`.
 
-`kill-session` and `validate` return an `rpc-error` with
-`operation-not-supported`. `commit` with `<confirmed/>` or `<persist>` is
-refused because the confirmed-commit capability is not advertised. The server
-advertises no rollback-on-error capability.
+`kill-session` returns an `rpc-error` with `operation-not-supported`. The
+server advertises no rollback-on-error capability.
 
 `edit-config` applies every `<interface>` block in the request as one
 transaction. Interface names and other text in replies are XML-escaped.
@@ -109,6 +109,47 @@ file.
 `copy-config` supports the named datastores among running, candidate and
 startup. An inline `<config>` source and `<url>` sources are not implemented.
 
+## validate
+
+`<validate>` accepts either a named datastore or an inline `<config>`:
+
+```xml
+<rpc><validate><source><candidate/></source></validate></rpc>
+<rpc><validate><config>...</config></validate></rpc>
+```
+
+For a named datastore the server checks every stored interface payload. For an
+inline config it resolves each `<interface>` block against the running store
+and applies `mtu` and `enabled` to a copy, so unknown interfaces and invalid
+leaf values fail without changing anything. A request with neither `<source>`
+nor `<config>` returns `invalid-value`.
+
+## Confirmed commit
+
+`<commit><confirmed/></commit>` publishes the candidate and keeps a baseline
+snapshot of running. Unless a confirming `<commit/>` arrives first, running is
+restored from that baseline when the timer expires. The default timeout is 600
+seconds; `<confirm-timeout>` sets a different positive value.
+
+`<persist>` attaches a token to the pending commit. The commit then survives
+the issuing session; `<commit><persist-id>token</persist-id></commit>` or
+`<cancel-commit><persist-id>token</persist-id></cancel-commit>` confirms or
+reverts it. Without `<persist>`, closing the issuing session rolls the commit
+back immediately. A token that does not match returns `access-denied`.
+`<persist-id>` is refused together with `<confirmed/>`, and `<persist>`,
+`<confirm-timeout>` require `<confirmed/>`.
+
+The timer runs in the subsystem process, so it bounds a session's confirmed
+commit while that process lives. Although the current in-process handler has
+tests for persist tokens, the SSH deployment starts a separate process for
+each session: a persisted commit cannot be confirmed/cancelled from a later
+SSH session, and neither its timer nor rollback baseline survives process
+exit/reboot. The advertised capability therefore remains `confirmed-commit:1.0`
+and **confirmed commit is not qualified for production SSH use**. Do not rely
+on `<persist>` or `<persist-id>` until the shared NETCONF daemon and durable
+rollback state are implemented. RFC 6241 requires persistent tokens to work
+across sessions and requires rollback after a reboot before timeout.
+
 Locks follow RFC 6241: a lock belongs to one session, blocks writes to that
 datastore by other sessions (`in-use`), refuses a second lock
 (`lock-denied`), and is released by the owner's `unlock` or `close-session`.
@@ -123,9 +164,9 @@ and startup datastores and the lock table therefore live inside that process:
 two concurrent SSH sessions do not see each other's candidate edits or locks,
 and `commit` updates only the committing session's in-memory running store.
 The startup file is shared, so `copy-config` to startup is visible to later
-sessions. A single NETCONF daemon that hosts all sessions would make candidate
-and locks global; the datastore module is written for that host and does not
-depend on the transport.
+sessions. A single NETCONF daemon that hosts all sessions would make candidate,
+locks and confirmed-commit state global; the datastore module is written for
+that host and does not depend on the transport.
 
 ## Framing limits
 
@@ -165,8 +206,11 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
 
 ## Known limits
 
-- Candidate state and locks are process-local because the SSH subsystem runs
-  one process per session (see "Process model").
+- Candidate state, locks and pending confirmed-commit state are process-local
+  because the SSH subsystem runs one process per session (see "Process
+  model"). Confirmed commit is not release-qualified over SSH; persistent
+  cross-session tokens and rollback recovery across process restart remain
+  open.
 - `copy-config` does not accept an inline `<config>` source or `<url>`.
 - `edit-config` covers interface `mtu` and `enabled`. Other subtrees are not
   modeled by the server yet.

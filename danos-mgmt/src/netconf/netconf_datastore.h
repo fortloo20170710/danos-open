@@ -44,6 +44,7 @@ typedef enum {
     NETCONF_DS_IO,          /* startup file could not be written */
     NETCONF_DS_NOMEM,
     NETCONF_DS_FAILED,      /* transaction or other runtime failure */
+    NETCONF_DS_DENIED,      /* session/token may not confirm or cancel */
 } netconf_ds_status_t;
 
 /* Initialise the process-wide datastores.  The first call wins; it loads
@@ -76,9 +77,33 @@ netconf_ds_status_t netconf_ds_write(netconf_datastore_t ds, uint16_t type,
 netconf_ds_status_t netconf_ds_delete(netconf_datastore_t ds, uint16_t type,
                                       uint64_t id);
 
+/* Validate the payloads in a datastore without applying anything. */
+netconf_ds_status_t netconf_ds_validate(netconf_datastore_t ds);
+
+/* Options for <commit>.  Plain commits pass NULL or an all-zero struct.
+ * A confirmed commit publishes the candidate, keeps a rollback baseline and
+ * reverts to it when no confirming commit arrives within timeout_s
+ * (default 600).  persist/ persist_id follow RFC 6241 section 8.4. */
+typedef struct {
+    bool        confirmed;
+    uint32_t    timeout_s;
+    const char *persist;
+    const char *persist_id;
+} netconf_commit_opts_t;
+
 /* Publish candidate as running in one transaction and reset the candidate
  * snapshot to the new running state. */
-netconf_ds_status_t netconf_ds_commit(uint64_t session_id);
+netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
+                                      const netconf_commit_opts_t *opts);
+
+/* RFC 6241 cancel-commit: revert a pending confirmed commit.  A persisted
+ * commit requires the matching persist_id; otherwise the issuing session
+ * must cancel it. */
+netconf_ds_status_t netconf_ds_cancel_commit(uint64_t session_id,
+                                             const char *persist_id);
+
+/* True while a confirmed commit is waiting for confirmation. */
+bool netconf_ds_confirmed_pending(void);
 
 /* Throw away the candidate snapshot.  Fails when another session holds the
  * candidate lock. */

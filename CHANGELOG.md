@@ -46,9 +46,14 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   among running/candidate/startup, and `delete-config` on startup. Startup is
   a versioned, per-record CRC32 file written with `fsync` and `rename`;
   `DANOS_NETCONF_STARTUP` overrides the default path. Advertised capabilities
-  now include candidate and startup. Confirmed commit and `validate` remain
-  unadvertised and are refused. A multi-interface `edit-config` applies
+  now include candidate and startup. A multi-interface `edit-config` applies
   atomically instead of dropping every block after the first.
+- NETCONF `validate`: `<validate>` for a named datastore or an inline
+  `<config>`. An in-process confirmed-commit prototype covers timeout and
+  session-close rollback, but SSH persist-token and restart recovery do not
+  meet the cross-session contract yet; this behavior is explicitly not
+  release-qualified. The SSH server advertises the legacy
+  `confirmed-commit:1.0` capability only.
 
 ### Fixed
 

@@ -65,6 +65,7 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml)
     if (has_element(xml, "unlock"))         return NETCONF_RPC_UNLOCK;
     if (has_element(xml, "copy-config"))    return NETCONF_RPC_COPY_CONFIG;
     if (has_element(xml, "delete-config"))  return NETCONF_RPC_DELETE_CONFIG;
+    if (has_element(xml, "cancel-commit"))  return NETCONF_RPC_CANCEL_COMMIT;
     if (has_element(xml, "validate"))       return NETCONF_RPC_VALIDATE;
 
     return NETCONF_RPC_UNKNOWN;
@@ -91,6 +92,8 @@ char *netconf_hello_message(uint64_t session_id)
         "urn:ietf:params:netconf:capability:writable-running:1.0",
         "urn:ietf:params:netconf:capability:candidate:1.0",
         "urn:ietf:params:netconf:capability:startup:1.0",
+        "urn:ietf:params:netconf:capability:validate:1.0",
+        "urn:ietf:params:netconf:capability:confirmed-commit:1.0",
         "urn:danos:yang:1.0",
     };
 
@@ -208,6 +211,9 @@ static char *ds_error_reply(netconf_ds_status_t st, const char *what)
     case NETCONF_DS_FAILED:
         return error_reply_tag("operation-failed",
                                what ? what : "operation failed");
+    case NETCONF_DS_DENIED:
+        return error_reply_tag("access-denied",
+                               what ? what : "operation not permitted");
     default:
         return error_reply_tag("operation-failed",
                                what ? what : "operation failed");
@@ -413,12 +419,14 @@ static void nc_lookup_iface_iter(danos_object_entry_t *e, void *user)
  * happens before the transaction starts; any failure leaves the store
  * untouched.
  */
-static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
+/*
+ * Parse every <interface> block in xml, resolve each against ds and apply
+ * the mtu/enabled leaves to a copy.  Nothing is written.  On success returns
+ * NULL with out and out_count set; on failure returns an rpc-reply error.
+ */
+static char *collect_iface_targets(const char *xml, netconf_datastore_t ds,
+                                   danos_iface_t **out, size_t *out_count)
 {
-    if (ds == NETCONF_DS_STARTUP)
-        return error_reply_tag("invalid-value",
-                               "startup is read-only; use copy-config");
-
     const char *p = strstr(xml, "<config");
     if (!p) p = xml;
 
@@ -509,8 +517,28 @@ static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
 
     if (count == 0) {
         free(targets);
-        return ok_reply();
+        *out = NULL;
+        *out_count = 0;
+        return NULL;
     }
+
+    *out = targets;
+    *out_count = count;
+    return NULL;
+}
+
+static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
+{
+    if (ds == NETCONF_DS_STARTUP)
+        return error_reply_tag("invalid-value",
+                               "startup is read-only; use copy-config");
+
+    danos_iface_t *targets = NULL;
+    size_t count = 0;
+    char *err = collect_iface_targets(xml, ds, &targets, &count);
+    if (err) return err;
+
+    if (count == 0) return ok_reply();
 
     if (ds != NETCONF_DS_RUNNING) {
         /* Candidate edits stay private until commit.  Validation above
@@ -540,6 +568,32 @@ static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
     return ok_reply();
 }
 
+/* Validate an inline <config> against the running datastore without
+ * applying it.  Returns NULL when the config is acceptable, otherwise an
+ * rpc-reply error. */
+static char *validate_config_xml(const char *xml)
+{
+    danos_iface_t *targets = NULL;
+    size_t count = 0;
+    char *err = collect_iface_targets(xml, NETCONF_DS_RUNNING,
+                                      &targets, &count);
+    free(targets);
+    return err;
+}
+
+static bool parse_u32(const char *s, uint32_t *out)
+{
+    if (!s || !*s) return false;
+    uint64_t v = 0;
+    for (const char *p = s; *p; p++) {
+        if (*p < '0' || *p > '9') return false;
+        v = v * 10 + (uint64_t)(*p - '0');
+        if (v > 0xffffffffULL) return false;
+    }
+    *out = (uint32_t)v;
+    return true;
+}
+
 /* edit-config mutates state, everything else is read-only. The role comes
  * from the transport when one established an identity (SSH), otherwise from
  * the deployment default. */
@@ -551,7 +605,8 @@ static bool netconf_authorized(const netconf_ctx_t *ctx, netconf_rpc_type_t t)
                      t == NETCONF_RPC_LOCK ||
                      t == NETCONF_RPC_UNLOCK ||
                      t == NETCONF_RPC_COPY_CONFIG ||
-                     t == NETCONF_RPC_DELETE_CONFIG);
+                     t == NETCONF_RPC_DELETE_CONFIG ||
+                     t == NETCONF_RPC_CANCEL_COMMIT);
     danos_sec_role_t role = ctx->role ? ctx->role
                                       : danos_authz_role_for_peer(NULL);
     const char *identity = ctx->identity[0] ? ctx->identity
@@ -671,16 +726,72 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
         return get_config_reply(NETCONF_DS_RUNNING);
 
     case NETCONF_RPC_COMMIT: {
-        /* Confirmed commit is a separate capability; refuse it explicitly
-         * rather than committing immediately. */
-        if (has_element(xml, "confirmed") || has_element(xml, "persist")) {
-            ctx->error_count++;
-            return unsupported_reply("confirmed commit");
+        netconf_commit_opts_t opts = {0};
+        char persist[128] = {0};
+        char persist_id[128] = {0};
+        const bool has_persist = has_element(xml, "persist");
+        const bool has_pid = has_element(xml, "persist-id");
+
+        opts.confirmed = has_element(xml, "confirmed");
+        if (has_element(xml, "confirm-timeout")) {
+            char buf[32] = {0};
+            extract_text_n(xml, NULL, "confirm-timeout", buf, sizeof(buf));
+            if (!parse_u32(buf, &opts.timeout_s) || opts.timeout_s == 0) {
+                ctx->error_count++;
+                return error_reply_tag("invalid-value",
+                                       "invalid confirm-timeout");
+            }
         }
-        netconf_ds_status_t st = netconf_ds_commit(session_of(ctx));
+        if (has_persist) {
+            extract_text_n(xml, NULL, "persist", persist, sizeof(persist));
+            if (!persist[0]) {
+                ctx->error_count++;
+                return error_reply_tag("invalid-value", "empty persist token");
+            }
+            opts.persist = persist;
+        }
+        if (has_pid) {
+            extract_text_n(xml, NULL, "persist-id", persist_id,
+                           sizeof(persist_id));
+            if (!persist_id[0]) {
+                ctx->error_count++;
+                return error_reply_tag("invalid-value", "empty persist-id");
+            }
+            opts.persist_id = persist_id;
+        }
+        if ((has_persist && has_pid) ||
+            (opts.confirmed && has_pid) ||
+            (opts.timeout_s && !opts.confirmed) ||
+            (has_persist && !opts.confirmed)) {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value", "invalid commit options");
+        }
+
+        netconf_ds_status_t st = netconf_ds_commit(session_of(ctx), &opts);
         if (st != NETCONF_DS_OK) {
             ctx->error_count++;
             return ds_error_reply(st, "commit failed");
+        }
+        return ok_reply();
+    }
+
+    case NETCONF_RPC_CANCEL_COMMIT: {
+        char persist_id[128] = {0};
+        const char *pid = NULL;
+        if (has_element(xml, "persist-id")) {
+            extract_text_n(xml, NULL, "persist-id", persist_id,
+                           sizeof(persist_id));
+            if (!persist_id[0]) {
+                ctx->error_count++;
+                return error_reply_tag("invalid-value", "empty persist-id");
+            }
+            pid = persist_id;
+        }
+        netconf_ds_status_t st =
+            netconf_ds_cancel_commit(session_of(ctx), pid);
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "cancel-commit failed");
         }
         return ok_reply();
     }
@@ -756,9 +867,34 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
         return ok_reply();
     }
 
-    case NETCONF_RPC_VALIDATE:
-        ctx->error_count++;
-        return unsupported_reply("validate");
+    case NETCONF_RPC_VALIDATE: {
+        netconf_ds_status_t st;
+        if (strstr(xml, "<source>")) {
+            netconf_datastore_t ds;
+            if (!parse_datastore(xml, "source", &ds)) {
+                ctx->error_count++;
+                return error_reply_tag("invalid-value",
+                                       "unsupported validate source");
+            }
+            st = netconf_ds_validate(ds);
+        } else if (has_element(xml, "config")) {
+            char *err = validate_config_xml(xml);
+            if (err) {
+                ctx->error_count++;
+                return err;
+            }
+            return ok_reply();
+        } else {
+            ctx->error_count++;
+            return error_reply_tag("invalid-value",
+                                   "validate requires source or config");
+        }
+        if (st != NETCONF_DS_OK) {
+            ctx->error_count++;
+            return ds_error_reply(st, "validation failed");
+        }
+        return ok_reply();
+    }
 
     case NETCONF_RPC_KILL_SESSION:
         ctx->error_count++;
