@@ -65,6 +65,8 @@
       剩余订阅语义限制（`use_models`、异构路径合同等）另行跟踪
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
+- [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
+- [ ] OPER 完整性扩展：路由属性/ECMP 与 VRF 读回、VPP dump、差异转验收失败
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config

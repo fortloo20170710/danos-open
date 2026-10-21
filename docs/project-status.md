@@ -33,7 +33,7 @@
 | danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH（candidate/startup 数据存储、validate、锁；confirmed-commit 恢复仍未验收） |
 | danos-fib | 可用 | FRR ZAPI v6 解析与映射 |
 | danos-vpp | 可用 | binary API、路由/接口编程、统计 |
-| danos-netlink | 可用 | IPv4 路由/地址/接口；IPv6 地址明确返回不支持 |
+| danos-netlink | 可用 | IPv4 路由/地址/接口；接口与路由存在性 OPER 读回；IPv6 地址明确返回不支持 |
 | danos-security | 可用 | RBAC、审计、CoPP；权限粒度仍为对象级 |
 | danos-observability | 可用 | Prometheus `/metrics`（默认回环监听）、结构化日志 |
 | danos-ha | 部分 | BFD/VRRP/supervisor 内存模型；bfdd 翻译未完成 |
@@ -44,6 +44,7 @@
 - PCI/DPDK 持续性能测试仍标记 `ENVIRONMENT-OPEN`，缺少独立接收端数据。
 - 物理 R2→R3 恢复、FRR→DPA→VPP 动态路由全链路、四节点统一部署尚未完成。
 - VMware VMXNET3 lane 仍需在 v0.16 发布前重跑。
+- IPv4 路由 OPER 读回目前核验前缀/表项与黑洞/单播类型，并能修复确认缺失的路由；下一跳/ECMP 属性、VRF 与 VPP dump 尚未闭环。
 - 测试证书需替换为生产 PKI。
 - BFD、VLAN、VXLAN、EVPN、OVS、P4 功能未纳入 v0.16。
 - 事务提交后的 `danos_tx_rollback` 返回 `DANOS_ERR_TX_ROLLBACK`（无法撤销），

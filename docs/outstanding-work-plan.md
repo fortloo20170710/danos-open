@@ -26,6 +26,19 @@
   unavailable. Revalidation therefore correctly stays `ENVIRONMENT-OPEN`;
   physical PCI performance and live R2/R3 recovery remain open as well.
 
+### 2026-10-21 IPv4 route OPER presence and drift repair
+
+- The netlink backend now reads back the exact IPv4 prefix/table and
+  unicast-versus-blackhole disposition. A confirmed `NOT_FOUND` removes that
+  object's programmed-ledger record and the reconciler re-applies desired
+  state in the same pass; a readback I/O error does not trigger a speculative
+  duplicate route add.
+- The deterministic pipeline regression deletes a programmed mock-kernel
+  route out of band, confirms it is restored on the next pass, and checks the
+  OPER snapshot is repopulated. Full route-attribute/NHGroup equality, VRF
+  readback and VPP route/interface dump bindings remain open; this change is
+  presence/drift repair, not complete hardware FIB truth.
+
 ### 2026-10-20 hardening, coverage and repository hygiene
 
 - Applied the P0–P2 review findings in grouped commits: WAL replay health and
@@ -318,9 +331,11 @@ Execution priority, as confirmed on 2026-10-15:
    subscription-semantic gap.
 3. **OPER readback / control-plane-data-plane truth.** Interface readback is
    implemented: netlink `RTM_GETLINK` -> OPER snapshot -> gNMI/CLI, with the
-   desired object as fallback. Still open: route and VRF readback (and drift
-   repair driven by it), a VPP interface dump so VPP objects produce an OPER
-   copy, and turning OPER differences into verification failures. The
+   desired object as fallback. IPv4 exact-prefix/table presence readback now
+   detects an externally withdrawn route and triggers desired-state repair.
+   Still open: full route-attribute/NHGroup equality, VRF readback, a VPP
+   interface/route dump so VPP objects produce OPER copies, and turning other
+   OPER differences into verification failures. The
    reentrant diff callback fix is done; the reconciler's diff callback still
    only counts differences and is not hardware readback.
 4. **NETCONF SSH transport.** Done. OpenSSH provides transport and
