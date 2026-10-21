@@ -82,23 +82,26 @@ static danos_object_store_t *oper_store(void)
  * Caller holds g_prog_lock. A backend that cannot read an object back
  * contributes no OPER entry: the management plane then falls back to the
  * desired copy and never serves a stale operational value. */
-static void oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
-                         const void *desired, size_t size)
+static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
+                                   const void *desired, size_t size)
 {
     if (!g_ops || !g_ops->readback || !desired ||
         size == 0 || size > DANOS_MAX_OBJECT_BYTES)
-        return;
+        return DANOS_ERR_NOT_SUPPORTED;
 
     _Alignas(danos_route_t) uint8_t oper[DANOS_MAX_OBJECT_BYTES];
     memset(oper, 0, size);
-    if (g_ops->readback(type, id, desired, size, oper, g_ops->user) != DANOS_OK) {
+    danos_status_t st = g_ops->readback(type, id, desired, size, oper,
+                                        g_ops->user);
+    if (st != DANOS_OK) {
         if (g_oper) (void)danos_object_delete(g_oper, type, id);
-        return;
+        return st;
     }
     danos_object_store_t *s = oper_store();
-    if (!s) return;
+    if (!s) return DANOS_ERR_NO_MEMORY;
     if (danos_object_update(s, type, id, oper, size) != DANOS_OK)
         (void)danos_object_create(s, type, id, oper, size);
+    return DANOS_OK;
 }
 
 static void oper_forget(danos_obj_type_t type, danos_obj_id_t id)
@@ -468,8 +471,25 @@ static void program_entry(danos_object_entry_t *e, void *user)
             /* Healthy: drop any accumulated backoff so a later failure
              * starts from a clean slate. */
             retry_clear(e->type, e->id, mono_ns(), true);
-            oper_refresh(e->type, e->id, e->data, e->data_size);
-            return;   /* in sync */
+            danos_status_t readback = oper_refresh(e->type, e->id, e->data,
+                                                   e->data_size);
+            if (readback == DANOS_OK || readback == DANOS_ERR_NOT_SUPPORTED)
+                return;   /* in sync; no readback capability is not drift */
+            if (readback == DANOS_ERR_NOT_FOUND) {
+                /* The backend confirms the programmed object disappeared.
+                 * Drop only this ledger record and fall through to reprogram
+                 * the desired object in this pass. */
+                (void)danos_object_delete(ledger(), e->type, e->id);
+                oper_forget(e->type, e->id);
+                have_last = false;
+                lsz = 0;
+            } else {
+                /* A failed probe is not evidence of drift. Preserve the
+                 * ledger and avoid an unsafe duplicate programming attempt. */
+                c->attempted++;
+                c->failed++;
+                return;
+            }
         }
     }
 

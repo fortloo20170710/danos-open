@@ -207,7 +207,7 @@ static int test_retry_backoff_and_limit(void)
 /* OPER truth (v0.16): the programming pass refreshes a readback snapshot,
  * including for objects already in sync, so a carrier change reaches the
  * management plane without a desired-state change. */
-static void test_oper_readback(void)
+static void test_oper_readback(const danos_route_t *route)
 {
     danos_iface_t oper;
     size_t n = sizeof(oper);
@@ -218,11 +218,26 @@ static void test_oper_readback(void)
     assert(oper.link_up);                    /* admin up, no carrier override */
     assert(danos_oper_count(DANOS_OBJ_IFACE) == 1);
 
-    /* Routes have no readback binding: no OPER copy is invented. */
-    n = sizeof(oper);
-    assert(danos_oper_read(DANOS_OBJ_ROUTE, 1, &oper, &n)
-           == DANOS_ERR_NOT_FOUND);
-    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 0);
+    assert(route);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 1);
+
+    /* Simulate an out-of-band kernel withdrawal without touching desired
+     * state or the programmed ledger. The readback miss must invalidate that
+     * ledger entry and replay the route in the same reconciliation pass. */
+    const danos_backend_ops_t *ops = danos_backend_ops_get();
+    assert(ops && ops->route_del);
+    danos_resolved_route_t resolved = { .route = *route };
+    assert(ops->route_del(&resolved, ops->user) == DANOS_OK);
+    assert(!danos_netlink_mock_route_exists(route->prefix.addr.addr,
+                                            route->prefix.prefix_len,
+                                            route->vrf_id));
+    attempted = failed = 0;
+    assert(danos_programming_run(&attempted, &failed) == 1);
+    assert(attempted == 1 && failed == 0);
+    assert(danos_netlink_mock_route_exists(route->prefix.addr.addr,
+                                           route->prefix.prefix_len,
+                                           route->vrf_id));
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 1);
 
     /* Carrier down with an unchanged desired object. The next pass returns
      * 0 newly programmed objects but must still refresh OPER. */
@@ -248,7 +263,7 @@ static void test_oper_readback(void)
     n = sizeof(oper);
     assert(danos_oper_read(DANOS_OBJ_IFACE, 5, &oper, &n) == DANOS_OK);
 
-    printf("[PASS] test_oper_readback (carrier refresh, no route readback)\n");
+    printf("[PASS] test_oper_readback (link state, route withdrawal repair)\n");
 }
 
 int main(void)
@@ -315,7 +330,7 @@ int main(void)
     assert(danos_netlink_mock_iface_up(5));
 
     /* ---- 3b. operational readback -------------------------------------- */
-    test_oper_readback();
+    test_oper_readback(&rt);
 
     /* Interface address is part of the same desired/programmed lifecycle. */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);

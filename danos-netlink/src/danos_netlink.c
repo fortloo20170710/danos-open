@@ -284,6 +284,103 @@ static int nl_iface_read(danos_ifindex_t ifindex, danos_iface_t *out)
     return -1;
 }
 
+static bool ipv4_prefix_equal(const uint8_t lhs[4], const uint8_t rhs[4],
+                              uint8_t prefix_len)
+{
+    unsigned full_bytes = prefix_len / 8;
+    unsigned remaining_bits = prefix_len % 8;
+    if (full_bytes && memcmp(lhs, rhs, full_bytes) != 0) return false;
+    if (remaining_bits) {
+        uint8_t mask = (uint8_t)(0xffu << (8 - remaining_bits));
+        if ((lhs[full_bytes] & mask) != (rhs[full_bytes] & mask))
+            return false;
+    }
+    return true;
+}
+
+/* Confirm an exact IPv4 prefix is present in the expected kernel table and
+ * has the expected unicast/blackhole disposition. This intentionally does
+ * not claim next-hop-group readback: the DPA NH identity is not encoded in
+ * rtnetlink, and the adapter's current resolved-route callback is one-way. */
+static danos_status_t nl_route_read(const danos_route_t *desired)
+{
+    struct {
+        struct nlmsghdr nh;
+        struct rtmsg rt;
+        char attrbuf[RTA_SPACE(4)];
+    } req;
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST;
+    req.nh.nlmsg_type = RTM_GETROUTE;
+    req.nh.nlmsg_seq = 3;
+    req.rt.rtm_family = AF_INET;
+    req.rt.rtm_dst_len = desired->prefix.prefix_len;
+    req.rt.rtm_table = (desired->vrf_id == 0 || desired->vrf_id >= 256)
+                           ? RT_TABLE_MAIN : (uint8_t)desired->vrf_id;
+    if (desired->prefix.prefix_len != 0) {
+        struct rtattr *dst = (struct rtattr *)req.attrbuf;
+        dst->rta_type = RTA_DST;
+        dst->rta_len = RTA_LENGTH(4);
+        memcpy(RTA_DATA(dst), desired->prefix.addr.addr, 4);
+        req.nh.nlmsg_len += RTA_LENGTH(4);
+    }
+    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0)
+        return DANOS_ERR_BACKEND_IO;
+
+    char response[8192];
+    ssize_t n = recv(nl_fd, response, sizeof(response), 0);
+    if (n < (ssize_t)sizeof(struct nlmsghdr))
+        return DANOS_ERR_BACKEND_IO;
+    int rem = (int)n;
+    for (struct nlmsghdr *nh = (struct nlmsghdr *)response;
+         NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem)) {
+        if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
+        if (nh->nlmsg_type == NLMSG_ERROR) {
+            if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
+                return DANOS_ERR_BACKEND_IO;
+            const struct nlmsgerr *err = NLMSG_DATA(nh);
+            danos_netlink_last_kernel_error = err->error;
+            if (err->error == -ESRCH || err->error == -ENOENT ||
+                err->error == -ENETUNREACH || err->error == -EHOSTUNREACH)
+                return DANOS_ERR_NOT_FOUND;
+            return err->error == 0 ? DANOS_ERR_NOT_FOUND
+                                   : DANOS_ERR_BACKEND_IO;
+        }
+        if (nh->nlmsg_type != RTM_NEWROUTE ||
+            nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct rtmsg)))
+            continue;
+
+        const struct rtmsg *rt = NLMSG_DATA(nh);
+        if (rt->rtm_family != AF_INET ||
+            rt->rtm_dst_len != desired->prefix.prefix_len)
+            continue;
+        uint32_t table = rt->rtm_table;
+        uint8_t dst_addr[4] = {0};
+        int alen = (int)nh->nlmsg_len - NLMSG_LENGTH(sizeof(*rt));
+        for (struct rtattr *rta = RTM_RTA(rt); RTA_OK(rta, alen);
+             rta = RTA_NEXT(rta, alen)) {
+            if (rta->rta_type == RTA_TABLE &&
+                RTA_PAYLOAD(rta) >= sizeof(table))
+                memcpy(&table, RTA_DATA(rta), sizeof(table));
+            else if (rta->rta_type == RTA_DST && RTA_PAYLOAD(rta) >= 4)
+                memcpy(dst_addr, RTA_DATA(rta), sizeof(dst_addr));
+        }
+        uint32_t expected_table =
+            (desired->vrf_id == 0 || desired->vrf_id >= 256)
+                ? RT_TABLE_MAIN : desired->vrf_id;
+        bool expected_blackhole =
+            (desired->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
+        if (table != expected_table ||
+            !ipv4_prefix_equal(dst_addr, desired->prefix.addr.addr,
+                               desired->prefix.prefix_len) ||
+            (rt->rtm_type == RTN_BLACKHOLE) != expected_blackhole)
+            continue;
+        return DANOS_OK;
+    }
+    return DANOS_ERR_NOT_FOUND;
+}
+
 static int nl_iface_addr_msg(const danos_iface_t *iface, int add)
 {
     const danos_ip_prefix_t *p = &iface->ipv4_address;
@@ -413,14 +510,29 @@ static danos_status_t ops_vrf_del(danos_vrf_id_t vrf_id, void *user)
     return DANOS_OK;
 }
 
-/* Operational readback: interfaces only. Routes and VRFs have no query
- * binding in this adapter, so they report NOT_SUPPORTED and contribute no
- * OPER copy. */
+/* Operational readback: link state and exact IPv4 route presence. */
 static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
                                    const void *desired, size_t size,
                                    void *out, void *user)
 {
     (void)user;
+    if (type == DANOS_OBJ_ROUTE) {
+        if (!desired || !out || size < sizeof(danos_route_t))
+            return DANOS_ERR_INVALID_ARG;
+        const danos_route_t *route = desired;
+        if (route->prefix.addr.af != DANOS_AF_IPV4 ||
+            route->prefix.prefix_len > 32)
+            return DANOS_ERR_NOT_SUPPORTED;
+        if (g_nl.real && g_nl.initialized) {
+            danos_status_t st = nl_route_read(route);
+            if (st != DANOS_OK) return st;
+        } else if (!mock_find(route->prefix.addr.addr,
+                              route->prefix.prefix_len, route->vrf_id)) {
+            return DANOS_ERR_NOT_FOUND;
+        }
+        memcpy(out, desired, sizeof(danos_route_t));
+        return DANOS_OK;
+    }
     if (type != DANOS_OBJ_IFACE) return DANOS_ERR_NOT_SUPPORTED;
     if (!desired || !out || size < sizeof(danos_iface_t) || id == 0)
         return DANOS_ERR_INVALID_ARG;
