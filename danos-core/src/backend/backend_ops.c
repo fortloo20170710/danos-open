@@ -26,6 +26,9 @@
 
 static const danos_backend_ops_t *g_ops;
 static danos_object_store_t *g_programmed;
+
+static danos_status_t resolve_route_nh(const danos_route_t *r,
+                                       danos_resolved_route_t *out);
 /* Operational snapshot refreshed from ops->readback (v0.16). */
 static danos_object_store_t *g_oper;
 
@@ -81,18 +84,28 @@ static danos_object_store_t *oper_store(void)
 /* ---- OPER snapshot (v0.16) ----------------------------------------------
  * Caller holds g_prog_lock. A backend that cannot read an object back
  * contributes no OPER entry: the management plane then falls back to the
- * desired copy and never serves a stale operational value. */
+ * desired copy and never serves a stale operational value.
+ *
+ * Routes use route_readback with their resolved ECMP set so a mismatch in
+ * next-hop membership or route attributes becomes DANOS_ERR_VERIFY_FAIL
+ * instead of being silently reported as present. */
 static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
-                                   const void *desired, size_t size)
+                                   const void *desired, size_t size,
+                                   const danos_resolved_route_t *resolved)
 {
-    if (!g_ops || !g_ops->readback || !desired ||
-        size == 0 || size > DANOS_MAX_OBJECT_BYTES)
+    if (!g_ops || !desired || size == 0 ||
+        size > DANOS_MAX_OBJECT_BYTES)
+        return DANOS_ERR_NOT_SUPPORTED;
+    if (!g_ops->readback && !(g_ops->route_readback && resolved))
         return DANOS_ERR_NOT_SUPPORTED;
 
     _Alignas(danos_route_t) uint8_t oper[DANOS_MAX_OBJECT_BYTES];
     memset(oper, 0, size);
-    danos_status_t st = g_ops->readback(type, id, desired, size, oper,
-                                        g_ops->user);
+    danos_status_t st;
+    if (type == DANOS_OBJ_ROUTE && g_ops->route_readback && resolved)
+        st = g_ops->route_readback(resolved, oper, g_ops->user);
+    else
+        st = g_ops->readback(type, id, desired, size, oper, g_ops->user);
     if (st != DANOS_OK) {
         if (g_oper) (void)danos_object_delete(g_oper, type, id);
         return st;
@@ -102,6 +115,19 @@ static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
     if (danos_object_update(s, type, id, oper, size) != DANOS_OK)
         (void)danos_object_create(s, type, id, oper, size);
     return DANOS_OK;
+}
+
+/* Resolve the dependent NH/NHGroup state when the backend verifies routes
+ * through the route-specific hook.  Returns false when the route has no
+ * usable resolved path, in which case the descriptor digest has already
+ * changed and the object is not treated as in sync. */
+static bool route_probe_context(danos_obj_type_t type, const void *data,
+                                size_t size, danos_resolved_route_t *out)
+{
+    if (type != DANOS_OBJ_ROUTE || !g_ops || !g_ops->route_readback ||
+        !data || size < sizeof(danos_route_t))
+        return false;
+    return resolve_route_nh((const danos_route_t *)data, out) == DANOS_OK;
 }
 
 static void oper_forget(danos_obj_type_t type, danos_obj_id_t id)
@@ -471,8 +497,12 @@ static void program_entry(danos_object_entry_t *e, void *user)
             /* Healthy: drop any accumulated backoff so a later failure
              * starts from a clean slate. */
             retry_clear(e->type, e->id, mono_ns(), true);
+            danos_resolved_route_t rr;
+            bool have_rr = route_probe_context(e->type, e->data,
+                                              e->data_size, &rr);
             danos_status_t readback = oper_refresh(e->type, e->id, e->data,
-                                                   e->data_size);
+                                                   e->data_size,
+                                                   have_rr ? &rr : NULL);
             if (readback == DANOS_OK || readback == DANOS_ERR_NOT_SUPPORTED)
                 return;   /* in sync; no readback capability is not drift */
             if (readback == DANOS_ERR_NOT_FOUND) {
@@ -484,8 +514,16 @@ static void program_entry(danos_object_entry_t *e, void *user)
                 have_last = false;
                 lsz = 0;
             } else {
-                /* A failed probe is not evidence of drift. Preserve the
-                 * ledger and avoid an unsafe duplicate programming attempt. */
+                /* A probe failure is not evidence of absence, so preserve
+                 * the ledger and avoid an unsafe duplicate programming
+                 * attempt.  A VERIFY_FAIL mismatch is a real acceptance
+                 * failure (present but wrong ECMP/attributes); record it and
+                 * expose it through the retry/status path instead of
+                 * pretending the object is in sync. */
+                if (readback == DANOS_ERR_VERIFY_FAIL)
+                    retry_record_failure(e->type, e->id, mono_ns(),
+                                         hash_bytes(e->data, e->data_size),
+                                         dep, readback);
                 c->attempted++;
                 c->failed++;
                 return;
@@ -560,7 +598,10 @@ static void program_entry(danos_object_entry_t *e, void *user)
         (void)danos_object_create(ledger(), e->type, e->id, rec,
                                   e->data_size + LEDGER_HEADER_SIZE);
 
-    oper_refresh(e->type, e->id, e->data, e->data_size);
+    danos_resolved_route_t rr;
+    bool have_rr = route_probe_context(e->type, e->data, e->data_size, &rr);
+    (void)oper_refresh(e->type, e->id, e->data, e->data_size,
+                       have_rr ? &rr : NULL);
 }
 
 uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)
