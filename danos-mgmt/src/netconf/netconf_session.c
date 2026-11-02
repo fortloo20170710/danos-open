@@ -152,6 +152,7 @@ netconf_session_t *netconf_session_new(int rfd, int wfd,
     return s;
 
 fail:
+    netconf_frame_decoder_free(s->dec);
     netconf_fini(&s->ctx);
     free(s);
     return NULL;
