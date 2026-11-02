@@ -1,5 +1,40 @@
 # Outstanding work plan
 
+### 2026-11-02 NETCONF single daemon, ECMP OPER verification and coverage
+
+- NETCONF now has a shared daemon (`danos-netconfd`). `danos-netconf-subsystem`
+  sends the SSH user/role over a Unix socket and relays the RFC 6242 stream, so
+  candidate state, candidate/running/startup locks and a pending confirmed
+  commit are shared by every SSH session. The session engine moved to
+  `netconf_session.c`; the in-process subsystem remains as a no-daemon
+  fallback. A persist token can be confirmed or cancelled from another SSH
+  session, while a non-persisted confirmed commit still rolls back when its
+  issuing session closes. The daemon restart boundary is explicitly not
+  qualified: a pending commit and its baseline are in-memory only.
+- Verification: new `netconf_daemon` CTest covers malformed/missing identity
+  preambles, shared locks, cross-session persist confirm/cancel, timer rollback,
+  disconnect rollback and SIGTERM with a live session. The loopback-sshd
+  integration now starts the real daemon and runs two concurrent SSH sessions
+  through it. Local `run_netconf_ssh.sh` passed base 1.0, base 1.1 and the
+  cross-session case.
+- OPER readback: the netlink backend now programs route metric and ECMP
+  `RTA_MULTIPATH`, and verifies the complete next-hop set and metric through a
+  route-specific hook. A present but different route returns
+  `DANOS_ERR_VERIFY_FAIL`, clears the stale OPER copy and is counted as a failed
+  programming pass; an absent route still repairs in the same pass. The mock
+  backend stores the resolved next-hop set so the deterministic pipeline test
+  covers ECMP mismatch, recovery and withdrawal. VRF readback and a VPP
+  interface/route dump remain open because the VPP message layer has no dump
+  binding yet.
+- Coverage: fresh gcovr run on the changed tree is 80.5% lines, 89.4%
+  functions, 59.4% branches with CTest 86/86; the 79% line gate passes.
+- Hardware lanes remain environment-open. The host exposes only
+  `0000:04:00.0` (`10ec:8168`, bound to `r8169`) with HugePages 0 and no
+  qualified DPDK NIC/ISO, so the PCI lane still emits `SKIP` plus
+  `performance_status=ENVIRONMENT-OPEN`. The R1/R2/R3 relay ports and R2/R4
+  serial path are not reachable from this runner, so no physical R2/R4
+  rollback drill was executed.
+
 ### 2026-10-21 NETCONF consolidation and virtual-evidence preflight
 
 - Consolidated and pushed the NETCONF `validate` / confirmed-commit
@@ -334,11 +369,11 @@ Execution priority, as confirmed on 2026-10-15:
    subscription-semantic gap.
 3. **OPER readback / control-plane-data-plane truth.** Interface readback is
    implemented: netlink `RTM_GETLINK` -> OPER snapshot -> gNMI/CLI, with the
-   desired object as fallback. IPv4 exact-prefix/table presence readback now
-   detects an externally withdrawn route and triggers desired-state repair.
-   Still open: full route-attribute/NHGroup equality, VRF readback, a VPP
-   interface/route dump so VPP objects produce OPER copies, and turning other
-   OPER differences into verification failures. The
+   desired object as fallback. IPv4 route readback now checks prefix/table,
+   disposition, metric and every resolved ECMP next hop; mismatch is
+   `DANOS_ERR_VERIFY_FAIL` and absence repairs in the same pass. Still open:
+   VRF readback and a VPP interface/route dump so VPP objects produce OPER
+   copies. The
    reentrant diff callback fix is done; the reconciler's diff callback still
    only counts differences and is not hardware readback.
 4. **NETCONF SSH transport.** Done. OpenSSH provides transport and
@@ -652,9 +687,9 @@ by `commit` in one DPA transaction, `discard-changes` drops them, `lock` and
 datastores, and startup is a checksummed, atomically replaced file. `validate`
 checks a named datastore or an inline config, and confirmed commit rolls back
 on timeout, `cancel-commit`, or session close unless a persist token keeps it
-pending. Candidate state, locks and pending confirmed commits are
-process-local because each SSH session is its own subsystem process; hosting
-NETCONF in one daemon remains open.
+pending. `danos-netconfd` now hosts all sessions so candidate state, locks and
+persist tokens are shared across SSH sessions; durable pending-commit recovery
+across daemon restart/reboot remains open.
 
 Remaining scope for `edit-config` is the modeled subtree: it covers only the
 interface `mtu`/`enabled` leaves, on interfaces that already exist.

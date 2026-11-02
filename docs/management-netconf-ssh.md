@@ -9,18 +9,31 @@ subsystem process that speaks RFC 6242 framing on its stdin/stdout.
 | Piece | Role |
 |-------|------|
 | `sshd` | SSH transport, host keys, user authentication |
-| `danos-netconf-subsystem` | Per-session process: `<hello>`, framing, RPC dispatch |
+| `danos-netconfd` | Shared daemon: one process hosting every NETCONF session and the datastores |
+| `danos-netconf-subsystem` | Per-session SSH process: identity preamble and byte relay to the daemon; in-process fallback without one |
 | `danos-mgmt` (`netconf.c`) | Message layer: datastore selection and RPC handling |
-| `danos-mgmt` (`netconf_datastore.c`) | Running/candidate/startup state, locks, startup file |
+| `danos-mgmt` (`netconf_datastore.c`) | Running/candidate/startup state, locks, confirmed-commit timer, startup file |
+| `danos-mgmt` (`netconf_session.c`) | Transport-independent session engine: hello, framing, dispatch |
 | `danos-mgmt` (`netconf_framing.c`) | RFC 6242 framing: EOM and chunked |
 
-OpenSSH starts one subsystem process per SSH session. The process reads RPCs
-from stdin, writes replies to stdout and exits after `close-session`.
+OpenSSH starts one subsystem process per SSH session. The recommended
+deployment runs `danos-netconfd`; the subsystem connects to its Unix socket,
+sends the SSH user plus `DANOS_NETCONF_ROLE`, and relays the NETCONF bytes
+unchanged. One daemon therefore owns running/candidate/startup, the lock table
+and the confirmed-commit timer for all sessions. Without a daemon the
+subsystem runs the same session engine in-process (the previous laboratory
+behaviour).
 
 ## Server configuration
 
-Install the subsystem (default `${CMAKE_INSTALL_SBINDIR}/danos-netconf-subsystem`)
-and add it to `sshd_config`:
+Install the daemon and subsystem (both default to
+`${CMAKE_INSTALL_SBINDIR}`) and add the subsystem to `sshd_config`. Start
+`danos-netconfd` with the same startup path before accepting sessions:
+
+```
+danos-netconfd --socket /run/danos/netconf.sock \
+  --startup /var/lib/danos/netconf-startup.db
+```
 
 ```
 Port 830
@@ -34,8 +47,14 @@ KbdInteractiveAuthentication no
 # (DANOS_AUTHZ_DEFAULT_ROLE, ADMIN when unset).
 SetEnv DANOS_NETCONF_ROLE=admin
 
-Subsystem netconf /usr/local/sbin/danos-netconf-subsystem
+Subsystem netconf /usr/local/sbin/danos-netconf-subsystem --daemon /run/danos/netconf.sock
 ```
+
+The socket directory is the access boundary: create `/run/danos` root-owned
+and not world-writable. The daemon checks `SO_PEERCRED` against the claimed
+user name when that name resolves, so a local process cannot claim another
+user's audit identity. The subsystem process is spawned by `sshd` as the
+authenticated user, so the daemon does not see the password or key.
 
 Restart `sshd` after the change. A client connects with the subsystem name:
 
@@ -139,16 +158,19 @@ back immediately. A token that does not match returns `access-denied`.
 `<persist-id>` is refused together with `<confirmed/>`, and `<persist>`,
 `<confirm-timeout>` require `<confirmed/>`.
 
-The timer runs in the subsystem process, so it bounds a session's confirmed
-commit while that process lives. Although the current in-process handler has
-tests for persist tokens, the SSH deployment starts a separate process for
-each session: a persisted commit cannot be confirmed/cancelled from a later
-SSH session, and neither its timer nor rollback baseline survives process
-exit/reboot. The advertised capability therefore remains `confirmed-commit:1.0`
-and **confirmed commit is not qualified for production SSH use**. Do not rely
-on `<persist>` or `<persist-id>` until the shared NETCONF daemon and durable
-rollback state are implemented. RFC 6241 requires persistent tokens to work
-across sessions and requires rollback after a reboot before timeout.
+With `danos-netconfd` the pending confirmed commit, its rollback baseline and
+its timer live in the daemon process, so a `<persist>` token issued by one SSH
+session can be confirmed or cancelled by a later, different SSH session, even
+after the issuing session closes. A confirming `<commit><persist-id>` is
+accepted by token ownership even while the issuing session still holds a
+datastore lock, because it publishes no new candidate state. Closing a session
+without a token still rolls its commit back immediately.
+
+The timer and baseline are process-local: a daemon restart loses a pending
+confirmed commit. Rollback-after-reboot therefore remains unqualified, because
+the in-memory running store is rebuilt and there is no durable pending-commit
+record. Keep `<persist>` out of a release gate that requires RFC 6241 reboot
+recovery until the running store itself is durable.
 
 Locks follow RFC 6241: a lock belongs to one session, blocks writes to that
 datastore by other sessions (`in-use`), refuses a second lock
@@ -159,14 +181,17 @@ interfaces that already exist in the selected datastore.
 
 ### Process model
 
-OpenSSH starts one subsystem process per SSH session. The running, candidate
-and startup datastores and the lock table therefore live inside that process:
-two concurrent SSH sessions do not see each other's candidate edits or locks,
-and `commit` updates only the committing session's in-memory running store.
-The startup file is shared, so `copy-config` to startup is visible to later
-sessions. A single NETCONF daemon that hosts all sessions would make candidate,
-locks and confirmed-commit state global; the datastore module is written for
-that host and does not depend on the transport.
+`danos-netconfd` hosts every session in one process: candidate edits, locks,
+the running store and a pending confirmed commit are shared, which is what
+RFC 6241 requires. The daemon serialises RPC handling across sessions and
+keeps the confirmed-commit timer on its own thread. Session threads are
+independent; a disconnect releases that session's locks and rolls back its
+non-persisted confirmed commit.
+
+The subsystem still falls back to an in-process session engine when no socket
+is reachable and no daemon path was configured explicitly. That mode is
+single-session and is kept for laboratory use and for tests that do not start
+a daemon; it does not provide cross-session state.
 
 ## Framing limits
 
@@ -196,8 +221,15 @@ With a real `sshd` (root, or a user permitted to run `sshd`):
 
 ```
 sudo bash danos-test/integration/run_netconf_ssh.sh \
-  build/danos-mgmt/danos-netconf-subsystem
+  build/danos-mgmt/danos-netconf-subsystem \
+  build/danos-mgmt/danos-netconfd
 ```
+
+Passing the daemon binary also runs the cross-session client check: two
+concurrent SSH sessions must share candidate locks, a persist token must be
+cancellable from the other session, and a non-persisted commit must be
+session-owned. Omitting the daemon argument exercises the in-process
+single-session fallback.
 
 The script generates a throwaway host key, client key, `authorized_keys` and
 `sshd_config`, starts `sshd` on loopback port 2222, and runs
@@ -206,11 +238,12 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
 
 ## Known limits
 
-- Candidate state, locks and pending confirmed-commit state are process-local
-  because the SSH subsystem runs one process per session (see "Process
-  model"). Confirmed commit is not release-qualified over SSH; persistent
-  cross-session tokens and rollback recovery across process restart remain
-  open.
+- Candidate state, locks and pending confirmed-commit state are shared between
+  SSH sessions while `danos-netconfd` runs. A daemon restart loses a pending
+  confirmed commit and its rollback baseline; durable pending-commit recovery
+  across reboot remains open (see "Confirmed commit").
+- The daemon socket is a local trust boundary. Run it in a root-owned
+  directory and do not expose it to unprivileged local writers.
 - `copy-config` does not accept an inline `<config>` source or `<url>`.
 - `edit-config` covers interface `mtu` and `enabled`. Other subtrees are not
   modeled by the server yet.
