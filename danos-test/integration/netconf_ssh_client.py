@@ -4,7 +4,7 @@
 Connects to a real sshd with an RFC 6242 subsystem and drives a session in
 both base 1.0 (end-of-message) and base 1.1 (chunked) framing.
 
-usage: netconf_ssh_client.py <host> <port> <identity-file> [user]
+usage: netconf_ssh_client.py <host> <port> <identity-file> [user] [shared]
 """
 
 import os
@@ -45,6 +45,11 @@ CONFIRM_PERSIST = (
 CANCEL_PERSIST = (
     b"<rpc><cancel-commit><persist-id>integ1</persist-id></cancel-commit></rpc>"
 )
+LOCK_CANDIDATE = (
+    b"<rpc><lock><target><candidate/></target></lock></rpc>"
+)
+CONFIRM_PLAIN = b"<rpc><commit><confirmed/><confirm-timeout>30</confirm-timeout></commit></rpc>"
+CANCEL = b"<rpc><cancel-commit/></rpc>"
 CLOSE = b"<rpc><close-session/></rpc>"
 
 
@@ -92,6 +97,21 @@ class Session:
     def write(self, data):
         self.proc.stdin.write(data)
         self.proc.stdin.flush()
+
+    def rpc(self, body):
+        self.write(body + EOM)
+        return self.read_eom()
+
+    def login(self):
+        hello = self.read_eom()  # server hello is always EOM framed
+        assert b"<hello" in hello, hello
+        self.write(HELLO_10 + EOM)
+        return hello
+
+    def close(self):
+        ack = self.rpc(CLOSE)
+        assert b"<ok/>" in ack, ack
+        self.finish()
 
     def read_eom(self):
         while EOM not in self.buf:
@@ -171,14 +191,45 @@ def run(host, port, key, user, base11):
           % ("1.1 (chunked)" if base11 else "1.0 (EOM)"))
 
 
+def run_cross_session(host, port, key, user):
+    """Two concurrent SSH sessions must observe the same datastore state."""
+    a = Session(host, port, key, user)
+    b = Session(host, port, key, user)
+    a.login()
+    b.login()
+
+    # Candidate locks are shared, not per-subsystem-process.
+    assert b"<ok/>" in a.rpc(LOCK_CANDIDATE)
+    denied = b.rpc(LOCK_CANDIDATE)
+    assert b"lock-denied" in denied, denied
+
+    # A persist token issued by one SSH session can be confirmed/cancelled
+    # from a different SSH session.
+    assert b"<ok/>" in a.rpc(CONFIRM_PERSIST)
+    assert b"<ok/>" in b.rpc(CANCEL_PERSIST)
+
+    # A non-persisted confirmed commit belongs to its issuing session.
+    assert b"<ok/>" in a.rpc(CONFIRM_PLAIN)
+    denied = b.rpc(CANCEL)
+    assert b"access-denied" in denied, denied
+    assert b"<ok/>" in a.rpc(CANCEL)
+
+    a.close()
+    b.close()
+    print("[PASS] NETCONF daemon: cross-session locks and persist tokens")
+
+
 def main():
-    if len(sys.argv) not in (4, 5):
+    if len(sys.argv) not in (4, 5, 6):
         print(__doc__.strip(), file=sys.stderr)
         return 2
     host, port, key = sys.argv[1], int(sys.argv[2]), sys.argv[3]
-    user = sys.argv[4] if len(sys.argv) == 5 else "root"
+    user = sys.argv[4] if len(sys.argv) >= 5 else "root"
+    shared = len(sys.argv) == 6 and sys.argv[5] == "1"
     run(host, port, key, user, base11=False)
     run(host, port, key, user, base11=True)
+    if shared:
+        run_cross_session(host, port, key, user)
     print("=== netconf_ssh_client: ALL PASSED ===")
     return 0
 

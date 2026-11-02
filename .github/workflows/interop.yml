@@ -61,7 +61,8 @@ jobs:
       - name: Test over a loopback sshd
         run: |
           sudo bash danos-test/integration/run_netconf_ssh.sh \
-            "$PWD/build-netconf/danos-mgmt/danos-netconf-subsystem"
+            "$PWD/build-netconf/danos-mgmt/danos-netconf-subsystem" \
+            "$PWD/build-netconf/danos-mgmt/danos-netconfd"
 
   sanitizers:
     name: ASAN + UBSAN (full suite + fuzz)
