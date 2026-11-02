@@ -831,17 +831,24 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
     pthread_mutex_lock(&g_ds_lock);
     netconf_ds_status_t rc = NETCONF_DS_OK;
 
-    if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
-        !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
-        rc = NETCONF_DS_LOCKED;
-    } else if (!confirmed) {
-        /* A plain commit confirms a pending confirmed commit, if this
-         * session is allowed to confirm it. */
-        if (g_ds.confirmed) {
-            if (!confirm_allowed_locked(session_id, persist_id))
+    if (!confirmed) {
+        /* A confirming commit with persist-id may come from any session that
+         * knows the token, even while the issuing session still holds a
+         * datastore lock.  It publishes no new candidate state (a confirmed
+         * commit cleared the candidate), so the lock check below applies only
+         * to commits that edit a datastore. */
+        const bool confirming = persist_id != NULL;
+        if (confirming) {
+            if (!g_ds.confirmed)
+                rc = NETCONF_DS_INVALID;    /* nothing to confirm */
+            else if (!confirm_allowed_locked(session_id, persist_id))
                 rc = NETCONF_DS_DENIED;
-        } else if (persist_id) {
-            rc = NETCONF_DS_INVALID;    /* nothing to confirm */
+        } else if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
+                   !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
+            rc = NETCONF_DS_LOCKED;
+        } else if (g_ds.confirmed &&
+                   !confirm_allowed_locked(session_id, NULL)) {
+            rc = NETCONF_DS_DENIED;
         }
 
         if (rc == NETCONF_DS_OK) {

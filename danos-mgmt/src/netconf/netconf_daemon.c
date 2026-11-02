@@ -1,0 +1,355 @@
+/*
+ * DANOS-Open Management: shared NETCONF daemon
+ *
+ * The SSH subsystem historically ran one process per NETCONF session, so the
+ * candidate datastore, lock table and pending confirmed commit lived inside
+ * that process.  RFC 6241 candidate locking and confirmed-commit persist
+ * tokens are defined across sessions, so they must be hosted by one process.
+ *
+ * `danos-netconfd` owns the datastores and runs one session engine thread per
+ * accepted Unix-socket connection.  `danos-netconf-subsystem` connects to it,
+ * sends a one-line identity preamble and then relays the SSH channel bytes
+ * unchanged.  The daemon keeps the same wire protocol as the in-process
+ * subsystem, including the server hello.
+ */
+
+#define _GNU_SOURCE 1
+
+#include "netconf.h"
+#include "netconf_datastore.h"
+#include "netconf_session.h"
+#include "../authz/authz.h"
+
+#include <danos/security/rbac.h>
+
+#include <errno.h>
+#include <poll.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <pthread.h>
+
+#define NETCONF_DEFAULT_SOCKET "/run/danos/netconf.sock"
+#define NETCONF_HANDSHAKE_MAX  512
+#define NETCONF_HANDSHAKE_MAGIC "DANOS-NETCONF/1"
+
+struct client_conn {
+    int                 fd;
+    struct client_conn *next;
+};
+
+static pthread_mutex_t g_clients_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  g_clients_cv = PTHREAD_COND_INITIALIZER;
+static struct client_conn *g_clients;
+static size_t          g_client_count;
+static bool            g_stopping;
+
+static volatile sig_atomic_t g_signal_stop;
+
+static void on_signal(int sig)
+{
+    (void)sig;
+    g_signal_stop = 1;
+}
+
+
+/* Read the one-line preamble from the subsystem proxy.  Read a byte at a time
+ * so no NETCONF hello byte is consumed with it. */
+static int read_handshake(int fd, char *line, size_t cap)
+{
+    size_t len = 0;
+    for (;;) {
+        char c;
+        ssize_t n = read(fd, &c, 1);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return -1;
+        }
+        if (n == 0) return -1;
+        if (c == '\n') break;
+        if (len + 1 >= cap) return -1;
+        line[len++] = c;
+    }
+    line[len] = '\0';
+    return 0;
+}
+
+static bool peer_identity_matches(int fd, const char *user)
+{
+#ifdef SO_PEERCRED
+    struct ucred cred;
+    socklen_t len = sizeof(cred);
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
+        return true;    /* platform accepted the connection; rely on socket mode */
+
+    struct passwd *pw = getpwnam(user);
+    if (!pw) return true;   /* identity is an audit label on this platform */
+    return pw->pw_uid == cred.uid;
+#else
+    (void)fd;
+    (void)user;
+    return true;
+#endif
+}
+
+static bool client_register(int fd)
+{
+    struct client_conn *c = malloc(sizeof(*c));
+    if (!c) return false;
+    c->fd = fd;
+    pthread_mutex_lock(&g_clients_lock);
+    c->next = g_clients;
+    g_clients = c;
+    g_client_count++;
+    pthread_mutex_unlock(&g_clients_lock);
+    return true;
+}
+
+static void client_unregister(int fd)
+{
+    pthread_mutex_lock(&g_clients_lock);
+    struct client_conn **pp = &g_clients;
+    while (*pp) {
+        if ((*pp)->fd == fd) {
+            struct client_conn *dead = *pp;
+            *pp = dead->next;
+            free(dead);
+            if (g_client_count) g_client_count--;
+            break;
+        }
+        pp = &(*pp)->next;
+    }
+    if (g_client_count == 0) pthread_cond_broadcast(&g_clients_cv);
+    pthread_mutex_unlock(&g_clients_lock);
+}
+
+struct client_arg {
+    int  fd;
+    char user[64];
+    char role[64];
+};
+
+static void *client_thread(void *arg)
+{
+    struct client_arg *ca = arg;
+    int fd = ca->fd;
+    char user[64];
+    char role_name[64];
+    snprintf(user, sizeof(user), "%s", ca->user);
+    snprintf(role_name, sizeof(role_name), "%s", ca->role);
+    free(ca);
+
+    danos_sec_role_t role = 0;
+    if (role_name[0] && strcmp(role_name, "-") != 0) {
+        if (danos_rbac_role_by_name(role_name, &role) != 0) {
+            fprintf(stderr, "netconfd: unknown role '%s', using default\n",
+                    role_name);
+            role = 0;
+        }
+    }
+    if (!role) role = danos_authz_default_role();
+
+    netconf_session_t *s = netconf_session_new(fd, fd, user, role);
+    if (!s) {
+        fprintf(stderr, "netconfd: session handshake failed\n");
+        goto out;
+    }
+
+    if (netconf_session_run(s) != 0)
+        fprintf(stderr, "netconfd: session ended on a protocol error\n");
+
+    /* A disconnect must release locks and roll back a non-persisted
+     * confirmed commit, exactly as <close-session> would. */
+    netconf_ds_release_session(netconf_session_id(s));
+    netconf_session_free(s);
+
+out:
+    client_unregister(fd);
+    close(fd);
+    return NULL;
+}
+
+static int listen_socket(const char *path)
+{
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    if (strlen(path) >= sizeof(addr.sun_path)) {
+        fprintf(stderr, "netconfd: socket path too long: %s\n", path);
+        return -1;
+    }
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
+
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        perror("netconfd: socket");
+        return -1;
+    }
+
+    unlink(path);
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        perror("netconfd: bind");
+        close(fd);
+        return -1;
+    }
+    /* The SSH subsystem connects as the authenticated user.  Deployment may
+     * prefer a root-owned 0660 socket in a dedicated group; the directory
+     * provides the actual boundary. */
+    (void)chmod(path, 0660);
+
+    if (listen(fd, 64) != 0) {
+        perror("netconfd: listen");
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    return fd;
+}
+
+static void shutdown_clients(void)
+{
+    pthread_mutex_lock(&g_clients_lock);
+    g_stopping = true;
+    for (struct client_conn *c = g_clients; c; c = c->next)
+        (void)shutdown(c->fd, SHUT_RDWR);
+    pthread_cond_broadcast(&g_clients_cv);
+    while (g_client_count > 0)
+        pthread_cond_wait(&g_clients_cv, &g_clients_lock);
+    pthread_mutex_unlock(&g_clients_lock);
+}
+
+static void usage(const char *argv0)
+{
+    fprintf(stderr,
+            "usage: %s [--socket <path>] [--startup <path>]\n"
+            "  socket defaults to $DANOS_NETCONF_SOCKET or %s\n",
+            argv0, NETCONF_DEFAULT_SOCKET);
+}
+
+int main(int argc, char **argv)
+{
+    const char *socket_path = NULL;
+    const char *startup_path = NULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
+            socket_path = argv[++i];
+        } else if (strcmp(argv[i], "--startup") == 0 && i + 1 < argc) {
+            startup_path = argv[++i];
+        } else if (strcmp(argv[i], "--help") == 0) {
+            usage(argv[0]);
+            return 0;
+        } else {
+            usage(argv[0]);
+            return 2;
+        }
+    }
+
+    if (!socket_path || !*socket_path)
+        socket_path = getenv("DANOS_NETCONF_SOCKET");
+    if (!socket_path || !*socket_path)
+        socket_path = NETCONF_DEFAULT_SOCKET;
+
+    signal(SIGPIPE, SIG_IGN);
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = on_signal;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+
+    (void)danos_authz_init(NULL);
+    netconf_ds_init(startup_path);
+
+    int lfd = listen_socket(socket_path);
+    if (lfd < 0) {
+        netconf_ds_fini();
+        danos_authz_shutdown();
+        return 1;
+    }
+
+    fprintf(stderr, "netconfd: listening on %s\n", socket_path);
+
+    while (!g_signal_stop) {
+        struct pollfd pfd = { .fd = lfd, .events = POLLIN };
+        int pr = poll(&pfd, 1, 500);
+        if (pr < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (pr == 0) continue;
+        if (!(pfd.revents & POLLIN)) continue;
+
+        int cfd = accept4(lfd, NULL, NULL, SOCK_CLOEXEC);
+        if (cfd < 0) {
+            if (errno == EINTR) continue;
+            perror("netconfd: accept");
+            break;
+        }
+
+        char line[NETCONF_HANDSHAKE_MAX];
+        if (read_handshake(cfd, line, sizeof(line)) != 0) {
+            fprintf(stderr, "netconfd: connection without identity preamble\n");
+            close(cfd);
+            continue;
+        }
+
+        char magic[32] = {0}, user[64] = {0}, role[64] = {0};
+        int fields = sscanf(line, "%31s %63s %63s", magic, user, role);
+        if (fields < 2 ||
+            strcmp(magic, NETCONF_HANDSHAKE_MAGIC) != 0) {
+            fprintf(stderr, "netconfd: malformed identity preamble\n");
+            close(cfd);
+            continue;
+        }
+        if (strcmp(user, "-") == 0) user[0] = '\0';
+        if (fields < 3 || strcmp(role, "-") == 0) role[0] = '\0';
+
+        if (!peer_identity_matches(cfd, user)) {
+            fprintf(stderr,
+                    "netconfd: refusing session claiming '%s' from a different uid\n",
+                    user);
+            close(cfd);
+            continue;
+        }
+
+        struct client_arg *ca = calloc(1, sizeof(*ca));
+        if (!ca) {
+            close(cfd);
+            continue;
+        }
+        ca->fd = cfd;
+        snprintf(ca->user, sizeof(ca->user), "%s", user);
+        snprintf(ca->role, sizeof(ca->role), "%s", role);
+
+        /* Register before starting the thread so shutdown_clients() cannot
+         * observe zero clients while a session thread is still starting. */
+        if (!client_register(cfd)) {
+            free(ca);
+            close(cfd);
+            continue;
+        }
+
+        pthread_t th;
+        if (pthread_create(&th, NULL, client_thread, ca) != 0) {
+            fputs("netconfd: cannot start session thread\n", stderr);
+            client_unregister(cfd);
+            free(ca);
+            close(cfd);
+            continue;
+        }
+        pthread_detach(th);
+    }
+
+    close(lfd);
+    unlink(socket_path);
+    shutdown_clients();
+    netconf_ds_fini();
+    danos_authz_shutdown();
+    return 0;
+}

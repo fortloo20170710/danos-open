@@ -13,6 +13,7 @@ add_library(danos-mgmt STATIC
   src/netconf/netconf.c
   src/netconf/netconf_datastore.c
   src/netconf/netconf_framing.c
+  src/netconf/netconf_session.c
   src/authz/authz.c
 )
 target_include_directories(danos-mgmt PUBLIC src)
@@ -22,7 +23,13 @@ target_link_libraries(danos-mgmt PUBLIC danos-dpa danos-core danos-security Open
 # RFC 6242 framing on stdin/stdout.
 add_executable(danos-netconf-subsystem src/netconf/netconf_subsystem.c)
 target_link_libraries(danos-netconf-subsystem PRIVATE danos-mgmt)
-install(TARGETS danos-netconf-subsystem RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
+
+# Shared NETCONF daemon.  It hosts the datastores once so candidate state,
+# locks and confirmed-commit persist tokens are shared across SSH sessions.
+add_executable(danos-netconfd src/netconf/netconf_daemon.c)
+target_link_libraries(danos-netconfd PRIVATE danos-mgmt pthread)
+install(TARGETS danos-netconf-subsystem danos-netconfd
+        RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
 
 # Legacy gNMI-like HTTP/JSON server (E2). It predates the gRPC stack, has
 # no TLS or per-object authorization, and is not started by mgrd. Keep it

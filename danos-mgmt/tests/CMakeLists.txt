@@ -26,6 +26,12 @@ if(Python3_Interpreter_FOUND)
     ${CMAKE_CURRENT_SOURCE_DIR}/test_netconf_subsystem.py
     $<TARGET_FILE:danos-netconf-subsystem>)
   set_tests_properties(netconf_subsystem PROPERTIES TIMEOUT 60)
+
+  add_test(NAME netconf_daemon COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test_netconf_daemon.py
+    $<TARGET_FILE:danos-netconfd>
+    $<TARGET_FILE:danos-netconf-subsystem>)
+  set_tests_properties(netconf_daemon PROPERTIES TIMEOUT 60)
 endif()
 
 add_executable(gnmi_proto_test test_gnmi_proto.c)
