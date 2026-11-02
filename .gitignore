@@ -68,4 +68,5 @@ containerlab
 # which is the tracked source. Only the generated output belongs in git.
 tools/gen-model-paths/gen-model-paths
 build-coverage/
+build-coverage*/
 .coverage-tools/

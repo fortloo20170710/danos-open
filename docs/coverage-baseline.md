@@ -34,7 +34,26 @@ protocol compliance, true VPP/FRR runtime qualification, ISO boots or PCI lanes.
 Some deterministic tests exercise mocks. Line execution is not assertion
 quality, correct behavior or adequate security coverage.
 
-## 2026-10-20 current baseline
+## 2026-11-02 current baseline
+
+Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
+d771a5a plus the NETCONF daemon and route-ECMP readback worktree changes
+(dirty). CTest 86/86 passed after fixing the rootfs fixture's non-root tar
+extraction to preserve the archived mode.
+
+| Metric | Executed / total | Coverage |
+| --- | --- | --- |
+| Lines | 8739 / 10852 | 80.5% |
+| Functions | 739 / 827 | 89.4% |
+| Branches | 5090 / 8566 | 59.4% |
+
+The 79% line gate passes. The totals differ from the 2026-10-20 run because
+the measured tree now includes the shared NETCONF session/daemon sources and
+the route-specific readback paths, not because the filter changed. This is a
+local deterministic-suite measurement; it is not hardware, PCI, or live VPP
+coverage.
+
+## 2026-10-20 baseline
 
 Fresh run: build-coverage/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
 03df625 with the P0–P2 worktree changes (dirty). CTest 81/81 passed.
