@@ -36,8 +36,9 @@
   checks full-member verification, metric mismatch, partial withdrawal and
   absence; it runs as root and prints `SKIP` elsewhere. VRF readback and a VPP interface/route dump remain open because the
   VPP message layer has no dump binding yet.
-- Coverage: fresh gcovr run on the changed tree is 80.2% lines, 89.3%
-  functions, 59.1% branches with CTest 87/87; the 79% line gate passes.
+- Coverage: fresh gcovr run on the changed tree (568507d) is 80.2% lines
+  (8997/11219), 89.4% functions (747/836), 59.0% branches (5295/8968) with
+  CTest 89/89; the 79% line gate passes.
 - Hardware lanes remain environment-open. The host exposes only
   `0000:04:00.0` (`10ec:8168`, bound to `r8169`) with HugePages 0 and no
   qualified DPDK NIC/ISO, so the PCI lane still emits `SKIP` plus

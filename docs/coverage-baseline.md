@@ -36,15 +36,15 @@ quality, correct behavior or adequate security coverage.
 
 ## 2026-11-02 current baseline
 
-Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
-d771a5a plus the NETCONF daemon and route-ECMP readback worktree changes
-(dirty), including the human-review follow-up. CTest 87/87 passed.
+Fresh run: build-coverage/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
+568507d plus the review follow-up (role/socket hardening, K6 and cross-uid
+lanes). CTest 89/89 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 8963 / 11169 | 80.2% |
-| Functions | — | 89.3% |
-| Branches | 5272 / 8914 | 59.1% |
+| Lines | 8997 / 11219 | 80.2% |
+| Functions | 747 / 836 | 89.4% |
+| Branches | 5295 / 8968 | 59.0% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and
