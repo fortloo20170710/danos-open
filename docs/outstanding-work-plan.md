@@ -1,5 +1,18 @@
 # Outstanding work plan
 
+### 2026-11-03 NHGroup/NH tombstone cascade
+
+- A route whose desired object still exists but whose NHGroup or member NH
+  disappeared is now treated as a dependent tombstone: the sweep resolves the
+  dependency, withdraws the route with `route_del` and drops its ledger record.
+  This works even when the programming pass deferred the route behind retry or
+  anti-flap state, so a removed next hop cannot leave a stale forwarding path.
+- Sweep ordering is routes-first (route withdraw before interface-down/VRF
+  bookkeeping). Replayed sweeps are idempotent, and restoring the dependency
+  reprograms the route. `tombstone_cascade` covers NHGroup removal, member-NH
+  removal, ordering, idempotence and replay through both the reconciler and
+  the sweep. CTest is 94/94.
+
 ### 2026-11-03 fail-closed corrupt NETCONF running snapshot
 
 - A corrupt or unreadable `<startup>.running` now refuses daemon startup

@@ -8,11 +8,11 @@
 ## Current v0.16 status
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
-release has not been qualified. The latest merged functional checkpoint
-(`bdce485`) passes Release CTest **93/93**, the deterministic backend contract
-gate, and GitHub CI **16/16** (including ASan/UBSan, TSan, Coverage and
-Interop). Production line coverage is 81.0% (functions 91.1%, branches 60.1%).
-The full unified QEMU/VMware release gate was not rerun on that checkpoint.
+release has not been qualified. The current tree passes Release CTest
+**94/94**, the deterministic backend contract gate, and GitHub CI (including
+ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.0%
+(functions 91.1%, branches 60.1%). The full unified QEMU/VMware release gate
+was not rerun on this checkpoint.
 
 Recent merged control-plane work:
 
@@ -76,7 +76,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current source checkpoint reports 93/93.
+by build configuration; the current source checkpoint reports 94/94.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
@@ -152,7 +152,7 @@ roadmap in `docs/project-status.md`; v1.1 spec archived at `docs/archive/v1.1/`)
 
 | Module | Description | Status |
 |--------|-------------|-------|
-| `danos-core/` | Core engine: object/store/transaction/capability/event, WAL persist, dependency-aware programming pipeline, reconciler | v0.10 |
+| `danos-core/` | Core engine: object/store/transaction/capability/event, WAL persist, dependency-aware programming pipeline, reconciler, NH/NHGroup tombstone cascade to dependent routes | v0.11 |
 | `danos-dpa/` | DPA public API (C ABI + Protobuf) | v0.2 |
 | `danos-fib/` | FRR zebra/FIB adapter | v0.2 |
 | `danos-vpp/` | VPP backend: real binary API (handshake + msg table + typed messages) + stat segment + programming adapter + interface/VRF/route OPER dump readback | v0.12 |

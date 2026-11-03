@@ -64,7 +64,7 @@
       DATA/gRPC 解析、per-stream 分派/取消、同连接 unary RPC 及多 STREAM 回归均已实现；
       剩余订阅语义限制（`use_models`、异构路径合同等）另行跟踪
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
-- [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
+- [x] 墓碑覆盖扩展：NHGroup 或成员 NH 从 desired 清除时，即使路由对象仍在 desired，也会先撤回依赖路由（route_del），再处理其他墓碑；reconciler 与 sweep 幂等重放、依赖恢复后重新编程均有回归
 - [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
 - [x] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 读回；VPP `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 的接口、VRF、路由 OPER 读回与差异检测；VPP dump 无 metric，非零 metric 显式返回 `DANOS_ERR_NOT_SUPPORTED`；均有 mock 解码/适配器回归，真实 VPP V6 lane 覆盖
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)

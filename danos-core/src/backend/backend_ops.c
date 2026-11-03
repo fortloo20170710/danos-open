@@ -742,7 +742,6 @@ static pthread_mutex_t g_sweep_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void sweep_collect(danos_object_entry_t *e, void *user)
 {
-    (void)user;
     if (g_sweep_n >= SWEEP_MAX) return;
 
     uint8_t last[LEDGER_REC_MAX];
@@ -750,17 +749,43 @@ static void sweep_collect(danos_object_entry_t *e, void *user)
     if (danos_object_read(ledger(), e->type, e->id, last, &lsz) != DANOS_OK)
         return;   /* not ours */
 
-    /* still desired? */
+    /* Still desired?  A route whose desired object remains but whose
+     * NHGroup/member dependency disappeared is collected as well: its
+     * backend path is no longer valid and must be withdrawn, even when the
+     * programming pass deferred it behind a retry/anti-flap park. */
     uint8_t probe[LEDGER_REC_MAX];
     size_t psz = sizeof(probe);
     if (!user && g_default_store &&
         danos_object_read(g_default_store, e->type, e->id,
-                          probe, &psz) == DANOS_OK)
-        return;   /* alive */
+                          probe, &psz) == DANOS_OK) {
+        if (e->type != DANOS_OBJ_ROUTE ||
+            psz < sizeof(danos_route_t))
+            return;   /* alive */
+        danos_resolved_route_t rr;
+        if (resolve_route_nh((const danos_route_t *)probe, &rr) == DANOS_OK)
+            return;   /* alive and resolvable */
+    }
 
     g_sweep_ids[g_sweep_n].type = e->type;
     g_sweep_ids[g_sweep_n].id = e->id;
     g_sweep_n++;
+}
+
+/* Withdraw dependent routes before other tombstones so a removal pass never
+ * drops the object that a route withdraw message still needs.  NH/NHGroup
+ * are not backend-programmed, but this ordering also keeps route_del ahead
+ * of interface-down/VRF bookkeeping in the same sweep. */
+static void sweep_routes_first(void)
+{
+    sweep_id_t ordered[SWEEP_MAX];
+    unsigned n = 0;
+    for (unsigned i = 0; i < g_sweep_n; i++)
+        if (g_sweep_ids[i].type == DANOS_OBJ_ROUTE)
+            ordered[n++] = g_sweep_ids[i];
+    for (unsigned i = 0; i < g_sweep_n; i++)
+        if (g_sweep_ids[i].type != DANOS_OBJ_ROUTE)
+            ordered[n++] = g_sweep_ids[i];
+    memcpy(g_sweep_ids, ordered, n * sizeof(ordered[0]));
 }
 
 uint64_t danos_programming_sweep(uint64_t *failed)
@@ -777,6 +802,7 @@ uint64_t danos_programming_sweep(uint64_t *failed)
     }
     g_sweep_n = 0;
     danos_object_iterate(g_programmed, sweep_collect, NULL);
+    sweep_routes_first();
 
     for (unsigned i = 0; i < g_sweep_n; i++) {
         danos_obj_type_t type = g_sweep_ids[i].type;
