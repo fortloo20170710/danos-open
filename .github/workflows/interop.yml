@@ -30,7 +30,16 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
           gnmic version
       - name: Configure & build DANOS
         run: |
@@ -227,7 +236,16 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -355,7 +373,16 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
