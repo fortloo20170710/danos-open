@@ -9,8 +9,10 @@
 #   VPP_DP_SW_IF_INDEX=1
 #   VPP_DP_IF_ADDR=10.0.0.1/24
 #
-# It is idempotent: an existing non-local interface is reused and its address
-# is only added when missing.  Set VPP_DP_IF_NAME/VPP_DP_IF_ADDR to override.
+# It is idempotent: existing non-local interfaces are reused and the first
+# interface's address is only added when missing.  VPP_DP_IF_COUNT defaults to
+# 2 because the ECMP/route test fixture needs loop0 and loop1.  Set
+# VPP_DP_IF_NAME/VPP_DP_IF_ADDR/VPP_DP_IF_COUNT to override.
 set -euo pipefail
 
 VPPCTL="${VPPCTL:-vppctl}"
@@ -40,29 +42,31 @@ first_dataplane() {
 
 IF_NAME="${VPP_DP_IF_NAME:-}"
 IF_ADDR="${VPP_DP_IF_ADDR:-10.0.0.1/24}"
+IF_COUNT="${VPP_DP_IF_COUNT:-2}"
 IF_INDEX=""
-read -r cur_name cur_index < <(first_dataplane || true) || true
-if [ -n "${cur_name:-}" ]; then
-    IF_NAME="$cur_name"
-    IF_INDEX="$cur_index"
-else
-    IF_NAME="${IF_NAME:-loop0}"
-    # `create loopback interface` names the new interface loopN and gives it
-    # the next sw_if_index.  Reuse an existing loopN if present.
-    if ! show_interfaces | awk -v n="$IF_NAME" '$1 == n { found=1 } END { exit !found }'; then
-        vppctl_ create loopback interface >/dev/null || {
-            echo "[BLOCKED] VPP refused to create a loopback interface" >&2
-            exit 2
-        }
-    fi
-    read -r cur_name cur_index < <(first_dataplane || true) || true
-    test -n "${cur_name:-}" || {
-        echo "[BLOCKED] VPP has no dataplane interface after creating a loopback" >&2
+
+dataplane_count() {
+    show_interfaces | awk 'NR>1 && $1 != "local0" && $2 ~ /^[0-9]+$/ { n++ } END { print n+0 }'
+}
+
+# VPP's route/ECMP fixture expects loop0 and loop1; a fresh software runtime
+# has neither.  Create loopbacks until the requested count exists.
+have=$(dataplane_count)
+while [ "$have" -lt "$IF_COUNT" ]; do
+    vppctl_ create loopback interface >/dev/null || {
+        echo "[BLOCKED] VPP refused to create a loopback interface" >&2
         exit 2
     }
-    IF_NAME="$cur_name"
-    IF_INDEX="$cur_index"
-fi
+    have=$((have + 1))
+done
+
+read -r cur_name cur_index < <(first_dataplane || true) || true
+test -n "${cur_name:-}" || {
+    echo "[BLOCKED] VPP has no dataplane interface after creating loopbacks" >&2
+    exit 2
+}
+IF_NAME="${IF_NAME:-$cur_name}"
+IF_INDEX="$cur_index"
 
 vppctl_ set interface state "$IF_NAME" up >/dev/null || {
     echo "[BLOCKED] VPP cannot bring $IF_NAME up" >&2
@@ -81,4 +85,5 @@ cat <<FACTS
 VPP_DP_IF_NAME=$IF_NAME
 VPP_DP_SW_IF_INDEX=$IF_INDEX
 VPP_DP_IF_ADDR=$IF_ADDR
+VPP_DP_IF_COUNT=$(dataplane_count)
 FACTS

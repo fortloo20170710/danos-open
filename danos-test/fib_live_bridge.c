@@ -19,7 +19,7 @@
 #include <time.h>
 
 static volatile sig_atomic_t g_running = 1;
-#define DANOS_ZAPI_PROTOCOL 3 /* FRR ZEBRA_ROUTE_STATIC */
+#define DANOS_ZAPI_PROTOCOL 4 /* FRR 10.3 ZEBRA_ROUTE_STATIC */
 
 static uint8_t zapi_protocol(void)
 {

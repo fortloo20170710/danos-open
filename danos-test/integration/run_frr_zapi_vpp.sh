@@ -10,9 +10,9 @@ VPP_IFINDEX_MAP="${DANOS_VPP_IFINDEX_MAP:-}"
 VPP_READY_TIMEOUT="${VPP_READY_TIMEOUT:-30}"
 VPP_CLI_SOCK="${VPP_CLI_SOCK:-/run/vpp/cli.sock}"
 DPA_IFINDEX="${DPA_IFINDEX:-}"
-# The bridge's default protocol is static (3); subscribe to static
+# The bridge's default protocol is FRR 10.3 static (4); subscribe to static
 # redistribution unless the caller supplies an explicit type list.
-: "${DANOS_ZAPI_ROUTE_TYPES:=3}"
+: "${DANOS_ZAPI_ROUTE_TYPES:=4}"
 export DANOS_ZAPI_ROUTE_TYPES
 PROVISION=1
 RECONNECT=0

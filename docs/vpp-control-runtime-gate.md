@@ -56,23 +56,32 @@ finished; preserve evidence directories.
 
 ## FRR -> ZAPI -> DPA -> VPP topology
 
-`run_frr_zapi_vpp.sh` now provisions a usable VPP dataplane interface before
+`run_frr_zapi_vpp.sh` provisions a usable VPP dataplane fixture before
 starting the bridge. A fresh software runtime has only `local0`
-(sw_if_index 0); the helper `ensure_vpp_dataplane.sh` creates `loop0`, brings
-it up, assigns `10.0.0.1/24` and prints the sw_if_index. The runner combines
-that index with `--dpa-ifindex` (the FRR/Linux interface index) into
-`DANOS_VPP_IFINDEX_MAP=<dpa-ifindex>:<vpp-sw-if-index>`. An existing
-non-local interface is reused, so the helper is idempotent. The default ZAPI
-route-type subscription for this static harness is type 3; override
-`DANOS_ZAPI_ROUTE_TYPES` for other protocols.
+(sw_if_index 0); `ensure_vpp_dataplane.sh` creates/reuses two loopbacks
+(`loop0`, `loop1`), brings them up, assigns `10.0.0.1/24` to `loop0` and
+prints the first sw_if_index. The runner combines that index with
+`--dpa-ifindex` (the FRR/Linux interface index) into
+`DANOS_VPP_IFINDEX_MAP=<dpa-ifindex>:<vpp-sw-if-index>`. Existing non-local
+interfaces are reused, so the helper is idempotent.
 
-Verified locally against VPP 26.10 with FRR 10.3 and a `dummy0` interface:
-the helper created `loop0` at sw_if_index 1, the bridge registered with
-zebra, and a VPP CLI route via `loop0` installed successfully. End-to-end
-DPA programming is **not yet accepted**: with the external ZAPI client, zebra
-delivered only connected/local replay entries (types 1/2); the configured
-static `10.99.0.0/24` type-3 entry was not delivered even with
-`DANOS_ZAPI_ROUTE_TYPES=3`, and `ip_route_add_del` for the replayed
-connected `/32` prefixes returned VPP retval -54. The missing static
-redistribution and the route-add encoding are the remaining blockers, not the
-absence of a dataplane interface.
+FRR 10.3 route-type values come from `lib/route_types.txt`: **static = 4**,
+OSPF = 7, BGP = 10. The bridge default and the static harness now use 4; the
+dynamic harness exports the matching type for BGP/OSPF. The earlier default
+of 3 selected FRR `LOCAL`, which was why only connected/local `/32` replay
+entries reached the bridge and the configured static route never did.
+
+Validated locally against VPP 26.10 and FRR 10.3 with `dummy0` at ifindex 3
+mapped to `loop0` (sw_if_index 1):
+
+- bridge registration received `frr route event type=4` for
+  `10.99.0.0/24`;
+- `vppctl show ip fib 10.99.0.0/24` showed an **API ref** resolved via
+  `10.0.0.2 loop0`;
+- removing the FRR static route delivered `add=0` and the API ref disappeared
+  from the VPP FIB, leaving only the default route;
+- the VPP API route test (single-path and two-path ECMP) passes when both
+  `loop0` and `loop1` exist.
+
+This is a control-plane/API acceptance of the static chain, not a packet
+forwarding or PCI/DPDK qualification.
