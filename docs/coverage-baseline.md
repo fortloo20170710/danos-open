@@ -37,15 +37,14 @@ quality, correct behavior or adequate security coverage.
 ## 2026-11-03 current baseline
 
 Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
-`d1aa68a` plus the focused error-path test suite for the NETCONF session
-engine, VPP dump decoders, netlink readback/repair and datastore failures
-(dirty). CTest 93/93 passed.
+`6a40430` plus the focused error-path tests and the fail-closed corrupt-running
+handling (dirty). CTest 93/93 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 9489 / 11718 | 81.0% |
-| Functions | 787 / 864 | 91.1% |
-| Branches | 5599 / 9326 | 60.0% |
+| Lines | 9512 / 11744 | 81.0% |
+| Functions | 789 / 866 | 91.1% |
+| Branches | 5615 / 9346 | 60.1% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and

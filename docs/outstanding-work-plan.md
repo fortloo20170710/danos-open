@@ -1,8 +1,20 @@
 # Outstanding work plan
 
+### 2026-11-03 fail-closed corrupt NETCONF running snapshot
+
+- A corrupt or unreadable `<startup>.running` now refuses daemon startup
+  (`netconf_ds_ready()` is false, `netconfd` exits 1) instead of silently
+  starting with an empty running configuration. Operators can repair/remove
+  the file, or set `DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` to start empty
+  explicitly; the next successful commit replaces the damaged file. A missing
+  file still means empty running.
+- Tests cover corrupt content, repeated init staying failed, the override
+  path, a subsequent commit repairing the file, and daemon startup failing
+  with an operator-visible error while the override starts successfully.
+
 ### 2026-11-03 error-path coverage for NETCONF, VPP dumps and netlink
 
-- Branch coverage rose from 58.9% to 60.0% while line coverage moved from
+- Branch coverage rose from 58.9% to 60.1% while line coverage moved from
   80.2% to 81.0% (functions 90.3% -> 91.1%); the 79% line gate remains intact.
   Focused additions:
   - `netconf_session`: direct pipe-driven tests for missing base 1.0, EOF,

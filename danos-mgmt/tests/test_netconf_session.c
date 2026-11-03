@@ -271,6 +271,24 @@ int main(void)
     test_invalid_read_fd();
     test_null_api();
 
+    /* A failed datastore init (corrupt running) must not open a session. */
+    netconf_ds_fini();
+    char corrupt[192];
+    snprintf(corrupt, sizeof(corrupt), "%s.running", path);
+    FILE *f = fopen(corrupt, "wb");
+    assert(f != NULL);
+    assert(fwrite("bad", 1, 3, f) == 3);
+    fclose(f);
+    netconf_ds_init(path);
+    assert(!netconf_ds_ready());
+    int cin[2], cout[2];
+    assert(pipe(cin) == 0 && pipe(cout) == 0);
+    assert(netconf_session_new(cin[0], cout[1], "tester", DANOS_ROLE_ADMIN)
+           == NULL);
+    close(cin[0]); close(cin[1]); close(cout[0]); close(cout[1]);
+    unlink(corrupt);
+    unsetenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING");
+
     netconf_ds_fini();
     char aux[160];
     snprintf(aux, sizeof(aux), "%s.running", path); unlink(aux);
