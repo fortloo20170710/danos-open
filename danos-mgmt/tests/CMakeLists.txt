@@ -37,6 +37,13 @@ if(Python3_Interpreter_FOUND)
     $<TARGET_FILE:danos-netconfd>
     $<TARGET_FILE:danos-netconf-subsystem>)
   set_tests_properties(netconf_daemon PROPERTIES TIMEOUT 60)
+
+  # Cross-uid role mapping needs root and setpriv; it prints [SKIP] otherwise.
+  add_test(NAME netconf_cross_uid COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_SOURCE_DIR}/danos-test/integration/test_netconf_cross_uid.py
+    $<TARGET_FILE:danos-netconfd>
+    $<TARGET_FILE:danos-netconf-subsystem>)
+  set_tests_properties(netconf_cross_uid PROPERTIES TIMEOUT 60)
 endif()
 
 add_executable(gnmi_proto_test test_gnmi_proto.c)
