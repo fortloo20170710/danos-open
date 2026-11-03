@@ -1,5 +1,34 @@
 # Outstanding work plan
 
+### 2026-11-03 confirmed-commit reboot recovery and VRF/VPP OPER readback
+
+- NETCONF confirmed commits are now durable. Arming one writes the rollback
+  baseline, deadline, session and persist token to `<startup>.confirmed`
+  (temporary file + fsync + rename). A confirming/cancelling commit, timeout or
+  session-close rollback removes it. On daemon startup, `netconf_ds_init()`
+  restores the baseline before any session exists, so an unconfirmed commit
+  does not survive a reboot (RFC 6241 8.4); a persist token still only survives
+  session close, not reboot. A failed state write fails the commit and restores
+  the baseline. A fork/exec regression starts a fresh process against the same
+  state and verifies the pre-commit MTU is restored.
+- VPP OPER readback now uses real multipart dumps: `sw_interface_dump` for
+  interface name/MTU/admin/link state, `ip_table_dump` for VRF name/family, and
+  `ip_route_dump` for prefix/ECMP paths. The generic dump client sends the
+  dump request plus a control_ping and consumes detail messages until the ping
+  reply. Route readback compares every resolved next hop (mapped sw_if_index
+  and gateway) as a set and returns `VERIFY_FAIL` on a mismatch; interface and
+  VRF readback return `NOT_FOUND` when the dump lacks the object. Mock dump
+  injection exercises the decoders and adapter without VPP, and the live VPP
+  lane gains V6 checks for interface, VRF, route and mismatch detection.
+- Verification: Release CTest 90/90, targeted ASan/UBSan and TSan pass, and
+  the fresh coverage run is 9341/11622 lines (80.4%), 777/861 functions
+  (90.2%) and 5453/9256 branches (58.9%); the 79% line gate passes.
+- Known limits: VPP `ip_route` dumps do not expose the configured metric, so
+  VPP route OPER verification covers prefix, path membership and type but not
+  metric; netlink continues to verify metric. The committed running
+  configuration itself is still in-memory in the NETCONF subsystem (mgrd owns
+  the WAL); only the pending rollback is persisted.
+
 ### 2026-11-02 NETCONF single daemon, ECMP OPER verification and coverage
 
 - NETCONF now has a shared daemon (`danos-netconfd`). `danos-netconf-subsystem`
@@ -34,8 +63,8 @@
   metric mismatch is detected (the old `OK || NOT_FOUND` assertion could not
   fail). The K6 netns lane adds a two-member ECMP route with a metric and
   checks full-member verification, metric mismatch, partial withdrawal and
-  absence; it runs as root and prints `SKIP` elsewhere. VRF readback and a VPP interface/route dump remain open because the
-  VPP message layer has no dump binding yet.
+  absence; it runs as root and prints `SKIP` elsewhere. VRF and VPP
+  interface/route readback followed in the 2026-11-03 increment.
 - Coverage: fresh gcovr run on the changed tree (568507d) is 80.2% lines
   (8997/11219), 89.4% functions (747/836), 59.0% branches (5295/8968) with
   CTest 89/89; the 79% line gate passes.
@@ -382,11 +411,11 @@ Execution priority, as confirmed on 2026-10-15:
    implemented: netlink `RTM_GETLINK` -> OPER snapshot -> gNMI/CLI, with the
    desired object as fallback. IPv4 route readback now checks prefix/table,
    disposition, metric and every resolved ECMP next hop; mismatch is
-   `DANOS_ERR_VERIFY_FAIL` and absence repairs in the same pass. Still open:
-   VRF readback and a VPP interface/route dump so VPP objects produce OPER
-   copies. The
-   reentrant diff callback fix is done; the reconciler's diff callback still
-   only counts differences and is not hardware readback.
+   `DANOS_ERR_VERIFY_FAIL` and absence repairs in the same pass. VPP now
+   exposes interface, VRF table and route/ECMP OPER copies through
+   `sw_interface_dump`, `ip_table_dump` and `ip_route_dump`. The reentrant diff
+   callback fix is done; the reconciler's diff callback still only counts
+   differences and is not hardware readback.
 4. **NETCONF SSH transport.** Done. OpenSSH provides transport and
    authentication; `danos-netconf-subsystem` implements RFC 6242 end-of-message
    and chunked framing, negotiates base 1.1, and maps the SSH user plus

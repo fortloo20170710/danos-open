@@ -165,8 +165,8 @@ def test_unknown_rpc(binary):
     print("[PASS] test_unknown_rpc: unimplemented RPC is refused")
 
 
-def test_validate_and_confirm(binary):
-    s = Session(binary, env_for())
+def test_validate_and_confirm(binary, startup_path):
+    s = Session(binary, env_for(startup_path=startup_path))
     s.read_eom()
 
     # Validate the empty running store and an empty inline config.
@@ -250,7 +250,7 @@ def main():
         test_base_1_1(binary)
         test_bad_chunk(binary)
         test_unknown_rpc(binary)
-        test_validate_and_confirm(binary)
+        test_validate_and_confirm(binary, startup_path)
         test_datastores(binary, startup_path)
     finally:
         shutil.rmtree(startup_dir, ignore_errors=True)

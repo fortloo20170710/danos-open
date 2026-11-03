@@ -66,12 +66,12 @@
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
-- [~] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 逐下一跳读回与 `DANOS_ERR_VERIFY_FAIL` 已实现并有 mock 回归；VRF 读回与 VPP interface/route dump 仍未实现
+- [x] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 读回；VPP `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 的接口、VRF、路由 OPER 读回与差异检测；均有 mock 解码/适配器回归，真实 VPP V6 lane 覆盖
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
 - [x] NETCONF validate（具名 datastore 与 inline config；对 modeled interface leaves 做语义校验）
-- [~] NETCONF confirmed commit：共享 daemon 已支持跨 SSH 会话 persist/persist-id、超时回滚与会话关闭回滚；daemon 重启后的持久化 pending-commit 恢复仍未实现，不作生产验收
+- [x] NETCONF confirmed commit：共享 daemon 支持跨 SSH 会话 persist/persist-id、超时/会话关闭回滚；pending baseline 持久化到 `<startup>.confirmed`，重启/重启后启动时自动回滚未确认提交（RFC 6241 8.4）并有 fork/exec 重启回归
 - [~] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid 策略决定并失败关闭，真实 sshd 双会话验收通过。剩余：非 root 子系统的 socket 组权限部署示例、hello 后 idle-session 超时
 
 ## 质量

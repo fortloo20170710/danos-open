@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <assert.h>
 
 int test_netconf_parse(void)
@@ -781,8 +782,83 @@ int test_netconf_confirmed_commit(void)
     return 0;
 }
 
-int main(void)
+/* RFC 6241 8.4: a pending confirmed commit must not survive a reboot.  The
+ * parent arms one and forks/execs a fresh copy of this test binary; that
+ * process initializes the datastore from the same durable state and must find
+ * the pre-commit configuration restored. */
+static int recover_check(const char *startup_path)
 {
+    netconf_ds_init(startup_path);
+    danos_iface_t ifc;
+    bool found = find_iface("rec0", &ifc);
+    int rc = (found && ifc.mtu == 1500) ? 0 : 1;
+    netconf_ds_fini();
+    return rc;
+}
+
+int test_netconf_confirmed_recovery(const char *base_path)
+{
+    char path[160], confirmed[192];
+    snprintf(path, sizeof(path), "%s.recover", base_path);
+    snprintf(confirmed, sizeof(confirmed), "%s.confirmed", path);
+    unlink(path);
+    unlink(confirmed);
+
+    netconf_ds_fini();
+    netconf_ds_init(path);
+    seed_iface(7301, "rec0", 1500, true);
+
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 91;
+    edit_candidate_mtu(&ctx, 7301, "rec0", "9000");
+    char *resp = nc_call(&ctx,
+        "<rpc><commit><confirmed/><confirm-timeout>60</confirm-timeout>"
+        "<persist>reboot-token</persist></commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    danos_iface_t ifc;
+    assert(find_iface("rec0", &ifc));
+    assert(ifc.mtu == 9000);
+    assert(access(confirmed, F_OK) == 0);
+
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        execl("/proc/self/exe", "netconf_test", "--recover-check", path,
+              (char *)NULL);
+        _exit(127);
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    assert(WIFEXITED(status));
+    assert(WEXITSTATUS(status) == 0);
+    /* The recovery process removed the pending state after rollback. */
+    assert(access(confirmed, F_OK) != 0);
+
+    resp = nc_call(&ctx,
+        "<rpc><cancel-commit><persist-id>reboot-token</persist-id>"
+        "</cancel-commit></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    assert(find_iface("rec0", &ifc));
+    assert(ifc.mtu == 1500);
+
+    netconf_fini(&ctx);
+    netconf_ds_fini();
+    unlink(path);
+    unlink(confirmed);
+
+    printf("[PASS] test_netconf_confirmed_recovery: reboot rolls back an "
+           "unconfirmed persisted commit\n");
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    if (argc == 3 && strcmp(argv[1], "--recover-check") == 0)
+        return recover_check(argv[2]);
+
     char path[128];
     snprintf(path, sizeof(path), "/tmp/danos-netconf-test-%ld.db",
              (long)getpid());
@@ -805,6 +881,7 @@ int main(void)
     if (test_netconf_corrupt_startup(path) != 0) failed++;
     if (test_netconf_validate() != 0) failed++;
     if (test_netconf_confirmed_commit() != 0) failed++;
+    if (test_netconf_confirmed_recovery(path) != 0) failed++;
 
     netconf_ds_fini();
     unlink(path);

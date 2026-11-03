@@ -13,7 +13,9 @@
  */
 
 #include <danos/dpa.h>
+#include <danos/core/backend_ops.h>
 #include "../danos-vpp/src/api/vpp_api.h"
+#include "../danos-vpp/src/vpp_adapter.h"
 #include <stdint.h>
 #include "../danos-vpp/src/api/vpp_msgs.h"
 #include <stdio.h>
@@ -82,6 +84,84 @@ int main(void)
         failed++;
     } else {
         printf("V3 API route add accepted (table %u, %u paths)\n", table, paths);
+
+        /* V6: OPER readback from real VPP multipart dumps. */
+        if (danos_vpp_adapter_install(true, sock) != 0) {
+            fprintf(stderr, "V6 FAIL: adapter install on live connection\n");
+            failed++;
+        } else {
+            const danos_backend_ops_t *ops = danos_backend_ops_get();
+            danos_iface_t iface, oper_iface;
+            memset(&iface, 0, sizeof(iface));
+            iface.ifindex = 1;
+            if (!ops || !ops->readback ||
+                ops->readback(DANOS_OBJ_IFACE, 1, &iface, sizeof(iface),
+                              &oper_iface, ops->user) != DANOS_OK) {
+                fprintf(stderr, "V6 FAIL: interface dump readback\n");
+                failed++;
+            } else if (!oper_iface.name[0]) {
+                fprintf(stderr, "V6 FAIL: interface dump had no name\n");
+                failed++;
+            } else {
+                printf("V6 sw_interface_dump readback ok (name=%s mtu=%u)\n",
+                       oper_iface.name, oper_iface.mtu);
+            }
+
+            uint32_t vrf_id = table ? table : 999;
+            if (!table &&
+                vpp_msg_ip_table_add_del(vrf_id, false, "danos-v6", true)
+                    != DANOS_OK) {
+                fprintf(stderr, "V6 FAIL: VRF table add\n");
+                failed++;
+            } else {
+                danos_vrf_t vrf, oper_vrf;
+                memset(&vrf, 0, sizeof(vrf));
+                vrf.vrf_id = vrf_id;
+                snprintf(vrf.name, sizeof(vrf.name), "desired-name");
+                if (!ops || !ops->readback ||
+                    ops->readback(DANOS_OBJ_VRF, vrf_id, &vrf, sizeof(vrf),
+                                  &oper_vrf, ops->user) != DANOS_OK) {
+                    fprintf(stderr, "V6 FAIL: VRF table dump readback\n");
+                    failed++;
+                } else {
+                    printf("V6 ip_table_dump readback ok (name=%s)\n",
+                           oper_vrf.name);
+                }
+                if (!table)
+                    (void)vpp_msg_ip_table_add_del(vrf_id, false, "danos-v6",
+                                                   false);
+            }
+
+            danos_resolved_route_t rr;
+            memset(&rr, 0, sizeof(rr));
+            rr.route.vrf_id = table;
+            rr.route.prefix.addr.af = DANOS_AF_IPV4;
+            memcpy(rr.route.prefix.addr.addr, route.addr.addr, 4);
+            rr.route.prefix.prefix_len = route.len;
+            rr.nh_count = paths;
+            for (uint32_t i = 0; i < paths; i++) {
+                memcpy(rr.nh_gw[i], nhs[i].addr, 4);
+                rr.nh_oif[i] = nh_ifs[i];
+            }
+            danos_route_t oper_route;
+            if (!ops || !ops->route_readback ||
+                ops->route_readback(&rr, &oper_route, ops->user) != DANOS_OK) {
+                fprintf(stderr, "V6 FAIL: route dump readback\n");
+                failed++;
+            } else {
+                printf("V6 ip_route_dump ECMP readback ok (%u paths)\n", paths);
+            }
+            rr.nh_gw[0][3] ^= 1;
+            if (ops && ops->route_readback &&
+                ops->route_readback(&rr, &oper_route, ops->user) !=
+                    DANOS_ERR_VERIFY_FAIL) {
+                fprintf(stderr, "V6 FAIL: route mismatch not detected\n");
+                failed++;
+            } else {
+                printf("V6 route mismatch detected as VERIFY_FAIL\n");
+            }
+        }
+
         if (!getenv("VPP_LIVE_KEEP_ROUTE")) {
         st = vpp_msg_ip_route_add_del(false, table, &route, paths, nhs, nh_ifs);
         if (st != DANOS_OK) {
