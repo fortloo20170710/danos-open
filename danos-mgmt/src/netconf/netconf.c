@@ -573,6 +573,8 @@ static char *edit_config_apply(const char *xml, netconf_datastore_t ds)
     if (st != DANOS_OK && tx._internal) (void)danos_tx_abort(&tx);
     free(targets);
     if (st != DANOS_OK) return error_reply(danos_status_str(st));
+    if (netconf_ds_running_changed() != NETCONF_DS_OK)
+        return error_reply("running state could not be persisted");
     return ok_reply();
 }
 

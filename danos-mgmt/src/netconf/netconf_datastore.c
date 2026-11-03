@@ -33,6 +33,7 @@
 typedef struct {
     bool              initialized;
     char             *path;
+    char             *running_path;     /* durable committed running state */
     char             *confirmed_path;   /* durable pending confirmed commit */
     danos_object_store_t *startup;
     bool              startup_valid;   /* false when the file is corrupt */
@@ -68,6 +69,7 @@ static netconf_ds_status_t apply_snapshot_locked(danos_object_store_t *snapshot,
                                                  uint64_t session_id,
                                                  bool enforce_lock);
 static void confirmed_disarm_locked(void);
+static int running_save_locked(void);
 
 /* ---- little-endian helpers --------------------------------------------- */
 
@@ -510,13 +512,87 @@ static void confirmed_recover_locked(void)
                 "boot (session %llu%s)\n",
                 (unsigned long long)meta.session,
                 meta.persist[0] ? ", persisted token" : "");
-        if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
+        if (running_save_locked() == 0) {
+            if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
+        } else {
+            fprintf(stderr, "netconf: cannot persist the rolled-back running "
+                    "state; keeping the pending rollback for the next boot\n");
+        }
     } else {
         fprintf(stderr, "netconf: confirmed-commit recovery failed (status %d); "
                 "keeping %s for the next boot\n", (int)st,
                 g_ds.confirmed_path ? g_ds.confirmed_path : "state");
     }
     danos_object_store_destroy(baseline);
+}
+
+/* ---- durable committed running state ------------------------------------
+ * The NETCONF subsystem owns its running store; mgrd owns the main WAL.  A
+ * committed running snapshot is therefore written next to the startup
+ * datastore in the same checksummed format, so a daemon restart/reboot does
+ * not come up with an empty running configuration. */
+static int running_load_locked(void)
+{
+    if (!g_ds.running_path) return 0;
+    FILE *f = fopen(g_ds.running_path, "rb");
+    if (!f) {
+        if (errno != ENOENT)
+            fprintf(stderr, "netconf: cannot open running state %s: %s\n",
+                    g_ds.running_path, strerror(errno));
+        return 0;
+    }
+
+    uint8_t header[DS_HEADER_SIZE];
+    if (fread(header, 1, sizeof(header), f) != sizeof(header) ||
+        memcmp(header, DS_FILE_MAGIC, 8) != 0 ||
+        get_u32(header + 8) != DS_FILE_VERSION) {
+        fclose(f);
+        fprintf(stderr, "netconf: ignoring corrupt running state %s\n",
+                g_ds.running_path);
+        return -1;
+    }
+    uint32_t count = get_u32(header + 12);
+    if (count > DS_MAX_OBJECTS) {
+        fclose(f);
+        return -1;
+    }
+
+    danos_object_store_t *snapshot = danos_object_store_create(0);
+    if (!snapshot) {
+        fclose(f);
+        return -1;
+    }
+    if (records_read(f, count, snapshot) != 0 || fgetc(f) != EOF) {
+        danos_object_store_destroy(snapshot);
+        fclose(f);
+        fprintf(stderr, "netconf: ignoring corrupt running state %s\n",
+                g_ds.running_path);
+        return -1;
+    }
+    fclose(f);
+
+    netconf_ds_status_t st = apply_snapshot_locked(snapshot, 0, false);
+    danos_object_store_destroy(snapshot);
+    if (st != NETCONF_DS_OK) {
+        fprintf(stderr, "netconf: cannot restore running state (status %d)\n",
+                (int)st);
+        return -1;
+    }
+    return 0;
+}
+
+/* Caller holds g_ds_lock. */
+static int running_save_locked(void)
+{
+    if (!g_ds.running_path) return -1;
+    uint64_t count = store_count(g_default_store);
+    if (count > DS_MAX_OBJECTS) return -1;
+    uint8_t header[DS_HEADER_SIZE];
+    memcpy(header, DS_FILE_MAGIC, 8);
+    put_u32(header + 8, DS_FILE_VERSION);
+    put_u32(header + 12, (uint32_t)count);
+    return snapshot_write_file(g_default_store, g_ds.running_path, header,
+                               sizeof(header), NULL, 0);
 }
 
 /* ---- lifecycle ---------------------------------------------------------- */
@@ -556,11 +632,30 @@ void netconf_ds_init(const char *startup_path)
         return;
     }
 
+    const char *running_path = getenv("DANOS_NETCONF_RUNNING");
+    if (!running_path || !*running_path) {
+        size_t len = strlen(path) + strlen(".running") + 1;
+        g_ds.running_path = malloc(len);
+        if (g_ds.running_path)
+            snprintf(g_ds.running_path, len, "%s.running", path);
+    } else {
+        g_ds.running_path = strdup(running_path);
+    }
+    if (!g_ds.running_path) {
+        free(g_ds.confirmed_path);
+        free(g_ds.path);
+        g_ds.confirmed_path = NULL;
+        g_ds.path = NULL;
+        pthread_mutex_unlock(&g_ds_lock);
+        return;
+    }
+
     /* The subsystem process hosts NETCONF without mgrd, so the running
      * store may not exist yet.  Create it lazily like the gNMI server. */
     if (!g_default_store)
         g_default_store = danos_object_store_create(1024);
     if (!g_default_store) {
+        free(g_ds.running_path);
         free(g_ds.confirmed_path);
         free(g_ds.path);
         g_ds.confirmed_path = NULL;
@@ -570,8 +665,9 @@ void netconf_ds_init(const char *startup_path)
     }
 
     g_ds.startup_valid = startup_load() == 0;
-    /* A pending confirmed commit from a previous boot is rolled back before
-     * the daemon can accept a session (RFC 6241 8.4). */
+    /* Restore the committed running configuration first, then roll back any
+     * pending unconfirmed commit from a previous boot (RFC 6241 8.4). */
+    running_load_locked();
     confirmed_recover_locked();
     g_ds.initialized = true;
     pthread_mutex_unlock(&g_ds_lock);
@@ -601,6 +697,7 @@ void netconf_ds_fini(void)
     if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
     danos_object_store_destroy(g_ds.startup);
     danos_object_store_destroy(g_ds.candidate);
+    free(g_ds.running_path);
     free(g_ds.confirmed_path);
     free(g_ds.path);
     g_confirmed_stop = false;
@@ -891,8 +988,12 @@ void netconf_ds_release_session(uint64_t session_id)
      * issuing session ends. */
     if (g_ds.confirmed && g_ds.confirmed_persist[0] == '\0' &&
         g_ds.confirmed_session == session_id) {
-        (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
-        confirmed_disarm_locked();
+        if (apply_snapshot_locked(g_ds.confirmed_baseline, 0, false) ==
+                NETCONF_DS_OK && running_save_locked() == 0)
+            confirmed_disarm_locked();
+        else
+            fprintf(stderr, "netconf: session-close confirmed rollback failed; "
+                    "keeping the pending rollback for retry\n");
     }
     pthread_mutex_unlock(&g_ds_lock);
 }
@@ -958,11 +1059,16 @@ static void *confirmed_timer_fn(void *arg)
         if (rc == ETIMEDOUT) {
             netconf_ds_status_t st =
                 apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
-            if (st != NETCONF_DS_OK)
+            if (st == NETCONF_DS_OK && running_save_locked() == 0) {
+                confirmed_disarm_locked();
+            } else {
                 fprintf(stderr,
-                        "netconf: confirmed commit rollback failed (status %d)\n",
-                        (int)st);
-            confirmed_disarm_locked();
+                        "netconf: confirmed commit rollback failed (status %d); "
+                        "keeping the pending rollback for retry\n", (int)st);
+                (void)clock_gettime(CLOCK_REALTIME, &g_ds.confirmed_deadline);
+                g_ds.confirmed_deadline.tv_sec += 60;
+                g_confirmed_gen++;
+            }
         }
     }
     pthread_mutex_unlock(&g_ds_lock);
@@ -1029,8 +1135,23 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
         }
 
         if (rc == NETCONF_DS_OK) {
-            if (g_ds.candidate)
+            const bool changed = g_ds.candidate != NULL;
+            danos_object_store_t *pre = NULL;
+            if (changed) {
+                pre = store_clone(g_default_store);
+                if (!pre) rc = NETCONF_DS_NOMEM;
+            }
+            if (rc == NETCONF_DS_OK && g_ds.candidate)
                 rc = apply_snapshot_locked(g_ds.candidate, session_id, true);
+
+            /* The running snapshot must be durable before the commit is
+             * acknowledged.  A write failure restores the pre-commit state
+             * and keeps the candidate so the client can retry. */
+            if (rc == NETCONF_DS_OK && changed &&
+                running_save_locked() != 0) {
+                (void)apply_snapshot_locked(pre, 0, false);
+                rc = NETCONF_DS_IO;
+            }
             if (rc == NETCONF_DS_OK) {
                 /* The candidate now equals running; drop the snapshot and
                  * let the next edit take a fresh one. */
@@ -1038,6 +1159,7 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
                 g_ds.candidate = NULL;
                 if (g_ds.confirmed) confirmed_disarm_locked();
             }
+            danos_object_store_destroy(pre);
         }
     } else {
         /* A confirmed commit is still a commit: it publishes the candidate
@@ -1060,12 +1182,11 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
         }
         if (rc == NETCONF_DS_OK && !ensure_timer_locked())
             rc = NETCONF_DS_FAILED;
+        const bool changed = g_ds.candidate != NULL;
         if (rc == NETCONF_DS_OK && g_ds.candidate)
             rc = apply_snapshot_locked(g_ds.candidate, session_id, true);
 
         if (rc == NETCONF_DS_OK) {
-            danos_object_store_destroy(g_ds.candidate);
-            g_ds.candidate = NULL;
             if (!replacing) g_ds.confirmed_baseline = baseline;
             g_ds.confirmed = true;
             g_ds.confirmed_session = session_id;
@@ -1077,13 +1198,19 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
             (void)clock_gettime(CLOCK_REALTIME, &g_ds.confirmed_deadline);
             g_ds.confirmed_deadline.tv_sec += (time_t)timeout;
 
-            /* A pending commit that cannot be recorded durably must not be
-             * reported as armed: revert to the baseline and fail the RPC. */
-            if (confirmed_state_save_locked() != 0) {
+            /* Both the committed running state and the pending rollback must
+             * be durable before the commit is acknowledged. */
+            if (changed && running_save_locked() != 0) {
+                (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+                confirmed_disarm_locked();
+                rc = NETCONF_DS_IO;
+            } else if (confirmed_state_save_locked() != 0) {
                 (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
                 confirmed_disarm_locked();
                 rc = NETCONF_DS_IO;
             } else {
+                danos_object_store_destroy(g_ds.candidate);
+                g_ds.candidate = NULL;
                 g_confirmed_gen++;
                 pthread_cond_broadcast(&g_confirmed_cv);
             }
@@ -1108,9 +1235,26 @@ netconf_ds_status_t netconf_ds_cancel_commit(uint64_t session_id,
         rc = NETCONF_DS_DENIED;
     } else {
         rc = apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
-        if (rc == NETCONF_DS_OK) confirmed_disarm_locked();
+        if (rc == NETCONF_DS_OK) {
+            if (running_save_locked() == 0) {
+                confirmed_disarm_locked();
+            } else {
+                rc = NETCONF_DS_IO;
+            }
+        }
     }
 
+    pthread_mutex_unlock(&g_ds_lock);
+    return rc;
+}
+
+/* Persist a running change made outside netconf_ds_commit (the RPC layer's
+ * direct edit-config path). */
+netconf_ds_status_t netconf_ds_running_changed(void)
+{
+    pthread_mutex_lock(&g_ds_lock);
+    netconf_ds_status_t rc =
+        running_save_locked() == 0 ? NETCONF_DS_OK : NETCONF_DS_IO;
     pthread_mutex_unlock(&g_ds_lock);
     return rc;
 }
@@ -1179,7 +1323,17 @@ netconf_ds_status_t netconf_ds_copy(netconf_datastore_t from,
     } else if (!write_allowed_locked(to, session_id)) {
         rc = NETCONF_DS_LOCKED;
     } else if (to == NETCONF_DS_RUNNING) {
-        rc = apply_snapshot_locked(src, session_id, true);
+        danos_object_store_t *pre = store_clone(g_default_store);
+        if (!pre) {
+            rc = NETCONF_DS_NOMEM;
+        } else {
+            rc = apply_snapshot_locked(src, session_id, true);
+            if (rc == NETCONF_DS_OK && running_save_locked() != 0) {
+                (void)apply_snapshot_locked(pre, 0, false);
+                rc = NETCONF_DS_IO;
+            }
+            danos_object_store_destroy(pre);
+        }
     } else if (to == NETCONF_DS_CANDIDATE) {
         danos_object_store_t *copy = store_clone(src);
         if (!copy) rc = NETCONF_DS_NOMEM;
