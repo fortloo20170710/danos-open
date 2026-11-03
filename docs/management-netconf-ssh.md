@@ -157,7 +157,7 @@ transaction. Interface names and other text in replies are XML-escaped.
 |-----------|---------|------------------|
 | running | process object store, DPA transactions | `edit-config`, `commit`, `copy-config` |
 | candidate | snapshot of running, created on first use | `edit-config`, `copy-config`, `discard-changes` |
-| startup | checksummed file, loaded at subsystem start | `copy-config`, `delete-config` |
+| pending confirmed | checksummed file `<startup>.confirmed`, rolled back at next startup | `commit` (arm), confirm/cancel/timeout (remove) |
 
 The candidate is a full snapshot taken from running before the first access.
 Edits accumulate in the snapshot; `get-config` with `<source><candidate/>`
@@ -215,14 +215,21 @@ accepted by token ownership even while the issuing session still holds a
 datastore lock, because it publishes no new candidate state. Closing a session
 without a token still rolls its commit back immediately.
 
-The timer and baseline are process-local: a daemon restart loses a pending
-confirmed commit. Rollback-after-reboot therefore remains unqualified, because
-the in-memory running store is rebuilt and there is no durable pending-commit
-record. Keep `<persist>` out of a release gate that requires RFC 6241 reboot
-recovery until the running store itself is durable. Candidate locks follow
-RFC 6241 7.5 for both plain and confirmed commits; a cross-session `persist-id`
-confirmation skips the lock check only when the candidate is empty (there is
-no queued edit to publish).
+The pending commit is durable. When a confirmed commit is armed, the daemon
+writes a checksummed file containing the rollback baseline, deadline, session
+and persist token next to the startup datastore (`<startup>.confirmed`, or
+`DANOS_NETCONF_CONFIRMED`). The file is written with a temporary file, fsync
+and rename; a confirming or cancelling commit removes it. If the daemon (or
+the whole device) restarts with the file present, `netconf_ds_init()` restores
+the baseline before any session can connect. RFC 6241 8.4 therefore holds:
+an unconfirmed commit is rolled back across reboot, and a persist token only
+survives session close, not reboot. A failed state write fails the commit and
+restores the baseline instead of reporting an armed commit that is not
+durable.
+
+Candidate locks follow RFC 6241 7.5 for both plain and confirmed commits; a
+cross-session `persist-id` confirmation skips the lock check only when the
+candidate is empty (there is no queued edit to publish).
 
 Locks follow RFC 6241: a lock belongs to one session, blocks writes to that
 datastore by other sessions (`in-use`), refuses a second lock
@@ -295,9 +302,10 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
 ## Known limits
 
 - Candidate state, locks and pending confirmed-commit state are shared between
-  SSH sessions while `danos-netconfd` runs. A daemon restart loses a pending
-  confirmed commit and its rollback baseline; durable pending-commit recovery
-  across reboot remains open (see "Confirmed commit").
+  SSH sessions while `danos-netconfd` runs. A pending confirmed commit and its
+  rollback baseline are durable across restart/reboot; the *committed* running
+  configuration itself still lives in memory because this subsystem does not
+  own the mgrd WAL, so only the unconfirmed rollback is persisted here.
 - The daemon socket is a local trust boundary. Run it in a root-owned
   directory and do not expose it to unprivileged local writers. Roles come
   from the uid policy, never from the client preamble.
