@@ -46,10 +46,20 @@ def wait_socket(path, timeout=10):
     return False
 
 
-def recv_eom(fd):
+def recv_eom(peer):
+    """Read one frame from a socket or a blocking pipe file descriptor."""
+    def read_chunk():
+        if hasattr(peer, "recv"):
+            return peer.recv(4096)
+        if hasattr(peer, "read1"):
+            return peer.read1(4096)     # return available bytes, not block for 4 KiB
+        if hasattr(peer, "read"):
+            return peer.read(4096)
+        return os.read(peer, 4096)
+
     buf = b""
     while EOM not in buf:
-        data = os.read(fd, 4096)
+        data = read_chunk()
         if not data:
             raise AssertionError("peer closed before a complete frame")
         buf += data
@@ -61,7 +71,7 @@ def raw_login(path, user, role):
     s.settimeout(10)
     s.connect(path)
     s.sendall(b"DANOS-NETCONF/1 %s %s\n" % (user.encode(), role.encode()))
-    hello, rest = recv_eom(s.fileno())
+    hello, rest = recv_eom(s)
     assert b"<hello" in hello, hello
     s.sendall(HELLO + EOM)
     return s, rest
@@ -70,7 +80,7 @@ def raw_login(path, user, role):
 def raw_rpc(s, buf, body):
     s.sendall(body + EOM)
     while EOM not in buf:
-        data = os.read(s.fileno(), 4096)
+        data = s.recv(4096)
         if not data:
             raise AssertionError("daemon closed before a reply")
         buf += data
@@ -149,7 +159,7 @@ def main():
         try:
             ready, _, _ = select.select([viewer.stdout], [], [], 10)
             assert ready, "no server hello for the viewer session"
-            hello, rest = recv_eom(viewer.stdout.fileno())
+            hello, rest = recv_eom(viewer.stdout)
             assert b"<hello" in hello, hello
             viewer.stdin.write(HELLO + EOM)
             viewer.stdin.flush()
@@ -161,6 +171,18 @@ def main():
                 rest += data
             reply, _ = rest.split(EOM, 1)
             assert b"access-denied" in reply, reply
+        except Exception:
+            try:
+                print("viewer poll: %r" % (viewer.poll(),), file=sys.stderr)
+                os.set_blocking(viewer.stderr.fileno(), False)
+                print("viewer stderr: " + viewer.stderr.read().decode(
+                    "utf-8", "replace"), file=sys.stderr)
+                os.set_blocking(proc.stderr.fileno(), False)
+                print("daemon stderr: " + proc.stderr.read().decode(
+                    "utf-8", "replace"), file=sys.stderr)
+            except (OSError, ValueError):
+                pass
+            raise
         finally:
             viewer.kill()
             viewer.wait(timeout=10)

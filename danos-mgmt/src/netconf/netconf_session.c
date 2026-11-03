@@ -109,26 +109,28 @@ netconf_session_t *netconf_session_new(int rfd, int wfd,
     s->ctx.role = role ? role : danos_authz_default_role();
 
     char *hello = netconf_hello_message(s->ctx.session_id);
-    if (!hello) goto fail;
+    if (!hello) { fprintf(stderr, "netconf: cannot build server hello\n"); goto fail; }
 
     size_t hello_len = 0;
     char *hello_frame = netconf_frame_encode(false, hello, strlen(hello),
                                              &hello_len);
     free(hello);
-    if (!hello_frame) goto fail;
+    if (!hello_frame) { fprintf(stderr, "netconf: cannot frame server hello\n"); goto fail; }
     int hrc = write_all(s->wfd, hello_frame, hello_len);
     free(hello_frame);
-    if (hrc != 0) goto fail;
+    if (hrc != 0) { fprintf(stderr, "netconf: cannot send server hello\n"); goto fail; }
 
     char *buf = malloc(NETCONF_HELLO_MAX);
     if (!buf) goto fail;
     size_t len = 0, eom = 0;
     if (read_client_hello(s->rfd, buf, NETCONF_HELLO_MAX, &len, &eom) != 0) {
+        fprintf(stderr, "netconf: client hello read failed\n");
         free(buf);
         goto fail;
     }
     buf[eom] = '\0';    /* inspect only the hello body */
     if (!strstr(buf, "urn:ietf:params:netconf:base:1.0")) {
+        fprintf(stderr, "netconf: client hello lacks base 1.0\n");
         free(buf);
         goto fail;
     }
@@ -136,6 +138,7 @@ netconf_session_t *netconf_session_new(int rfd, int wfd,
 
     s->dec = netconf_frame_decoder_new(s->base11);
     if (!s->dec) {
+        fprintf(stderr, "netconf: frame decoder allocation failed\n");
         free(buf);
         goto fail;
     }
@@ -145,6 +148,7 @@ netconf_session_t *netconf_session_new(int rfd, int wfd,
     size_t done = eom + 6;
     if (len > done &&
         netconf_frame_feed(s->dec, buf + done, len - done, on_message, s) != 0) {
+        fprintf(stderr, "netconf: pipelined frame rejected\n");
         free(buf);
         goto fail;
     }
