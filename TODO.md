@@ -67,6 +67,7 @@
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [x] 墓碑覆盖扩展：NHGroup 或成员 NH 从 desired 清除时，即使路由对象仍在 desired，也会先撤回依赖路由（route_del），再处理其他墓碑；reconciler 与 sweep 幂等重放、依赖恢复后重新编程均有回归
 - [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
+- [x] danos-netlink IPv6 地址编程与 OPER 读回：RTM_NEWADDR/RTM_DELADDR 携带 16 字节地址；重复添加幂等、缺失删除幂等、非法前缀拒绝；读取 IFA_LOCAL/IFA_ADDRESS 并按 scope 选择全球地址，mock 与真实 lo 回归覆盖
 - [x] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 读回；VPP `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 的接口、VRF、路由 OPER 读回与差异检测；VPP dump 无 metric，非零 metric 显式返回 `DANOS_ERR_NOT_SUPPORTED`；均有 mock 解码/适配器回归，真实 VPP V6 lane 覆盖
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)

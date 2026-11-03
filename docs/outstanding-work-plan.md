@@ -1,5 +1,18 @@
 # Outstanding work plan
 
+### 2026-11-03 Linux netlink IPv6 address programming
+
+- `danos-netlink` now sends `RTM_NEWADDR`/`RTM_DELADDR` with 16-byte IPv6
+  addresses (and both `IFA_LOCAL`/`IFA_ADDRESS`), instead of returning
+  `NOT_SUPPORTED`. Duplicate add and repeated delete are idempotent; prefix
+  lengths above 32/128 and mismatched address families return
+  `DANOS_ERR_INVALID_ARG`.
+- OPER readback parses `RTM_GETADDR`, skips tentative addresses and prefers a
+  globally scoped address over loopback/link-local entries. The mock unit test
+  covers add/duplicate/readback/remove/invalid prefixes, and a privileged
+  real-`lo` regression verifies the same against the kernel (it skips without
+  `CAP_NET_ADMIN`). CTest is 96/96.
+
 ### 2026-11-03 NHGroup/NH tombstone cascade
 
 - A route whose desired object still exists but whose NHGroup or member NH
@@ -11,7 +24,7 @@
   bookkeeping). Replayed sweeps are idempotent, and restoring the dependency
   reprograms the route. `tombstone_cascade` covers NHGroup removal, member-NH
   removal, ordering, idempotence and replay through both the reconciler and
-  the sweep. CTest is 95/95.
+  the sweep. CTest is 96/96.
 
 ### 2026-11-03 fail-closed corrupt NETCONF running snapshot
 

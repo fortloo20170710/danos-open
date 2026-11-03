@@ -9,9 +9,9 @@
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
 release has not been qualified. The current tree passes Release CTest
-**95/95**, the deterministic backend contract gate, and GitHub CI (including
-ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.0%
-(functions 91.1%, branches 60.1%). The full unified QEMU/VMware release gate
+**96/96**, the deterministic backend contract gate, and GitHub CI (including
+ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 80.8%
+(functions 91.3%, branches 59.8%). The full unified QEMU/VMware release gate
 was not rerun on this checkpoint.
 
 Recent merged control-plane work:
@@ -76,7 +76,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current source checkpoint reports 95/95.
+by build configuration; the current source checkpoint reports 96/96.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
@@ -165,7 +165,7 @@ roadmap in `docs/project-status.md`; v1.1 spec archived at `docs/archive/v1.1/`)
 | (mgmt) `model_paths` | YANG path registry: leaf-level gNMI Get/Set, gRPC NotFound/InvalidArgument errors | v0.5 |
 | (mgmt) `model_routes` | composite route write: one gNMI update -> NH+Group+Route, cascade delete | v0.12 |
 | `danos-mgrd` | system daemon: WAL boot + gNMI + Prometheus /metrics + crash recovery | v0.6 |
-| `danos-netlink` | kernel backend adapter: rtnetlink (real) / in-memory FIB (mock), route metric/ECMP OPER readback and same-pass repair, drives the ADR-0007 programming pipeline | v0.10 |
+| `danos-netlink` | kernel backend adapter: rtnetlink (real) / in-memory FIB (mock), IPv4/IPv6 address programming and readback, route metric/ECMP OPER readback and same-pass repair, drives the ADR-0007 programming pipeline | v0.10 |
 | (core) `programming` | desired→backend pipeline with PROGRAMMED ledger, tombstone sweep | v0.10 |
 | `danos-compat/` | OcNOS-like CLI translation (minimal; awaiting model-layer rebasing) | v0.3 |
 | `danos-platform/` | Platform adaptation: x86 / ARM / generic | not started (intentional) |

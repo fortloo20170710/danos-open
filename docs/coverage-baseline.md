@@ -37,14 +37,14 @@ quality, correct behavior or adequate security coverage.
 ## 2026-11-03 current baseline
 
 Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
-`bdce485` plus the NHGroup/NH tombstone-cascade tests (dirty). CTest 95/95
-passed.
+`1c5a48d` plus the NETCONF idle-timeout and netlink IPv6 address changes
+(dirty). CTest 96/96 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 9527 / 11759 | 81.0% |
-| Functions | 790 / 867 | 91.1% |
-| Branches | 5630 / 9360 | 60.1% |
+| Lines | 9624 / 11905 | 80.8% |
+| Functions | 797 / 873 | 91.3% |
+| Branches | 5699 / 9526 | 59.8% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and

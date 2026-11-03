@@ -106,6 +106,12 @@ target_link_libraries(netlink_readback_unit_test PRIVATE danos-netlink danos-cor
 target_compile_options(netlink_readback_unit_test PRIVATE -UNDEBUG)
 add_test(NAME netlink_readback_unit COMMAND netlink_readback_unit_test)
 
+add_executable(netlink_addr_ipv6_test
+  integration_test/netlink_addr_ipv6_test.c)
+target_link_libraries(netlink_addr_ipv6_test PRIVATE danos-netlink danos-core pthread)
+target_compile_options(netlink_addr_ipv6_test PRIVATE -UNDEBUG)
+add_test(NAME netlink_addr_ipv6 COMMAND netlink_addr_ipv6_test)
+
 add_executable(backend_readback_failure_test
   integration_test/backend_readback_failure_test.c)
 target_link_libraries(backend_readback_failure_test PRIVATE danos-core danos-dpa pthread)
