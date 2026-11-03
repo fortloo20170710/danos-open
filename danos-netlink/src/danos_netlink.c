@@ -436,7 +436,9 @@ struct nl_verify_expected {
     bool     used;
 };
 
-static bool nl_verify_nh(const struct nl_verify_expected *exp, uint32_t count,
+/* Match one observed next hop and consume the expected entry, so a
+ * duplicated observed member cannot satisfy two different expected members. */
+static bool nl_verify_nh(struct nl_verify_expected *exp, uint32_t count,
                          const uint8_t gw[4], uint32_t oif)
 {
     for (uint32_t i = 0; i < count; i++) {
@@ -445,6 +447,7 @@ static bool nl_verify_nh(const struct nl_verify_expected *exp, uint32_t count,
         /* Kernels may omit RTA_OIF for a gateway route; when present it must
          * match, otherwise the gateway identity is the check. */
         if (oif && exp[i].oif && exp[i].oif != oif) continue;
+        exp[i].used = true;
         return true;
     }
     return false;
