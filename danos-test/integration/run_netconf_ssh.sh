@@ -56,7 +56,11 @@ fi
 subsystem="Subsystem netconf $binary --startup $tmp/startup.db"
 shared=0
 if [ -n "$daemon" ]; then
-    "$daemon" --socket "$tmp/netconf.sock" --startup "$tmp/startup.db" \
+    # The daemon derives RBAC roles from the peer uid; grant the test user
+    # admin explicitly.  The subsystem-supplied role is audit context only.
+    printf '%s admin\n' "$user" > "$tmp/netconf-roles"
+    DANOS_NETCONF_ROLE_MAP="$tmp/netconf-roles" \
+        "$daemon" --socket "$tmp/netconf.sock" --startup "$tmp/startup.db" \
         >"$tmp/netconfd.log" 2>&1 &
     daemon_pid=$!
     for _ in $(seq 1 100); do

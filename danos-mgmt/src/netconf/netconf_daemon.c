@@ -18,17 +18,20 @@
 #include "netconf.h"
 #include "netconf_datastore.h"
 #include "netconf_session.h"
+#include "netconf_role.h"
 #include "../authz/authz.h"
 
 #include <danos/security/rbac.h>
 
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/stat.h>
@@ -39,6 +42,8 @@
 #define NETCONF_DEFAULT_SOCKET "/run/danos/netconf.sock"
 #define NETCONF_HANDSHAKE_MAX  512
 #define NETCONF_HANDSHAKE_MAGIC "DANOS-NETCONF/1"
+#define NETCONF_MAX_CLIENTS    128
+#define NETCONF_HELLO_TIMEOUT_S 10
 
 struct client_conn {
     int                 fd;
@@ -52,6 +57,9 @@ static size_t          g_client_count;
 static bool            g_stopping;
 
 static volatile sig_atomic_t g_signal_stop;
+static int              g_lock_fd = -1;
+static dev_t            g_socket_dev;
+static ino_t            g_socket_ino;
 
 static void on_signal(int sig)
 {
@@ -81,21 +89,29 @@ static int read_handshake(int fd, char *line, size_t cap)
     return 0;
 }
 
-static bool peer_identity_matches(int fd, const char *user)
+/* Authenticate the claimed user against the kernel-supplied peer uid.  Both
+ * the credential lookup and the NSS lookup fail closed: an unresolvable user
+ * or an unavailable SO_PEERCRED is a rejected connection, never an implicit
+ * trust decision. */
+static bool peer_identity_ok(int fd, const char *user, uid_t *uid_out)
 {
 #ifdef SO_PEERCRED
+    if (!user || !*user) return false;
     struct ucred cred;
     socklen_t len = sizeof(cred);
     if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0)
-        return true;    /* platform accepted the connection; rely on socket mode */
+        return false;
 
     struct passwd *pw = getpwnam(user);
-    if (!pw) return true;   /* identity is an audit label on this platform */
-    return pw->pw_uid == cred.uid;
+    if (!pw) return false;
+    if (pw->pw_uid != cred.uid) return false;
+    if (uid_out) *uid_out = cred.uid;
+    return true;
 #else
     (void)fd;
     (void)user;
-    return true;
+    (void)uid_out;
+    return false;   /* no peer credential support: refuse instead of guessing */
 #endif
 }
 
@@ -131,9 +147,10 @@ static void client_unregister(int fd)
 }
 
 struct client_arg {
-    int  fd;
-    char user[64];
-    char role[64];
+    int               fd;
+    char              user[64];
+    char              requested_role[64];   /* audit context only */
+    danos_sec_role_t  role;                 /* derived from the peer uid */
 };
 
 static void *client_thread(void *arg)
@@ -141,26 +158,28 @@ static void *client_thread(void *arg)
     struct client_arg *ca = arg;
     int fd = ca->fd;
     char user[64];
-    char role_name[64];
+    danos_sec_role_t role = ca->role;
+    char requested_role[64];
     snprintf(user, sizeof(user), "%s", ca->user);
-    snprintf(role_name, sizeof(role_name), "%s", ca->role);
+    snprintf(requested_role, sizeof(requested_role), "%s", ca->requested_role);
     free(ca);
 
-    danos_sec_role_t role = 0;
-    if (role_name[0] && strcmp(role_name, "-") != 0) {
-        if (danos_rbac_role_by_name(role_name, &role) != 0) {
-            fprintf(stderr, "netconfd: unknown role '%s', using default\n",
-                    role_name);
-            role = 0;
-        }
+    const char *effective = danos_rbac_role_name(role);
+    if (requested_role[0] &&
+        (!effective || strcmp(requested_role, effective) != 0)) {
+        fprintf(stderr,
+                "netconfd: user '%s' requested role '%s'; using '%s' from policy\n",
+                user, requested_role, effective ? effective : "none");
     }
-    if (!role) role = danos_authz_default_role();
 
     netconf_session_t *s = netconf_session_new(fd, fd, user, role);
     if (!s) {
         fprintf(stderr, "netconfd: session handshake failed\n");
         goto out;
     }
+
+    struct timeval no_to = { .tv_sec = 0, .tv_usec = 0 };
+    (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &no_to, sizeof(no_to));
 
     if (netconf_session_run(s) != 0)
         fprintf(stderr, "netconfd: session ended on a protocol error\n");
@@ -187,6 +206,24 @@ static int listen_socket(const char *path)
     }
     snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", path);
 
+    /* A single-instance lock stops a second daemon from unlinking the live
+     * socket.  The lock file is separate from the socket so the inode check
+     * below still identifies our own bind. */
+    char lock_path[sizeof(addr.sun_path) + 8];
+    int n = snprintf(lock_path, sizeof(lock_path), "%s.lock", path);
+    if (n < 0 || (size_t)n >= sizeof(lock_path)) return -1;
+    g_lock_fd = open(lock_path, O_CREAT | O_RDWR | O_CLOEXEC, 0600);
+    if (g_lock_fd < 0) {
+        perror("netconfd: lock file");
+        return -1;
+    }
+    if (flock(g_lock_fd, LOCK_EX | LOCK_NB) != 0) {
+        fprintf(stderr, "netconfd: another instance owns %s\n", path);
+        close(g_lock_fd);
+        g_lock_fd = -1;
+        return -1;
+    }
+
     int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) {
         perror("netconfd: socket");
@@ -210,6 +247,16 @@ static int listen_socket(const char *path)
         unlink(path);
         return -1;
     }
+
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        perror("netconfd: stat socket");
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    g_socket_dev = st.st_dev;
+    g_socket_ino = st.st_ino;
     return fd;
 }
 
@@ -295,10 +342,9 @@ int main(int argc, char **argv)
 
         /* Bound the preamble read: this runs on the accept loop, so a local
          * client that connects and stays silent would otherwise stall every
-         * later session.  The timeout applies to the preamble only and is
-         * cleared before the session thread starts reading RPCs. */
+         * later session.  The hello timeout is applied after the preamble and
+         * cleared by the session thread once the client hello is parsed. */
         struct timeval hs_to = { .tv_sec = 5, .tv_usec = 0 };
-        struct timeval no_to = { .tv_sec = 0, .tv_usec = 0 };
         (void)setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &hs_to, sizeof(hs_to));
 
         char line[NETCONF_HANDSHAKE_MAX];
@@ -307,8 +353,6 @@ int main(int argc, char **argv)
             close(cfd);
             continue;
         }
-        (void)setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &no_to, sizeof(no_to));
-
         char magic[32] = {0}, user[64] = {0}, role[64] = {0};
         int fields = sscanf(line, "%31s %63s %63s", magic, user, role);
         if (fields < 2 ||
@@ -320,9 +364,10 @@ int main(int argc, char **argv)
         if (strcmp(user, "-") == 0) user[0] = '\0';
         if (fields < 3 || strcmp(role, "-") == 0) role[0] = '\0';
 
-        if (!peer_identity_matches(cfd, user)) {
+        uid_t peer_uid = 0;
+        if (!peer_identity_ok(cfd, user, &peer_uid)) {
             fprintf(stderr,
-                    "netconfd: refusing session claiming '%s' from a different uid\n",
+                    "netconfd: refusing session claiming '%s' without a matching peer uid\n",
                     user);
             close(cfd);
             continue;
@@ -334,16 +379,26 @@ int main(int argc, char **argv)
             continue;
         }
         ca->fd = cfd;
+        ca->role = netconf_role_resolve(user, peer_uid);
         snprintf(ca->user, sizeof(ca->user), "%s", user);
-        snprintf(ca->role, sizeof(ca->role), "%s", role);
+        snprintf(ca->requested_role, sizeof(ca->requested_role), "%s", role);
 
         /* Register before starting the thread so shutdown_clients() cannot
          * observe zero clients while a session thread is still starting. */
         if (!client_register(cfd)) {
+            fputs("netconfd: connection limit reached\n", stderr);
             free(ca);
             close(cfd);
             continue;
         }
+
+        /* Bound the NETCONF <hello> wait so a client that sends a valid
+         * preamble and then stalls cannot pin a session thread forever.  The
+         * timeout is cleared by the session thread once the hello is read. */
+        struct timeval hello_to = { .tv_sec = NETCONF_HELLO_TIMEOUT_S,
+                                    .tv_usec = 0 };
+        (void)setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &hello_to,
+                         sizeof(hello_to));
 
         pthread_t th;
         if (pthread_create(&th, NULL, client_thread, ca) != 0) {
@@ -357,7 +412,10 @@ int main(int argc, char **argv)
     }
 
     close(lfd);
-    unlink(socket_path);
+    struct stat st;
+    if (lstat(socket_path, &st) == 0 &&
+        st.st_dev == g_socket_dev && st.st_ino == g_socket_ino)
+        unlink(socket_path);
     shutdown_clients();
     netconf_ds_fini();
     danos_authz_shutdown();

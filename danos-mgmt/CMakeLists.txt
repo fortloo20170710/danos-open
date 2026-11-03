@@ -14,6 +14,7 @@ add_library(danos-mgmt STATIC
   src/netconf/netconf_datastore.c
   src/netconf/netconf_framing.c
   src/netconf/netconf_session.c
+  src/netconf/netconf_role.c
   src/authz/authz.c
 )
 target_include_directories(danos-mgmt PUBLIC src)
@@ -30,6 +31,7 @@ add_executable(danos-netconfd src/netconf/netconf_daemon.c)
 target_link_libraries(danos-netconfd PRIVATE danos-mgmt pthread)
 install(TARGETS danos-netconf-subsystem danos-netconfd
         RUNTIME DESTINATION ${CMAKE_INSTALL_SBINDIR})
+install(FILES danos-netconfd.service DESTINATION lib/systemd/system)
 
 # Legacy gNMI-like HTTP/JSON server (E2). It predates the gRPC stack, has
 # no TLS or per-object authorization, and is not started by mgrd. Keep it

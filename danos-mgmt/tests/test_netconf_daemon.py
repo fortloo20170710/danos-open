@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import getpass
 import time
 
 EOM = b"]]>]]>"
@@ -26,9 +27,11 @@ HELLO_10 = (
 CLOSE = b"<rpc><close-session/></rpc>"
 
 
-def env_for(role="admin"):
+def env_for(role="admin", role_map=None):
     env = dict(os.environ)
     env["DANOS_NETCONF_ROLE"] = role
+    if role_map:
+        env["DANOS_NETCONF_ROLE_MAP"] = role_map
     env.setdefault("TMPDIR", "/tmp")
     return env
 
@@ -97,6 +100,33 @@ def raw_connect(path):
     return s
 
 
+def raw_login(path, user, role):
+    """Raw NETCONF client, used to prove the daemon ignores client role claims."""
+    s = raw_connect(path)
+    s.sendall(b"DANOS-NETCONF/1 %s %s\n" % (user.encode(), role.encode()))
+    buf = b""
+    while EOM not in buf:
+        data = s.recv(4096)
+        if not data:
+            raise AssertionError("daemon closed before server hello")
+        buf += data
+    hello, buf = buf.split(EOM, 1)
+    assert b"<hello" in hello, hello
+    s.sendall(HELLO_10 + EOM)
+    return s, buf
+
+
+def raw_rpc(sock, buf, body):
+    sock.sendall(body + EOM)
+    while EOM not in buf:
+        data = sock.recv(4096)
+        if not data:
+            raise AssertionError("daemon closed before rpc reply")
+        buf += data
+    reply, buf = buf.split(EOM, 1)
+    return reply, buf
+
+
 def wait_socket(path, timeout=10):
     deadline = time.time() + timeout
     while time.time() < deadline:
@@ -118,18 +148,30 @@ def main():
     tmp = tempfile.mkdtemp(prefix="danos-ncd-")
     sock = os.path.join(tmp, "netconf.sock")
     startup = os.path.join(tmp, "startup.db")
+    user = getpass.getuser()
+    role_map = os.path.join(tmp, "netconf-roles")
+    with open(role_map, "w", encoding="utf-8") as f:
+        f.write("%s admin\n" % user)
     proc = subprocess.Popen(
         [daemon, "--socket", sock, "--startup", startup],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
-        env=env_for(),
+        env=env_for(role_map=role_map),
     )
     try:
         wait_socket(sock)
-        env = env_for()
+        env = env_for(role_map=role_map)
 
         a = Session(subsystem, sock, env)
         b = Session(subsystem, sock, env)
+
+        # A second daemon must refuse the same socket instead of unlinking
+        # the live one.
+        second = subprocess.run(
+            [daemon, "--socket", sock, "--startup", startup],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            env=env_for(role_map=role_map), timeout=10)
+        assert second.returncode != 0
 
         # Locks are global: a second session is refused.
         assert b"<ok/>" in a.rpc(
@@ -173,10 +215,14 @@ def main():
         assert b"<ok/>" in a.rpc(
             b"<rpc><commit><confirmed/><confirm-timeout>1</confirm-timeout>"
             b"<persist>timed</persist></commit></rpc>")
-        time.sleep(1.6)
-        reply = b.rpc(
-            b"<rpc><commit><persist-id>timed</persist-id></commit></rpc>")
-        assert b"invalid-value" in reply, reply
+        deadline = time.time() + 5
+        while True:
+            reply = b.rpc(
+                b"<rpc><commit><persist-id>timed</persist-id></commit></rpc>")
+            if b"invalid-value" in reply:
+                break
+            assert time.time() < deadline, reply
+            time.sleep(0.1)
 
         # Closing the issuing session releases its lock for another session.
         assert b"<ok/>" in a.rpc(
@@ -212,6 +258,11 @@ def main():
             s.shutdown(socket.SHUT_WR)
             assert s.recv(1) == b""
 
+        # An unknown/unresolvable peer identity is rejected outright.
+        with raw_connect(sock) as s:
+            s.sendall(b"DANOS-NETCONF/1 nosuchuser42 admin\n")
+            assert s.recv(1) == b""
+
         # A client that never speaks NETCONF base 1.0 is disconnected.
         d = Session.__new__(Session)
         d.proc = subprocess.Popen(
@@ -231,6 +282,28 @@ def main():
         assert proc.wait(timeout=10) == 0
         live.proc.wait(timeout=10)
         proc = None
+
+        # A client-supplied role is audit context only.  This daemon maps the
+        # test user to viewer, so claiming admin must not authorize a lock.
+        viewer_sock = os.path.join(tmp, "viewer.sock")
+        viewer_map = os.path.join(tmp, "viewer-roles")
+        with open(viewer_map, "w", encoding="utf-8") as f:
+            f.write("%s viewer\n" % user)
+        viewer = subprocess.Popen(
+            [daemon, "--socket", viewer_sock, "--startup", startup],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            env=env_for(role_map=viewer_map))
+        try:
+            wait_socket(viewer_sock)
+            vs, vbuf = raw_login(viewer_sock, user, "admin")
+            reply, vbuf = raw_rpc(
+                vs, vbuf,
+                b"<rpc><lock><target><candidate/></target></lock></rpc>")
+            assert b"access-denied" in reply, reply
+            vs.close()
+        finally:
+            viewer.send_signal(signal.SIGTERM)
+            assert viewer.wait(timeout=10) == 0
     finally:
         rc = 0
         err = ""

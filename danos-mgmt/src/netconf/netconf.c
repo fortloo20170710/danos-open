@@ -922,8 +922,11 @@ static char *handle_rpc(netconf_ctx_t *ctx, const char *xml)
 /* The shared daemon runs one session per thread.  Datastore access is
  * internally locked, but an RPC performs several dependent datastore calls
  * (lock check and then publish) and the running store is process-wide, so
- * serialise the whole RPC.  RPCs are configuration operations, not a
- * throughput path. */
+ * serialise RPC handlers.  This is RPC-level serialisation, not a claim that
+ * every datastore user shares the lock: disconnect teardown and the
+ * confirmed-commit timer take only g_ds_lock and can interleave at those
+ * boundaries, which their individually locked operations tolerate.  RPCs are
+ * configuration operations, not a throughput path. */
 char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
 {
     static pthread_mutex_t rpc_lock = PTHREAD_MUTEX_INITIALIZER;

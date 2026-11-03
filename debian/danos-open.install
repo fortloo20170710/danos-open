@@ -1,3 +1,6 @@
 usr/bin/danos-mgrd
 usr/lib/systemd/system/danos-mgrd.service
 usr/share/danos/yang
+usr/sbin/danos-netconfd
+usr/sbin/danos-netconf-subsystem
+usr/lib/systemd/system/danos-netconfd.service
