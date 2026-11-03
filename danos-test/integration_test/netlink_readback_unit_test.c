@@ -23,7 +23,7 @@ static danos_resolved_route_t make_route(uint8_t third, uint8_t nh_count)
     rr.route.prefix.prefix_len = 24;
     rr.route.protocol = DANOS_ROUTE_PROTO_STATIC;
     rr.nh_count = nh_count;
-    for (uint32_t i = 0; i < nh_count; i++) {
+    for (uint32_t i = 0; i < nh_count && i < 64; i++) {
         rr.nh_gw[i][0] = 10;
         rr.nh_gw[i][3] = (uint8_t)(1 + i);
         rr.nh_oif[i] = 5 + i;
