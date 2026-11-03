@@ -8,16 +8,31 @@
 ## Current v0.16 status
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
-release has not been qualified. Source checkpoint `515e581` was locally
-verified with CTest 81/81 and the deterministic backend contract gate; its
-docs-only descendant `a4638c7` passed GitHub CI, Coverage and Interop Gate.
+release has not been qualified. The latest merged functional checkpoint
+(`bdce485`) passes Release CTest **93/93**, the deterministic backend contract
+gate, and GitHub CI **16/16** (including ASan/UBSan, TSan, Coverage and
+Interop). Production line coverage is 81.0% (functions 91.1%, branches 60.1%).
 The full unified QEMU/VMware release gate was not rerun on that checkpoint.
+
+Recent merged control-plane work:
+
+- NETCONF runs as a single `danos-netconfd` with candidate state, locks and
+  cross-session confirmed-commit persist tokens shared across SSH sessions.
+- Committed running state (`<startup>.running`) and a pending confirmed-commit
+  rollback baseline (`<startup>.confirmed`) are durable across daemon
+  restart/reboot; unconfirmed commits roll back at startup.
+- A corrupt or unreadable running snapshot fails closed; the explicit override
+  is `DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1`.
+- Netlink verifies route metric and ECMP members; VPP exposes interface, VRF
+  and route/ECMP OPER data from `sw_interface_dump`, `ip_table_dump` and
+  `ip_route_dump`. VPP dumps carry no metric, so non-zero metrics return an
+  explicit `NOT_SUPPORTED` result.
+
 QEMU, VMware and physical I211 evidence demonstrates scoped functional
 forwarding and recovery, but does not qualify sustained PCI throughput,
 latency, CPU cost or line rate. Measured PCI performance remains
 `ENVIRONMENT-OPEN` until a verified sustained-load test includes an
-independent receiver.
-R2/R4 rollout, uniform four-node qualification, live VPP reconnect recovery,
+independent receiver. R2/R4 physical rollout, uniform four-node qualification,
 and production PKI/mTLS deployment also remain open. BFD, VLAN, VXLAN and EVPN
 remain deferred until the v0.16 release decision.
 
@@ -61,7 +76,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current local source checkpoint reports 81/81.
+by build configuration; the current source checkpoint reports 93/93.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
@@ -140,9 +155,9 @@ roadmap in `docs/project-status.md`; v1.1 spec archived at `docs/archive/v1.1/`)
 | `danos-core/` | Core engine: object/store/transaction/capability/event, WAL persist, dependency-aware programming pipeline, reconciler | v0.10 |
 | `danos-dpa/` | DPA public API (C ABI + Protobuf) | v0.2 |
 | `danos-fib/` | FRR zebra/FIB adapter | v0.2 |
-| `danos-vpp/` | VPP backend: real binary API (handshake + msg table + typed messages) + stat segment + programming adapter (v0.11) | v0.11 |
+| `danos-vpp/` | VPP backend: real binary API (handshake + msg table + typed messages) + stat segment + programming adapter + interface/VRF/route OPER dump readback | v0.12 |
 | `danos-models/` | YANG / OpenConfig models (13 models; interfaces subtree bound to gNMI via model_paths) | v0.5 |
-| `danos-mgmt/` | CLI / gNMI (real gRPC, model-driven, streaming Subscribe) / NETCONF over SSH (RFC 6242 subsystem, candidate/startup datastores, validate, model-wired edit-config; confirmed-commit SSH recovery remains open) — all three share the model layer | v0.7 |
+| `danos-mgmt/` | CLI / gNMI (real gRPC, model-driven, streaming Subscribe) / NETCONF over SSH (single shared daemon, candidate/startup datastores, cross-session confirmed-commit, durable running/rollback state, fail-closed corrupt snapshots, RBAC from peer uid) — all three share the model layer | v0.8 |
 | `danos-security/` | RBAC / audit log; CoPP policer programming (vpp_msgs) | v0.2 (CoPP v0.4) |
 | `danos-ha/` | BFD session manager (protocol delegated to FRR bfdd per ADR-0006; translation layer pending) / VRRP skeleton / supervisor | v0.2 |
 | `danos-observability/` | Prometheus exposition (real HTTP server, stat-provider bridge) / structured logging | v0.6 |
@@ -150,13 +165,13 @@ roadmap in `docs/project-status.md`; v1.1 spec archived at `docs/archive/v1.1/`)
 | (mgmt) `model_paths` | YANG path registry: leaf-level gNMI Get/Set, gRPC NotFound/InvalidArgument errors | v0.5 |
 | (mgmt) `model_routes` | composite route write: one gNMI update -> NH+Group+Route, cascade delete | v0.12 |
 | `danos-mgrd` | system daemon: WAL boot + gNMI + Prometheus /metrics + crash recovery | v0.6 |
-| `danos-netlink` | kernel backend adapter: rtnetlink (real) / in-memory FIB (mock), drives the ADR-0007 programming pipeline | v0.9 |
+| `danos-netlink` | kernel backend adapter: rtnetlink (real) / in-memory FIB (mock), route metric/ECMP OPER readback and same-pass repair, drives the ADR-0007 programming pipeline | v0.10 |
 | (core) `programming` | desired→backend pipeline with PROGRAMMED ledger, tombstone sweep | v0.10 |
 | `danos-compat/` | OcNOS-like CLI translation (minimal; awaiting model-layer rebasing) | v0.3 |
 | `danos-platform/` | Platform adaptation: x86 / ARM / generic | not started (intentional) |
 | `danos-ovs/` | OVS-DPDK backend | not started (intentional) |
 | `danos-p4/` | P4Runtime / P4 backend | not started (intentional) |
-| `danos-test/` | conformance / interop / fuzz / scale / perf / kernel tests (33 suites total) | v0.10 |
+| `danos-test/` | conformance / interop / fuzz / scale / perf / kernel / OPER-readback tests | v0.11 |
 | `danos-build/` | Toolchain image + minimal mgrd deployment image (`Dockerfile.mgrd`) | v0.6 |
 | `docs/` | Single documentation root: ADRs, interop DoD, compat matrix, threading contract, release notes | rolling |
 

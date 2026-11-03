@@ -89,8 +89,8 @@
   missing credentials or NSS lookup failure. Confirmed commits honour candidate
   locks, and the daemon has a connection cap, preamble/hello timeouts, a
   single-instance lock, inode-checked socket cleanup and a systemd unit. The
-  daemon restart boundary is explicitly not qualified: a pending commit and its
-  baseline are in-memory only.
+  restart/reboot boundary was closed by the later 2026-11-03 durable-state
+  work below.
 - Verification: new `netconf_daemon` CTest covers malformed/missing identity
   preambles, shared locks, cross-session persist confirm/cancel, timer rollback,
   disconnect rollback and SIGTERM with a live session. The loopback-sshd
@@ -157,10 +157,10 @@
   route out of band, confirms it is restored on the next pass, and checks the
   OPER snapshot is repopulated. A separate read-only RTM_GETROUTE test on the
   host confirms an absent exact TEST-NET prefix is reported as `NOT_FOUND`.
-  CTest is 85/85; backend contract and both targeted ASan/UBSan tests pass.
-  Full route-attribute/NHGroup equality, VRF readback and VPP route/interface
-  dump bindings remain open; this change is presence/drift repair, not
-  complete hardware FIB truth.
+  CTest was 85/85; backend contract and both targeted ASan/UBSan tests passed.
+  Route-attribute/ECMP equality, VRF readback and VPP route/interface dump
+  bindings were added by the later 2026-11-03 work; this entry remains a
+  historical presence/drift-repair checkpoint, not hardware FIB truth.
 
 ### 2026-10-20 hardening, coverage and repository hygiene
 
@@ -467,10 +467,9 @@ Execution priority, as confirmed on 2026-10-15:
    `DANOS_NETCONF_ROLE` into RBAC. Advertised capabilities match behavior
    (`kill-session` answers `operation-not-supported`), and `edit-config`
    applies every interface block atomically. Datastores include candidate and
-   startup, and `validate` is implemented. Confirmed commit has an in-process
-   timeout/session-close prototype only; persistent token confirmation across
-   SSH sessions and restart rollback remain open because each subsystem is a
-   separate process. Keep it out of release acceptance. See
+   startup, and `validate` is implemented. The confirmed-commit prototype
+   described here was superseded by the shared daemon and durable
+   running/rollback state in the later 2026-11-02/03 entries; see
    `docs/management-netconf-ssh.md`. The Interop workflow runs the subsystem
    over a loopback `sshd`.
 5. **Supply-chain and repository hygiene.** Pin remaining dependencies and
@@ -907,7 +906,9 @@ scope limitation.
 2026-10-07: Route/NH/NHGroup creation-only cases were replaced by full
 storage lifecycle/visibility/abort/payload checks. Pipeline tests now pin
 dependency recovery after retry exhaustion, mock VPP replay/withdraw/restore
-and restart epoch retry reset. The listed VRF/ACL/QoS gaps remain open.
+and restart epoch retry reset. At the time the listed VRF/ACL/QoS gaps
+remained open; VRF backend OPER readback was added later (VPP ip_table dump),
+while ACL/QoS backend gaps remain.
 
 ### [~] 13. Build and repository hygiene
 

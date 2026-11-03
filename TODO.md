@@ -1,11 +1,11 @@
-# DANOS-Open 待办清单(v0.15 收敛基线)
+# DANOS-Open 待办清单(v0.16 收敛基线)
 
 > 当前状态、版本路线和验收口径见 `docs/project-status.md`。本清单只保留尚未完成的可执行事项。
 
-## v0.15 工程收敛
-- [ ] 统一 README、TODO、release notes、tag 与构建产物版本口径
+## v0.16 工程收敛
+- [x] 统一 README、TODO、project status 与 v0.16 acceptance matrix 的当前状态口径
 - [ ] 将当前 gNMI 修复拆分提交并完成协议回归
-- [ ] 完成 Route/NH/NHGroup 依赖删除、重试和 tombstone 验收
+
 - [x] 增加 Interface IPv4/IPv6 地址模型及 northbound 测试（Linux/VPP 地址消息均已有类型化覆盖）
 - [x] 增加特权集成测试 lane，并区分环境阻塞与代码失败（K4/K5 lane 已存在；本地缺少权限）
 - [x] 增加 TSAN 门禁和正式 fuzz target（TSAN CMake/CI 配置及 gNMI 并发验证已完成；libFuzzer target/CI 已加入，当前工作区未安装 clang）
@@ -66,13 +66,16 @@
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
-- [x] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 读回；VPP `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 的接口、VRF、路由 OPER 读回与差异检测；均有 mock 解码/适配器回归，真实 VPP V6 lane 覆盖
+- [x] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 读回；VPP `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 的接口、VRF、路由 OPER 读回与差异检测；VPP dump 无 metric，非零 metric 显式返回 `DANOS_ERR_NOT_SUPPORTED`；均有 mock 解码/适配器回归，真实 VPP V6 lane 覆盖
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
 - [x] NETCONF validate（具名 datastore 与 inline config；对 modeled interface leaves 做语义校验）
-- [x] NETCONF confirmed commit：共享 daemon 支持跨 SSH 会话 persist/persist-id、超时/会话关闭回滚；pending baseline 持久化到 `<startup>.confirmed`，重启/重启后启动时自动回滚未确认提交（RFC 6241 8.4）并有 fork/exec 重启回归
-- [~] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid 策略决定并失败关闭，真实 sshd 双会话验收通过。剩余：非 root 子系统的 socket 组权限部署示例、hello 后 idle-session 超时
+- [x] NETCONF confirmed commit：共享 daemon 支持跨 SSH 会话 persist/persist-id、超时/会话关闭回滚；pending baseline 持久化到 `<startup>.confirmed`，启动时自动回滚未确认提交（RFC 6241 8.4）并有 fork/exec 重启回归
+- [x] NETCONF committed running 持久化：plain/confirmed commit、running copy-config、直接 edit-config 与回滚都写 `<startup>.running`，重启加载；写失败使提交失败并回滚，fork/exec 重启回归覆盖
+- [x] NETCONF 损坏 running 快照 fail-closed：拒绝启动并给出操作员可见错误；`DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` 为显式 override，提交可修复坏文件
+- [x] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid/group 策略决定并失败关闭，非 root socket 组权限与 systemd 配方已文档化，真实 sshd 双会话验收通过
+- [ ] NETCONF idle-session 超时（hello 后长连接目前仅受连接数上限约束）
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）
