@@ -18,8 +18,8 @@ subsystem process that speaks RFC 6242 framing on its stdin/stdout.
 
 OpenSSH starts one subsystem process per SSH session. The recommended
 deployment runs `danos-netconfd`; the subsystem connects to its Unix socket,
-sends the SSH user plus `DANOS_NETCONF_ROLE`, and relays the NETCONF bytes
-unchanged. One daemon therefore owns running/candidate/startup, the lock table
+sends the SSH user plus the requested role as audit context, and relays the
+NETCONF bytes unchanged. One daemon therefore owns running/candidate/startup, the lock table
 and the confirmed-commit timer for all sessions. Without a daemon the
 subsystem runs the same session engine in-process (the previous laboratory
 behaviour).
@@ -45,11 +45,9 @@ PubkeyAuthentication yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 
-# Map the SSH user's DANOS role. admin can edit; operator can read and edit;
-# viewer can read. Without this the deployment default applies
-# (DANOS_AUTHZ_DEFAULT_ROLE, ADMIN when unset).
-SetEnv DANOS_NETCONF_ROLE=admin
-
+# Authorization is resolved by the daemon from the peer uid via
+# /etc/danos/netconf-roles.  DANOS_NETCONF_ROLE (SetEnv) is only audit context;
+# it does not grant a role.
 Subsystem netconf /usr/local/sbin/danos-netconf-subsystem --daemon /run/danos/netconf.sock
 ```
 
@@ -67,27 +65,41 @@ context only. The daemon derives the effective role from the peer uid:
 
 - default policy: uid 0 is `admin`, every other uid is `viewer`;
 - `DANOS_NETCONF_ROLE_MAP` (default `/etc/danos/netconf-roles`) overrides the
-  default with one `<user-or-uid> <role>` mapping per line. Unknown users
-  remain `viewer`; unknown role names are ignored.
+  default with one `<user-or-uid> <role>` or `@<group> <role>` mapping per
+  line. Rules are evaluated in file order and the first match wins. Unknown
+  users remain `viewer`; unknown role names are ignored.
 
 ```
 # /etc/danos/netconf-roles
 root admin
 netadmin operator
+@netops operator
 1001 viewer
 ```
 
 Keep the mapping file root-owned and not group/other writable; it grants
-authorization to local uids.
+authorization to local uids and groups. Group matching includes the primary
+group and supplementary groups from NSS.
 
 The packaged unit uses a root-owned, root-only `/run/danos`, so only root
-subsystems can connect. To serve non-root SSH users, provision a dedicated
-group, set `RuntimeDirectoryMode=0750` with that group in a unit override, and
-add the subsystem users to it. Do not make the socket world-writable: any
-local process that can connect is authenticated by uid, but a world-writable
-socket still widens the attack surface. The subsystem process is spawned by
-`sshd` as the authenticated user, so the daemon does not see the password or
-key.
+subsystems can connect. To serve non-root SSH users, create a dedicated group,
+add those users to it, and make the daemon's service group that group:
+
+```
+groupadd danos-netconf
+usermod -aG danos-netconf alice
+systemctl edit danos-netconfd
+# [Service]
+# Group=danos-netconf
+```
+
+The unit already sets `RuntimeDirectoryMode=0750`, so `/run/danos` becomes
+`root:danos-netconf` and the daemon creates the socket as
+`root:danos-netconf 0660`. Alternatively pass
+`--socket-group=danos-netconf` on `ExecStart` (the socket is chowned after
+bind); `--socket-mode` can override the 0660 mode, but do not make the socket
+world-writable. Any local process that can connect is still authenticated by
+uid and mapped through the role policy.
 
 Restart `sshd` after the change. A client connects with the subsystem name:
 
@@ -96,19 +108,23 @@ ssh -s netconf user@router
 ```
 
 Use key-only authentication. The subsystem never sees the password or key; it
-trusts the `LOGNAME`/`USER` value and the `DANOS_NETCONF_ROLE` set by `sshd`.
+trusts the `LOGNAME`/`USER` value set by `sshd`. The requested
+`DANOS_NETCONF_ROLE` is forwarded only as audit context and is ignored for
+authorization.
 
 ## Authorization and audit
 
-`sshd` authenticates the user. The subsystem records that user as the session
-identity and maps `DANOS_NETCONF_ROLE` through RBAC:
+`sshd` authenticates the user. The subsystem forwards the user name and the
+requested role as audit context. The daemon ignores the requested role and
+resolves the effective role from the peer uid through the policy above:
 
 - `admin` and `operator` may run `edit-config`.
 - `viewer` may run `get` and `get-config`.
-- An unknown role name is reported on stderr and the deployment default applies.
 
-Every RPC decision is evaluated by `danos_authz_check_identity`, so permitted
-and denied operations both reach the audit log with the SSH user attached.
+If the requested role differs from the resolved role, the daemon logs the
+mismatch and uses the policy result. Every RPC decision is evaluated by
+`danos_authz_check_identity`, so permitted and denied operations both reach the
+audit log with the SSH user attached.
 
 ## Capabilities and RPCs
 
@@ -267,7 +283,11 @@ cancellable from the other session, and a non-persisted commit must be
 session-owned. Omitting the daemon argument exercises the in-process
 single-session fallback.
 
-The script generates a throwaway host key, client key, `authorized_keys` and
+The cross-uid check (root) starts a daemon with a role map that grants `root`
+admin and `nobody` viewer, then confirms that a `nobody` session claiming
+`admin` is denied a mutating RPC. The daemon test itself skips the check when
+run unprivileged. The script generates a throwaway host key, client key,
+`authorized_keys` and
 `sshd_config`, starts `sshd` on loopback port 2222, and runs
 `danos-test/integration/netconf_ssh_client.py` for base 1.0 and base 1.1. The
 Interop Gate workflow runs the same script in the `netconf-ssh` job.

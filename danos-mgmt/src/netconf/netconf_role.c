@@ -4,9 +4,12 @@
 
 #include "netconf_role.h"
 
+#include <grp.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define NETCONF_ROLE_MAP_DEFAULT "/etc/danos/netconf-roles"
 #define NETCONF_ROLE_LINE_MAX    256
@@ -17,11 +20,38 @@ static bool line_is_comment(const char *line)
     return *line == '\0' || *line == '#' || *line == '\n';
 }
 
+static bool group_list_contains(const char *user, uid_t uid, gid_t gid)
+{
+    struct passwd *pw = getpwuid(uid);
+    if (!pw) return false;
+    const char *name = (user && *user) ? user : pw->pw_name;
+
+    long max = sysconf(_SC_NGROUPS_MAX);
+    if (max < 1) max = 64;
+    gid_t *groups = calloc((size_t)max, sizeof(*groups));
+    if (!groups) return false;
+
+    int count = (int)max;
+    bool found = false;
+    if (getgrouplist(name, pw->pw_gid, groups, &count) >= 0) {
+        for (int i = 0; i < count; i++) {
+            if (groups[i] == gid) { found = true; break; }
+        }
+    }
+    free(groups);
+    return found;
+}
+
 /* Match a mapping key against the authenticated identity.  Numeric keys match
- * the uid; textual keys match the NSS user name. */
+ * the uid, textual keys match the NSS user name, and "@group" keys match any
+ * group (primary or supplementary) of that user. */
 static bool key_matches(const char *key, const char *user, uid_t uid)
 {
     if (!key || !*key) return false;
+    if (key[0] == '@') {
+        struct group *gr = getgrnam(key + 1);
+        return gr && group_list_contains(user, uid, gr->gr_gid);
+    }
     if (key[0] >= '0' && key[0] <= '9') {
         char *end = NULL;
         unsigned long parsed = strtoul(key, &end, 10);

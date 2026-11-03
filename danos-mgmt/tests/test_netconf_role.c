@@ -7,6 +7,7 @@
 #include "../src/netconf/netconf_role.h"
 #include <danos/security/rbac.h>
 #include <assert.h>
+#include <grp.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,7 +43,24 @@ int main(void)
     assert(netconf_role_resolve("someone", 12345) == DANOS_ROLE_VIEWER);
     assert(netconf_role_resolve("unmapped", 54321) == DANOS_ROLE_VIEWER);
 
-    /* An invalid role name is not a match; the uid fallback applies. */
+    /* A primary-group rule applies to every member of that group. */
+    struct group *grp = getgrgid(pw->pw_gid);
+    assert(grp != NULL && grp->gr_name != NULL);
+    f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f, "@%s operator\n", grp->gr_name);
+    fclose(f);
+    assert(netconf_role_resolve(pw->pw_name, getuid()) == DANOS_ROLE_OPERATOR);
+    assert(netconf_role_resolve(pw->pw_name, 54321) == DANOS_ROLE_VIEWER);
+
+    /* A user/uid rule on an earlier line wins over a later group rule. */
+    f = fopen(path, "w");
+    assert(f != NULL);
+    fprintf(f, "%s admin\n@%s viewer\n", pw->pw_name, grp->gr_name);
+    fclose(f);
+    assert(netconf_role_resolve(pw->pw_name, getuid()) == DANOS_ROLE_ADMIN);
+
+    /* An invalid role name is not a match; the fallback applies. */
     f = fopen(path, "w");
     assert(f != NULL);
     fprintf(f, "%s superuser\n", pw->pw_name);

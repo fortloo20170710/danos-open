@@ -7,8 +7,9 @@
  *
  * Default policy: root is ADMIN, every other uid is VIEWER.  A deployment can
  * override this with a file (DANOS_NETCONF_ROLE_MAP, default
- * /etc/danos/netconf-roles) containing one "<user-or-uid> <role>" mapping per
- * line.  Unknown users remain VIEWER and unknown role names are ignored.
+ * /etc/danos/netconf-roles) containing one "<user-or-uid> <role>" or
+ * "@<group> <role>" mapping per line.  Unknown users remain VIEWER and unknown
+ * role names are ignored.
  */
 
 #ifndef DANOS_NETCONF_ROLE_H__

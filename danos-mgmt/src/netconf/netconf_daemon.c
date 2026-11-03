@@ -25,6 +25,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <poll.h>
 #include <pwd.h>
 #include <signal.h>
@@ -195,7 +196,7 @@ out:
     return NULL;
 }
 
-static int listen_socket(const char *path)
+static int listen_socket(const char *path, gid_t gid, mode_t mode)
 {
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -236,10 +237,24 @@ static int listen_socket(const char *path)
         close(fd);
         return -1;
     }
-    /* The SSH subsystem connects as the authenticated user.  Deployment may
-     * prefer a root-owned 0660 socket in a dedicated group; the directory
-     * provides the actual boundary. */
-    (void)chmod(path, 0660);
+    /* The SSH subsystem connects as the authenticated user.  The socket is
+     * group-owned by the configured service group; the directory is the
+     * outer boundary.  A world-writable socket is never a good default. */
+    if (gid != (gid_t)-1 && chown(path, (uid_t)-1, gid) != 0) {
+        perror("netconfd: chown socket");
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    if (chmod(path, mode) != 0) {
+        perror("netconfd: chmod socket");
+        close(fd);
+        unlink(path);
+        return -1;
+    }
+    if (mode & 0002)
+        fprintf(stderr,
+                "netconfd: warning: world-writable socket mode 0%o\n", mode);
 
     if (listen(fd, 64) != 0) {
         perror("netconfd: listen");
@@ -276,7 +291,9 @@ static void usage(const char *argv0)
 {
     fprintf(stderr,
             "usage: %s [--socket <path>] [--startup <path>]\n"
-            "  socket defaults to $DANOS_NETCONF_SOCKET or %s\n",
+            "          [--socket-group <name>] [--socket-mode <octal>]\n"
+            "  socket defaults to $DANOS_NETCONF_SOCKET or %s\n"
+            "  mode defaults to 0660; group defaults to the process egid\n",
             argv0, NETCONF_DEFAULT_SOCKET);
 }
 
@@ -284,12 +301,24 @@ int main(int argc, char **argv)
 {
     const char *socket_path = NULL;
     const char *startup_path = NULL;
+    const char *socket_group = NULL;
+    unsigned long socket_mode = 0660;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
             socket_path = argv[++i];
         } else if (strcmp(argv[i], "--startup") == 0 && i + 1 < argc) {
             startup_path = argv[++i];
+        } else if (strcmp(argv[i], "--socket-group") == 0 && i + 1 < argc) {
+            socket_group = argv[++i];
+        } else if (strcmp(argv[i], "--socket-mode") == 0 && i + 1 < argc) {
+            char *end = NULL;
+            socket_mode = strtoul(argv[++i], &end, 8);
+            if (!end || *end != '\0' || socket_mode > 0777) {
+                fprintf(stderr, "netconfd: invalid --socket-mode '%s'\n",
+                        argv[i]);
+                return 2;
+            }
         } else if (strcmp(argv[i], "--help") == 0) {
             usage(argv[0]);
             return 0;
@@ -311,10 +340,21 @@ int main(int argc, char **argv)
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
 
+    gid_t socket_gid = (gid_t)-1;
+    if (socket_group && *socket_group) {
+        struct group *gr = getgrnam(socket_group);
+        if (!gr) {
+            fprintf(stderr, "netconfd: unknown socket group '%s'\n",
+                    socket_group);
+            return 2;
+        }
+        socket_gid = gr->gr_gid;
+    }
+
     (void)danos_authz_init(NULL);
     netconf_ds_init(startup_path);
 
-    int lfd = listen_socket(socket_path);
+    int lfd = listen_socket(socket_path, socket_gid, (mode_t)socket_mode);
     if (lfd < 0) {
         netconf_ds_fini();
         danos_authz_shutdown();

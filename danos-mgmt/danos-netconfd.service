@@ -13,14 +13,17 @@ Restart=on-failure
 RestartSec=1
 # The socket directory is the local trust boundary.  The default root-only
 # directory means every connecting SSH subsystem must run as root.  To serve
-# non-root SSH users, use a dedicated group and RuntimeDirectoryMode=0750,
-# and add the subsystem users to that group; the daemon still derives each
-# session's RBAC role from the peer uid (see docs/management-netconf-ssh.md).
+# non-root SSH users, create a 'danos-netconf' group, add them to it, and run
+# this service with Group=danos-netconf (RuntimeDirectoryMode=0750 then creates
+# /run/danos as root:danos-netconf and the socket as 0660).  The daemon still
+# derives each session's RBAC role from the peer uid; see
+# docs/management-netconf-ssh.md.
 RuntimeDirectory=danos
 RuntimeDirectoryMode=0750
 StateDirectory=danos
 User=root
 Group=root
+# Group=danos-netconf
 CapabilityBoundingSet=
 AmbientCapabilities=
 NoNewPrivileges=yes
