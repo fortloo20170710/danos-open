@@ -15,6 +15,11 @@ target_link_libraries(netconf_test PRIVATE danos-mgmt danos-dpa pthread)
 target_compile_options(netconf_test PRIVATE -UNDEBUG)
 add_test(NAME netconf COMMAND netconf_test)
 
+add_executable(netconf_session_test test_netconf_session.c)
+target_link_libraries(netconf_session_test PRIVATE danos-mgmt pthread)
+target_compile_options(netconf_session_test PRIVATE -UNDEBUG)
+add_test(NAME netconf_session COMMAND netconf_session_test)
+
 add_executable(netconf_role_test test_netconf_role.c)
 target_link_libraries(netconf_role_test PRIVATE danos-mgmt)
 target_compile_options(netconf_role_test PRIVATE -UNDEBUG)
