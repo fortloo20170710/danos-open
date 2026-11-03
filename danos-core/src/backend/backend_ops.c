@@ -505,25 +505,22 @@ static void program_entry(danos_object_entry_t *e, void *user)
                                                    have_rr ? &rr : NULL);
             if (readback == DANOS_OK || readback == DANOS_ERR_NOT_SUPPORTED)
                 return;   /* in sync; no readback capability is not drift */
-            if (readback == DANOS_ERR_NOT_FOUND) {
-                /* The backend confirms the programmed object disappeared.
-                 * Drop only this ledger record and fall through to reprogram
-                 * the desired object in this pass. */
+            if (readback == DANOS_ERR_NOT_FOUND ||
+                readback == DANOS_ERR_VERIFY_FAIL) {
+                /* The backend confirms the object disappeared or is present
+                 * but differs from the resolved desired state.  Drop this
+                 * ledger record and fall through to an idempotent REPLACE in
+                 * this pass.  If the rewrite still does not verify, the
+                 * post-program check below records a bounded failure instead
+                 * of claiming success. */
                 (void)danos_object_delete(ledger(), e->type, e->id);
                 oper_forget(e->type, e->id);
                 have_last = false;
                 lsz = 0;
             } else {
-                /* A probe failure is not evidence of absence, so preserve
+                /* A probe I/O failure is not evidence of drift, so preserve
                  * the ledger and avoid an unsafe duplicate programming
-                 * attempt.  A VERIFY_FAIL mismatch is a real acceptance
-                 * failure (present but wrong ECMP/attributes); record it and
-                 * expose it through the retry/status path instead of
-                 * pretending the object is in sync. */
-                if (readback == DANOS_ERR_VERIFY_FAIL)
-                    retry_record_failure(e->type, e->id, mono_ns(),
-                                         hash_bytes(e->data, e->data_size),
-                                         dep, readback);
+                 * attempt. */
                 c->attempted++;
                 c->failed++;
                 return;
@@ -600,8 +597,19 @@ static void program_entry(danos_object_entry_t *e, void *user)
 
     danos_resolved_route_t rr;
     bool have_rr = route_probe_context(e->type, e->data, e->data_size, &rr);
-    (void)oper_refresh(e->type, e->id, e->data, e->data_size,
-                       have_rr ? &rr : NULL);
+    danos_status_t verify = oper_refresh(e->type, e->id, e->data,
+                                         e->data_size,
+                                         have_rr ? &rr : NULL);
+    if (verify == DANOS_ERR_VERIFY_FAIL) {
+        /* The rewrite did not converge: keep the retry/backoff record, drop
+         * the ledger so the next allowed pass retries, and count this pass as
+         * a failure rather than a success. */
+        retry_record_failure(e->type, e->id, mono_ns(),
+                             hash_bytes(e->data, e->data_size), dep, verify);
+        (void)danos_object_delete(ledger(), e->type, e->id);
+        if (c->ok) c->ok--;
+        c->failed++;
+    }
 }
 
 uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)

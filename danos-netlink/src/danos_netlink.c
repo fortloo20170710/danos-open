@@ -144,9 +144,15 @@ static int nl_read_ack(void)
     return err->error == 0 ? 0 : -1;
 }
 
+static bool gateway_is_set(const uint8_t gw[4])
+{
+    return gw[0] || gw[1] || gw[2] || gw[3];
+}
+
 /* Build and send RTM_NEWROUTE for an IPv4 route (kernel table_id). */
 static int nl_route_msg(const danos_resolved_route_t *res, int add)
 {
+    if (res->nh_count > DANOS_NHGROUP_MAX_NH) return -1;
     struct {
         struct nlmsghdr nh;
         struct rtmsg    rt;
@@ -196,14 +202,18 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
             char *pos = (char *)RTA_DATA(mp);
             for (uint32_t i = 0; i < nh_count; i++) {
                 struct rtnexthop *nhx = (struct rtnexthop *)pos;
-                nhx->rtnh_len = (unsigned short)(sizeof(*nhx) + RTA_LENGTH(4));
+                bool has_gw = gateway_is_set(res->nh_gw[i]);
+                nhx->rtnh_len = (unsigned short)(sizeof(*nhx) +
+                    (has_gw ? RTA_LENGTH(4) : 0));
                 nhx->rtnh_flags = 0;
                 nhx->rtnh_hops = 0;
                 nhx->rtnh_ifindex = (int)res->nh_oif[i];
-                struct rtattr *gw = RTNH_DATA(nhx);
-                gw->rta_type = RTA_GATEWAY;
-                gw->rta_len = RTA_LENGTH(4);
-                memcpy(RTA_DATA(gw), res->nh_gw[i], 4);
+                if (has_gw) {
+                    struct rtattr *gw = RTNH_DATA(nhx);
+                    gw->rta_type = RTA_GATEWAY;
+                    gw->rta_len = RTA_LENGTH(4);
+                    memcpy(RTA_DATA(gw), res->nh_gw[i], 4);
+                }
                 pos += NLMSG_ALIGN(nhx->rtnh_len);
             }
             mp->rta_type = RTA_MULTIPATH;
@@ -224,6 +234,14 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
                 memcpy(RTA_DATA(rta), &oif, 4);
                 msg.nh.nlmsg_len += RTA_LENGTH(4);
             }
+        } else if (res->oif) {
+            /* Interface-only next hop (no gateway): RTA_OIF is the path. */
+            rta = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
+            rta->rta_type = RTA_OIF;
+            rta->rta_len = RTA_LENGTH(4);
+            uint32_t oif = res->oif;
+            memcpy(RTA_DATA(rta), &oif, 4);
+            msg.nh.nlmsg_len += RTA_LENGTH(4);
         }
     }
 
@@ -343,6 +361,12 @@ static bool ipv4_prefix_equal(const uint8_t lhs[4], const uint8_t rhs[4],
  * rtnetlink, and the adapter's current resolved-route callback is one-way. */
 static danos_status_t nl_route_read(const danos_route_t *desired)
 {
+    /* RTM_F_FIB_MATCH asks for the FIB entry with its real prefix length and
+     * attributes.  A plain lookup reply reports dst_len=32 and one selected
+     * next hop, which cannot answer an attribute/presence comparison.  The
+     * default prefix is not reachable through FIB_MATCH on current kernels,
+     * so report it unsupported rather than absent. */
+    if (desired->prefix.prefix_len == 0) return DANOS_ERR_NOT_SUPPORTED;
     struct {
         struct nlmsghdr nh;
         struct rtmsg rt;
@@ -354,6 +378,7 @@ static danos_status_t nl_route_read(const danos_route_t *desired)
     req.nh.nlmsg_type = RTM_GETROUTE;
     req.nh.nlmsg_seq = 3;
     req.rt.rtm_family = AF_INET;
+    req.rt.rtm_flags = RTM_F_FIB_MATCH;
     req.rt.rtm_dst_len = desired->prefix.prefix_len;
     req.rt.rtm_table = (desired->vrf_id == 0 || desired->vrf_id >= 256)
                            ? RT_TABLE_MAIN : (uint8_t)desired->vrf_id;
@@ -456,6 +481,7 @@ static bool nl_verify_nh(struct nl_verify_expected *exp, uint32_t count,
 static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
 {
     const danos_route_t *desired = &resolved->route;
+    if (desired->prefix.prefix_len == 0) return DANOS_ERR_NOT_SUPPORTED;
     struct {
         struct nlmsghdr nh;
         struct rtmsg rt;
@@ -467,6 +493,7 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
     req.nh.nlmsg_type = RTM_GETROUTE;
     req.nh.nlmsg_seq = 4;
     req.rt.rtm_family = AF_INET;
+    req.rt.rtm_flags = RTM_F_FIB_MATCH;
     req.rt.rtm_dst_len = desired->prefix.prefix_len;
     req.rt.rtm_table = (desired->vrf_id == 0 || desired->vrf_id >= 256)
                            ? RT_TABLE_MAIN : (uint8_t)desired->vrf_id;
@@ -545,6 +572,7 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
         uint32_t observed_count = 0;
         uint32_t unmatched = 0;
         bool have_gateway = false;
+        bool have_oif = false;
         uint8_t single_gw[4] = {0};
         uint32_t single_oif = 0;
 
@@ -563,8 +591,10 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
                 memcpy(single_gw, RTA_DATA(rta), 4);
                 have_gateway = true;
             } else if (rta->rta_type == RTA_OIF &&
-                       RTA_PAYLOAD(rta) >= sizeof(uint32_t))
+                       RTA_PAYLOAD(rta) >= sizeof(uint32_t)) {
                 memcpy(&single_oif, RTA_DATA(rta), sizeof(single_oif));
+                have_oif = true;
+            }
             else if (rta->rta_type == RTA_MULTIPATH) {
                 int mlen = (int)RTA_PAYLOAD(rta);
                 for (struct rtnexthop *nhx = (struct rtnexthop *)RTA_DATA(rta);
@@ -585,7 +615,8 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
             }
         }
 
-        if (!expected_blackhole && !have_gateway && observed_count == 0)
+        if (!expected_blackhole && !have_gateway && !have_oif &&
+            observed_count == 0 && expected_count > 0)
             return DANOS_ERR_VERIFY_FAIL;   /* unicast route without a path */
 
         /* A single-path route is reported with RTA_GATEWAY/RTA_OIF rather
@@ -593,6 +624,13 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
         if (observed_count == 0 && have_gateway) {
             observed_count = 1;
             if (!nl_verify_nh(expected, expected_count, single_gw, single_oif))
+                unmatched++;
+        } else if (observed_count == 0 && have_oif && expected_count > 0) {
+            /* Interface-only next hop: the kernel reports RTA_OIF without a
+             * gateway, which is still an observed path to match. */
+            static const uint8_t zero_gw[4] = {0, 0, 0, 0};
+            observed_count = 1;
+            if (!nl_verify_nh(expected, expected_count, zero_gw, single_oif))
                 unmatched++;
         }
 
@@ -679,6 +717,8 @@ static danos_status_t ops_route_add(const danos_resolved_route_t *res,
         return DANOS_ERR_INVALID_ARG;
     if (route->prefix.prefix_len > 32) return DANOS_ERR_INVALID_ARG;
 
+    if (res->nh_count > DANOS_NHGROUP_MAX_NH)
+        return DANOS_ERR_INVALID_ARG;
     if (!g_nl.real) {
         mock_route_t *r = mock_find(route->prefix.addr.addr,
                                     route->prefix.prefix_len,
@@ -726,6 +766,8 @@ static danos_status_t ops_route_del(const danos_resolved_route_t *res,
     (void)user;
     const danos_route_t *route = &res->route;
     if (!route || route->prefix.addr.af != DANOS_AF_IPV4)
+        return DANOS_ERR_INVALID_ARG;
+    if (res->nh_count > DANOS_NHGROUP_MAX_NH)
         return DANOS_ERR_INVALID_ARG;
     if (!g_nl.real) {
         mock_route_t *r = mock_find(route->prefix.addr.addr,

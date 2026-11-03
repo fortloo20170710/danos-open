@@ -329,7 +329,9 @@ static void test_oper_route_ecmp_verify(void)
     assert(ops->route_readback(&good, &oper, ops->user) == DANOS_OK);
     assert(oper.metric == rt.metric);
 
-    /* A partially withdrawn/rewritten ECMP group: one member changed. */
+    /* A partially withdrawn/rewritten ECMP group: one member changed.  The
+     * next pass must repair it with an idempotent REPLACE, not report a
+     * permanent failure. */
     danos_resolved_route_t bad = good;
     bad.nh_gw[1][3] = 99;
     assert(ops->route_add(&bad, ops->user) == DANOS_OK);
@@ -338,16 +340,10 @@ static void test_oper_route_ecmp_verify(void)
 
     attempted = failed = 0;
     (void)danos_programming_run(&attempted, &failed);
-    assert(failed == 1);
-    assert(danos_oper_count(DANOS_OBJ_ROUTE) == oper_before - 1);
-
-    /* Restore the exact next-hop set; the next pass is healthy again. */
-    assert(ops->route_add(&good, ops->user) == DANOS_OK);
-    attempted = failed = 0;
-    (void)danos_programming_run(&attempted, &failed);
+    assert(attempted == 1);
     assert(failed == 0);
-    assert(danos_oper_count(DANOS_OBJ_ROUTE) == oper_before);
     assert(ops->route_readback(&good, &oper, ops->user) == DANOS_OK);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == oper_before);
 
     /* Cleanup: deleting desired state must withdraw the route, after which
      * the specific readback reports absence rather than a stale match. */
