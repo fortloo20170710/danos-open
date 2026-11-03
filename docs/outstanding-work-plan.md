@@ -32,7 +32,9 @@
   rather than a false absence because current kernels reject FIB_MATCH for
   `0.0.0.0/0`. The live netlink test now asserts a real route is present and a
   metric mismatch is detected (the old `OK || NOT_FOUND` assertion could not
-  fail). VRF readback and a VPP interface/route dump remain open because the
+  fail). The K6 netns lane adds a two-member ECMP route with a metric and
+  checks full-member verification, metric mismatch, partial withdrawal and
+  absence; it runs as root and prints `SKIP` elsewhere. VRF readback and a VPP interface/route dump remain open because the
   VPP message layer has no dump binding yet.
 - Coverage: fresh gcovr run on the changed tree is 80.2% lines, 89.3%
   functions, 59.1% branches with CTest 87/87; the 79% line gate passes.
