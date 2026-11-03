@@ -10,6 +10,7 @@
 #include <danos/dpa.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,13 +75,19 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml)
 
 uint64_t netconf_new_session_id(void)
 {
-    static unsigned counter;
+    /* The shared daemon allocates ids from several session threads; an
+     * unsynchronised ++counter is a data race and can hand two live sessions
+     * the same id, which is the key for locks and confirmed-commit
+     * ownership. */
+    static atomic_uint counter;
     struct timespec ts = {0, 0};
     uint64_t mixed;
 
     (void)clock_gettime(CLOCK_REALTIME, &ts);
     mixed = ((uint64_t)ts.tv_sec << 20) ^ ((uint64_t)ts.tv_nsec >> 10) ^
-            ((uint64_t)getpid() << 32) ^ (uint64_t)++counter;
+            ((uint64_t)getpid() << 32) ^
+            (uint64_t)atomic_fetch_add_explicit(&counter, 1,
+                                                memory_order_relaxed);
     mixed &= 0x7fffffffULL;     /* RFC 6241: 1 .. 2^31-1 */
     return mixed ? mixed : 1;
 }
