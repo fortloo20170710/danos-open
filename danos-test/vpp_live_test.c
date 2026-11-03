@@ -99,6 +99,9 @@ int main(void)
                               &oper_iface, ops->user) != DANOS_OK) {
                 fprintf(stderr, "V6 FAIL: interface dump readback\n");
                 failed++;
+            } else if (!oper_iface.name[0]) {
+                fprintf(stderr, "V6 FAIL: interface dump had no name\n");
+                failed++;
             } else {
                 printf("V6 sw_interface_dump readback ok (name=%s mtu=%u)\n",
                        oper_iface.name, oper_iface.mtu);

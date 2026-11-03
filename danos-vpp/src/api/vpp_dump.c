@@ -73,15 +73,12 @@ int vpp_dump_decode_iface(const uint8_t *body, uint32_t len,
     (void)vpp_rd_u16(&r);                 /* b_vlanid */
     (void)vpp_rd_u32(&r);                 /* i_sid */
 
-    char *name = vpp_rd_string(&r, 63);
-    if (!vpp_reader_ok(&r)) {
-        free(name);
+    /* string interface_name[64] is a fixed 64-byte array, not an API
+     * string.  (The same is true of ip_table.name.) */
+    uint8_t name[64];
+    if (!vpp_rd_bytes(&r, name, sizeof(name)) || !vpp_reader_ok(&r))
         return -1;
-    }
-    if (name) {
-        snprintf(out->name, sizeof(out->name), "%s", name);
-        free(name);
-    }
+    copy_fixed_string(out->name, sizeof(out->name), name, sizeof(name));
     return 0;
 }
 

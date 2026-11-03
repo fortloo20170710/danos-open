@@ -66,7 +66,9 @@ static void make_iface(vpp_buf_t *b)
     vpp_buf_put_bytes(b, smac, sizeof(smac));
     vpp_buf_put_u16(b, 0);              /* b_vlanid */
     vpp_buf_put_u32(b, 0);              /* i_sid */
-    vpp_buf_put_string(b, "GigabitEthernet0/8/0");
+    char name[64] = {0};
+    snprintf(name, sizeof(name), "GigabitEthernet0/8/0");
+    vpp_buf_put_bytes(b, name, sizeof(name));
 }
 
 static void make_table(vpp_buf_t *b)
