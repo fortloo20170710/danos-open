@@ -30,7 +30,7 @@
 |------|------|------|
 | danos-dpa | 稳定 | DPA 接口与错误模型 |
 | danos-core | 稳定 | 对象注册表、四态模型、事务、WAL、reconciler；NHGroup/NH 墓碑会级联撤回依赖路由，reconciler/sweep 幂等重放 |
-| danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH（单一 `danos-netconfd` 托管 candidate/锁/跨会话 confirmed-commit；committed running 与 pending rollback 均持久化、重启后加载/回滚；损坏 running 快照 fail-closed 并可显式 override；角色按 peer uid 策略派生并失败关闭） |
+| danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH（单一 `danos-netconfd` 托管 candidate/锁/跨会话 confirmed-commit；committed running 与 pending rollback 均持久化、重启后加载/回滚；损坏 running 快照 fail-closed 并可显式 override；角色按 peer uid 策略派生并失败关闭；hello 后 idle-session 默认 300s 超时） |
 | danos-fib | 可用 | FRR ZAPI v6 解析与映射 |
 | danos-vpp | 可用 | binary API、路由/接口编程、统计、interface/table/route dump OPER 读回 |
 | danos-netlink | 可用 | IPv4 路由/地址/接口；路由 metric 与 ECMP 成员 OPER 读回；IPv6 地址明确返回不支持 |

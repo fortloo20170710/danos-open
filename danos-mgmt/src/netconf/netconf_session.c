@@ -11,11 +11,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
+#include <limits.h>
 #include <unistd.h>
 
 /* A client <hello> is small; RFC 6242 does not bound it, so keep a generous
  * local ceiling consistent with the framing limits. */
 #define NETCONF_HELLO_MAX 262144u
+
+static unsigned g_idle_timeout = NETCONF_SESSION_IDLE_TIMEOUT_DEFAULT;
+
+void netconf_session_set_idle_timeout(unsigned seconds)
+{
+    g_idle_timeout = seconds;
+}
+
+unsigned netconf_session_idle_timeout(void)
+{
+    return g_idle_timeout;
+}
 
 struct netconf_session {
     int                       rfd;
@@ -23,6 +37,7 @@ struct netconf_session {
     netconf_ctx_t             ctx;
     bool                      base11;
     bool                      close_requested;
+    bool                      timed_out;
     netconf_frame_decoder_t  *dec;
 };
 
@@ -177,12 +192,31 @@ bool netconf_session_close_requested(const netconf_session_t *s)
     return s && s->close_requested;
 }
 
+bool netconf_session_timed_out(const netconf_session_t *s)
+{
+    return s && s->timed_out;
+}
+
 int netconf_session_run(netconf_session_t *s)
 {
     if (!s || !s->dec) return -1;
 
     char chunk[4096];
     while (!s->close_requested) {
+        if (g_idle_timeout) {
+            long timeout_ms = g_idle_timeout > (unsigned)(INT_MAX / 1000)
+                ? INT_MAX : (long)g_idle_timeout * 1000L;
+            struct pollfd p = { .fd = s->rfd, .events = POLLIN };
+            int pr = poll(&p, 1, (int)timeout_ms);
+            if (pr < 0) {
+                if (errno == EINTR) continue;
+                return -1;
+            }
+            if (pr == 0) {
+                s->timed_out = true;
+                return 1;
+            }
+        }
         ssize_t n = read(s->rfd, chunk, sizeof(chunk));
         if (n < 0) {
             if (errno == EINTR) continue;

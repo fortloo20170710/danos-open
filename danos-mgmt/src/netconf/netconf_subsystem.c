@@ -181,6 +181,18 @@ int main(int argc, char **argv)
         }
     }
 
+    const char *idle_env = getenv("DANOS_NETCONF_IDLE_TIMEOUT");
+    if (idle_env && *idle_env) {
+        char *end = NULL;
+        unsigned long idle = strtoul(idle_env, &end, 10);
+        if (!end || *end != '\0' || idle > 604800UL) {
+            fprintf(stderr, "netconf: invalid DANOS_NETCONF_IDLE_TIMEOUT '%s'\n",
+                    idle_env);
+            return 2;
+        }
+        netconf_session_set_idle_timeout((unsigned)idle);
+    }
+
     signal(SIGPIPE, SIG_IGN);
     (void)danos_authz_init(NULL);
 
