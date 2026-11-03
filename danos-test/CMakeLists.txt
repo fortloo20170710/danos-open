@@ -112,6 +112,11 @@ target_link_libraries(backend_readback_failure_test PRIVATE danos-core danos-dpa
 target_compile_options(backend_readback_failure_test PRIVATE -UNDEBUG)
 add_test(NAME backend_readback_failure COMMAND backend_readback_failure_test)
 
+add_executable(tombstone_cascade_test integration_test/tombstone_cascade_test.c)
+target_link_libraries(tombstone_cascade_test PRIVATE danos-core danos-dpa pthread)
+target_compile_options(tombstone_cascade_test PRIVATE -UNDEBUG)
+add_test(NAME tombstone_cascade COMMAND tombstone_cascade_test)
+
 # Live ECMP readback in a private netns.  Non-root runs print [SKIP] and pass;
 # the K6 kernel lane runs it as root and requires [PASS].
 add_executable(netlink_route_ecmp_readback_test
