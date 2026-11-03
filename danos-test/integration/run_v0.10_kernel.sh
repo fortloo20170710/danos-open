@@ -173,6 +173,21 @@ else
     fail "K4b: route missing from kernel FIB"
 fi
 
+# ---- K6: live ECMP readback in a private netns --------------------------
+if [ "$(id -u)" = "0" ]; then
+    if "$BUILD_DIR/danos-test/netlink_route_ecmp_readback_test" > /tmp/k6.log 2>&1; then
+        if grep -q '\[PASS\]' /tmp/k6.log; then
+            pass "K6: netns ECMP readback (members, metric, withdrawal)"
+        else
+            fail "K6: ECMP readback skipped"; cat /tmp/k6.log
+        fi
+    else
+        fail "K6: ECMP readback"; cat /tmp/k6.log
+    fi
+else
+    echo -e "${YELLOW}[SKIP]${NC} K6: needs root (CI runs this job)"
+fi
+
 # K5 (gw-routed forwarding): a successful gNMI Set must result in a real
 # kernel route; accepting a request without programming the FIB is failure.
 # K5a via the STANDARD client: gnmic -> mgrd -> pipeline -> kernel

@@ -266,6 +266,112 @@ static void test_oper_readback(const danos_route_t *route)
     printf("[PASS] test_oper_readback (link state, route withdrawal repair)\n");
 }
 
+/* Route OPER equality (v0.16): presence is not enough.  A route whose ECMP
+ * membership or metric differs from the resolved desired state must produce
+ * DANOS_ERR_VERIFY_FAIL, clear the stale OPER copy and count as a failed
+ * programming pass.  The old route readback only checked prefix/table/type,
+ * so a partially withdrawn ECMP group still looked healthy. */
+static void test_oper_route_ecmp_verify(void)
+{
+    danos_tx_t tx;
+    danos_route_t rt;
+    memset(&rt, 0, sizeof(rt));
+    rt.vrf_id = 0;
+    rt.prefix.addr.af = DANOS_AF_IPV4;
+    rt.prefix.addr.addr[0] = 10; rt.prefix.addr.addr[1] = 77;
+    rt.prefix.prefix_len = 24;
+    rt.protocol = DANOS_ROUTE_PROTO_STATIC;
+    rt.nhgroup_id = 2;
+    rt.metric = 77;
+
+    const danos_backend_ops_t *ops = danos_backend_ops_get();
+    assert(ops && ops->route_add && ops->route_del && ops->route_readback);
+
+    assert(danos_tx_begin(&tx, "ecmp", NULL) == DANOS_OK);
+    for (uint32_t i = 0; i < 2; i++) {
+        danos_nexthop_t nh;
+        memset(&nh, 0, sizeof(nh));
+        nh.id = 200 + i;
+        nh.gateway.af = DANOS_AF_IPV4;
+        nh.gateway.addr[0] = 192; nh.gateway.addr[1] = 168;
+        nh.gateway.addr[2] = 2;   nh.gateway.addr[3] = (uint8_t)(2 + i);
+        nh.ifindex = 5;
+        assert(danos_nh_create(&tx, &nh) == DANOS_OK);
+    }
+    danos_nhgroup_t grp;
+    memset(&grp, 0, sizeof(grp));
+    grp.id = 2;
+    grp.nh_count = 2;
+    grp.nh_ids[0] = 200;
+    grp.nh_ids[1] = 201;
+    assert(danos_nhgroup_create(&tx, &grp) == DANOS_OK);
+    assert(danos_route_create(&tx, &rt) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+
+    uint64_t attempted = 0, failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(failed == 0);
+    assert(danos_netlink_mock_route_exists(rt.prefix.addr.addr,
+                                           rt.prefix.prefix_len, 0));
+    uint64_t oper_before = danos_oper_count(DANOS_OBJ_ROUTE);
+
+    danos_resolved_route_t good;
+    memset(&good, 0, sizeof(good));
+    good.route = rt;
+    good.nh_count = 2;
+    good.nh_oif[0] = good.nh_oif[1] = 5;
+    good.nh_gw[0][0] = 192; good.nh_gw[0][1] = 168;
+    good.nh_gw[0][2] = 2;   good.nh_gw[0][3] = 2;
+    good.nh_gw[1][0] = 192; good.nh_gw[1][1] = 168;
+    good.nh_gw[1][2] = 2;   good.nh_gw[1][3] = 3;
+
+    danos_route_t oper;
+    assert(ops->route_readback(&good, &oper, ops->user) == DANOS_OK);
+    assert(oper.metric == rt.metric);
+
+    /* ECMP members are a set: the kernel may report them in any order. */
+    danos_resolved_route_t reordered = good;
+    memcpy(reordered.nh_gw[0], good.nh_gw[1], 4);
+    memcpy(reordered.nh_gw[1], good.nh_gw[0], 4);
+    uint32_t tmp_oif = reordered.nh_oif[0];
+    reordered.nh_oif[0] = reordered.nh_oif[1];
+    reordered.nh_oif[1] = tmp_oif;
+    assert(ops->route_readback(&reordered, &oper, ops->user) == DANOS_OK);
+
+    /* A partially withdrawn/rewritten ECMP group: one member changed.  The
+     * next pass must repair it with an idempotent REPLACE, not report a
+     * permanent failure. */
+    danos_resolved_route_t bad = good;
+    bad.nh_gw[1][3] = 99;
+    assert(ops->route_add(&bad, ops->user) == DANOS_OK);
+    assert(ops->route_readback(&good, &oper, ops->user)
+           == DANOS_ERR_VERIFY_FAIL);
+
+    attempted = failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    assert(attempted == 1);
+    assert(failed == 0);
+    assert(ops->route_readback(&good, &oper, ops->user) == DANOS_OK);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == oper_before);
+
+    /* Cleanup: deleting desired state must withdraw the route, after which
+     * the specific readback reports absence rather than a stale match. */
+    assert(danos_tx_begin(&tx, "ecmp", NULL) == DANOS_OK);
+    assert(danos_route_delete(&tx, 0, rt.prefix,
+                              DANOS_ROUTE_PROTO_STATIC) == DANOS_OK);
+    assert(danos_nhgroup_delete(&tx, 2) == DANOS_OK);
+    assert(danos_nh_delete(&tx, 200) == DANOS_OK);
+    assert(danos_nh_delete(&tx, 201) == DANOS_OK);
+    assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    uint64_t swept = danos_programming_sweep(&failed);
+    assert(swept == 1 && failed == 0);
+    assert(ops->route_readback(&good, &oper, ops->user)
+           == DANOS_ERR_NOT_FOUND);
+
+    printf("[PASS] test_oper_route_ecmp_verify (ECMP membership, metric, "
+           "VERIFY_FAIL and withdrawal)\n");
+}
+
 int main(void)
 {
     if (!g_default_store) g_default_store = danos_object_store_create(256);
@@ -331,6 +437,7 @@ int main(void)
 
     /* ---- 3b. operational readback -------------------------------------- */
     test_oper_readback(&rt);
+    test_oper_route_ecmp_verify();
 
     /* Interface address is part of the same desired/programmed lifecycle. */
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);

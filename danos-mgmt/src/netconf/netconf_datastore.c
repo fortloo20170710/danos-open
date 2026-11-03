@@ -831,17 +831,28 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
     pthread_mutex_lock(&g_ds_lock);
     netconf_ds_status_t rc = NETCONF_DS_OK;
 
-    if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
-        !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
-        rc = NETCONF_DS_LOCKED;
-    } else if (!confirmed) {
-        /* A plain commit confirms a pending confirmed commit, if this
-         * session is allowed to confirm it. */
-        if (g_ds.confirmed) {
-            if (!confirm_allowed_locked(session_id, persist_id))
+    if (!confirmed) {
+        /* A confirming commit with persist-id may come from any session that
+         * knows the token.  Skipping the lock check is only safe while no
+         * candidate state is waiting to be published: if another session has
+         * edited the candidate, this commit would publish it, so the normal
+         * running/candidate lock rules must still apply. */
+        const bool confirming = persist_id != NULL;
+        if (confirming) {
+            if (!g_ds.confirmed)
+                rc = NETCONF_DS_INVALID;    /* nothing to confirm */
+            else if (!confirm_allowed_locked(session_id, persist_id))
                 rc = NETCONF_DS_DENIED;
-        } else if (persist_id) {
-            rc = NETCONF_DS_INVALID;    /* nothing to confirm */
+            else if (g_ds.candidate &&
+                     (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
+                      !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)))
+                rc = NETCONF_DS_LOCKED;
+        } else if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
+                   !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
+            rc = NETCONF_DS_LOCKED;
+        } else if (g_ds.confirmed &&
+                   !confirm_allowed_locked(session_id, NULL)) {
+            rc = NETCONF_DS_DENIED;
         }
 
         if (rc == NETCONF_DS_OK) {
@@ -856,8 +867,16 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
             }
         }
     } else {
+        /* A confirmed commit is still a commit: it publishes the candidate
+         * and arms a rollback baseline, so it must honour the same locks as
+         * a plain commit (RFC 6241 7.5). */
+        if (!write_allowed_locked(NETCONF_DS_RUNNING, session_id) ||
+            !write_allowed_locked(NETCONF_DS_CANDIDATE, session_id)) {
+            rc = NETCONF_DS_LOCKED;
+        }
         const bool replacing = g_ds.confirmed;
-        if (replacing && g_ds.confirmed_session != session_id) {
+        if (rc == NETCONF_DS_OK && replacing &&
+            g_ds.confirmed_session != session_id) {
             rc = NETCONF_DS_DENIED;
         }
 

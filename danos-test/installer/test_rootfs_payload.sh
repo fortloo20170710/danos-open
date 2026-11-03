@@ -16,7 +16,9 @@ ln -s danos-mgrd "$src/usr/bin/symlink"
 printf 'private identity\n' > "$src/etc/machine-id"
 printf 'transient\n' > "$src/run/socket-placeholder"
 bash "$ROOT/danos-test/installer/build_rootfs_payload.sh" "$src" "$WORK/output"
-tar -xzf "$WORK/output/rootfs.tar.gz" -C "$WORK/extracted"
+# Non-root extraction must still honour the archived mode; GNU tar
+# otherwise applies the caller umask and would turn 0751 into 0700.
+tar -xzpf "$WORK/output/rootfs.tar.gz" -C "$WORK/extracted"
 test "$(stat -c '%a' "$WORK/extracted/usr/bin/danos-mgrd")" = 751
 test "$(stat -c '%i' "$WORK/extracted/usr/bin/danos-mgrd")" = "$(stat -c '%i' "$WORK/extracted/usr/bin/hardlink")"
 test "$(readlink "$WORK/extracted/usr/bin/symlink")" = danos-mgrd

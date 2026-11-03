@@ -66,13 +66,13 @@
 - [ ] bfdd 翻译层(ADR-0006):DPA BFD 对象 ↔ frr bfdd 配置
 - [ ] 墓碑覆盖扩展:NHGroup/NH 对象从 desired 清除时的级联撤回
 - [x] netlink IPv4 route presence OPER readback：检测外部撤路并触发同轮 desired replay
-- [ ] OPER 完整性扩展：路由属性/ECMP 与 VRF 读回、VPP dump、差异转验收失败
+- [~] OPER 完整性扩展：netlink IPv4 路由 metric/ECMP 逐下一跳读回与 `DANOS_ERR_VERIFY_FAIL` 已实现并有 mock 回归；VRF 读回与 VPP interface/route dump 仍未实现
 - [ ] 模型表直接从 YANG 生成(当前经 JSON 规范中转)
 - [x] NETCONF over SSH(RFC 6242 传输层，`danos-netconf-subsystem` + OpenSSH `Subsystem netconf`)
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
 - [x] NETCONF validate（具名 datastore 与 inline config；对 modeled interface leaves 做语义校验）
-- [~] NETCONF confirmed commit：单进程超时/会话关闭原型已实现；跨 SSH 会话的 persist/persist-id、进程/重启恢复和共享 running datastore 未完成，不作为生产验收
-- [ ] NETCONF 单守护进程托管：让 candidate 与锁跨 SSH 会话共享（当前每会话一个进程）
+- [~] NETCONF confirmed commit：共享 daemon 已支持跨 SSH 会话 persist/persist-id、超时回滚与会话关闭回滚；daemon 重启后的持久化 pending-commit 恢复仍未实现，不作生产验收
+- [~] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid 策略决定并失败关闭，真实 sshd 双会话验收通过。剩余：非 root 子系统的 socket 组权限部署示例、hello 后 idle-session 超时
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）

@@ -8,7 +8,9 @@
 #include "../authz/authz.h"
 #include <danos/core/object_registry.h>
 #include <danos/dpa.h>
+#include <pthread.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -73,13 +75,19 @@ netconf_rpc_type_t netconf_parse_rpc(const char *xml)
 
 uint64_t netconf_new_session_id(void)
 {
-    static unsigned counter;
+    /* The shared daemon allocates ids from several session threads; an
+     * unsynchronised ++counter is a data race and can hand two live sessions
+     * the same id, which is the key for locks and confirmed-commit
+     * ownership. */
+    static atomic_uint counter;
     struct timespec ts = {0, 0};
     uint64_t mixed;
 
     (void)clock_gettime(CLOCK_REALTIME, &ts);
     mixed = ((uint64_t)ts.tv_sec << 20) ^ ((uint64_t)ts.tv_nsec >> 10) ^
-            ((uint64_t)getpid() << 32) ^ (uint64_t)++counter;
+            ((uint64_t)getpid() << 32) ^
+            (uint64_t)atomic_fetch_add_explicit(&counter, 1,
+                                                memory_order_relaxed);
     mixed &= 0x7fffffffULL;     /* RFC 6241: 1 .. 2^31-1 */
     return mixed ? mixed : 1;
 }
@@ -480,10 +488,10 @@ static char *collect_iface_targets(const char *xml, netconf_datastore_t ds,
 
         danos_iface_t *target = &targets[count];
         struct nc_lookup lu = { .want = name, .out = target, .found = false };
-        if (ds == NETCONF_DS_RUNNING)
-            danos_object_iterate(g_default_store, nc_lookup_iface_iter, &lu);
-        else
-            (void)netconf_ds_iterate(ds, nc_lookup_iface_iter, &lu);
+        /* Go through the datastore API for every datastore so a concurrent
+         * confirmed-commit rollback (timer thread) cannot walk the running
+         * store while this edit scans it. */
+        (void)netconf_ds_iterate(ds, nc_lookup_iface_iter, &lu);
         if (!lu.found) {
             free(targets);
             return error_reply("interface not found");
@@ -631,7 +639,7 @@ static bool netconf_authenticate(netconf_ctx_t *ctx)
            == DANOS_AUTH_OK;
 }
 
-char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
+static char *handle_rpc(netconf_ctx_t *ctx, const char *xml)
 {
     if (!xml) return error_reply("null input");
 
@@ -909,6 +917,23 @@ char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
         ctx->error_count++;
         return error_reply("unknown RPC");
     }
+}
+
+/* The shared daemon runs one session per thread.  Datastore access is
+ * internally locked, but an RPC performs several dependent datastore calls
+ * (lock check and then publish) and the running store is process-wide, so
+ * serialise RPC handlers.  This is RPC-level serialisation, not a claim that
+ * every datastore user shares the lock: disconnect teardown and the
+ * confirmed-commit timer take only g_ds_lock and can interleave at those
+ * boundaries, which their individually locked operations tolerate.  RPCs are
+ * configuration operations, not a throughput path. */
+char *netconf_handle_rpc(netconf_ctx_t *ctx, const char *xml)
+{
+    static pthread_mutex_t rpc_lock = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&rpc_lock);
+    char *reply = handle_rpc(ctx, xml);
+    pthread_mutex_unlock(&rpc_lock);
+    return reply;
 }
 
 void netconf_get_stats(netconf_ctx_t *ctx, uint64_t *rpc_count,

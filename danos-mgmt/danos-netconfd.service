@@ -1,0 +1,47 @@
+[Unit]
+Description=DANOS-Open NETCONF daemon
+Documentation=https://github.com/danos-open/danos-open
+After=network.target
+# The daemon owns the NETCONF running/candidate/startup datastores, the lock
+# table and confirmed-commit timer for every SSH session.
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/danos/netconfd.env
+ExecStart=/usr/sbin/danos-netconfd --socket /run/danos/netconf.sock --startup /var/lib/danos/netconf-startup.db
+Restart=on-failure
+RestartSec=1
+# The socket directory is the local trust boundary.  The default root-only
+# directory means every connecting SSH subsystem must run as root.  To serve
+# non-root SSH users, create a 'danos-netconf' group, add them to it, and run
+# this service with Group=danos-netconf (RuntimeDirectoryMode=0750 then creates
+# /run/danos as root:danos-netconf and the socket as 0660).  The daemon still
+# derives each session's RBAC role from the peer uid; see
+# docs/management-netconf-ssh.md.
+RuntimeDirectory=danos
+RuntimeDirectoryMode=0750
+StateDirectory=danos
+User=root
+Group=root
+# Group=danos-netconf
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=/var/lib/danos
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

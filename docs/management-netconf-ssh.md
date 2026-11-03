@@ -9,18 +9,34 @@ subsystem process that speaks RFC 6242 framing on its stdin/stdout.
 | Piece | Role |
 |-------|------|
 | `sshd` | SSH transport, host keys, user authentication |
-| `danos-netconf-subsystem` | Per-session process: `<hello>`, framing, RPC dispatch |
+| `danos-netconfd` | Shared daemon: one process hosting every NETCONF session and the datastores |
+| `danos-netconf-subsystem` | Per-session SSH process: identity preamble and byte relay to the daemon; in-process fallback without one |
 | `danos-mgmt` (`netconf.c`) | Message layer: datastore selection and RPC handling |
-| `danos-mgmt` (`netconf_datastore.c`) | Running/candidate/startup state, locks, startup file |
+| `danos-mgmt` (`netconf_datastore.c`) | Running/candidate/startup state, locks, confirmed-commit timer, startup file |
+| `danos-mgmt` (`netconf_session.c`) | Transport-independent session engine: hello, framing, dispatch |
 | `danos-mgmt` (`netconf_framing.c`) | RFC 6242 framing: EOM and chunked |
 
-OpenSSH starts one subsystem process per SSH session. The process reads RPCs
-from stdin, writes replies to stdout and exits after `close-session`.
+OpenSSH starts one subsystem process per SSH session. The recommended
+deployment runs `danos-netconfd`; the subsystem connects to its Unix socket,
+sends the SSH user plus the requested role as audit context, and relays the
+NETCONF bytes unchanged. One daemon therefore owns running/candidate/startup, the lock table
+and the confirmed-commit timer for all sessions. Without a daemon the
+subsystem runs the same session engine in-process (the previous laboratory
+behaviour).
 
 ## Server configuration
 
-Install the subsystem (default `${CMAKE_INSTALL_SBINDIR}/danos-netconf-subsystem`)
-and add it to `sshd_config`:
+Install the daemon, subsystem and systemd unit (`danos-netconfd.service`,
+which creates `/run/danos` and `/var/lib/danos`) and add the subsystem to
+`sshd_config`. Start `danos-netconfd` with the same startup path before
+accepting sessions:
+
+```
+systemctl enable --now danos-netconfd
+# equivalent manual form:
+danos-netconfd --socket /run/danos/netconf.sock \
+  --startup /var/lib/danos/netconf-startup.db
+```
 
 ```
 Port 830
@@ -29,13 +45,61 @@ PubkeyAuthentication yes
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 
-# Map the SSH user's DANOS role. admin can edit; operator can read and edit;
-# viewer can read. Without this the deployment default applies
-# (DANOS_AUTHZ_DEFAULT_ROLE, ADMIN when unset).
-SetEnv DANOS_NETCONF_ROLE=admin
-
-Subsystem netconf /usr/local/sbin/danos-netconf-subsystem
+# Authorization is resolved by the daemon from the peer uid via
+# /etc/danos/netconf-roles.  DANOS_NETCONF_ROLE (SetEnv) is only audit context;
+# it does not grant a role.
+Subsystem netconf /usr/local/sbin/danos-netconf-subsystem --daemon /run/danos/netconf.sock
 ```
+
+### Socket trust boundary and RBAC
+
+The Unix socket is a local authorization boundary, not just an audit channel.
+The daemon authenticates the claimed user against `SO_PEERCRED` and fails
+closed: an unavailable peer credential, an unresolvable user, or a uid that
+does not match the claimed name rejects the connection before the NETCONF
+hello.
+
+The RBAC role is **not** taken from the client. The subsystem's
+`DANOS_NETCONF_ROLE` (and the role field in the socket preamble) is audit
+context only. The daemon derives the effective role from the peer uid:
+
+- default policy: uid 0 is `admin`, every other uid is `viewer`;
+- `DANOS_NETCONF_ROLE_MAP` (default `/etc/danos/netconf-roles`) overrides the
+  default with one `<user-or-uid> <role>` or `@<group> <role>` mapping per
+  line. Rules are evaluated in file order and the first match wins. Unknown
+  users remain `viewer`; unknown role names are ignored.
+
+```
+# /etc/danos/netconf-roles
+root admin
+netadmin operator
+@netops operator
+1001 viewer
+```
+
+Keep the mapping file root-owned and not group/other writable; it grants
+authorization to local uids and groups. Group matching includes the primary
+group and supplementary groups from NSS.
+
+The packaged unit uses a root-owned, root-only `/run/danos`, so only root
+subsystems can connect. To serve non-root SSH users, create a dedicated group,
+add those users to it, and make the daemon's service group that group:
+
+```
+groupadd danos-netconf
+usermod -aG danos-netconf alice
+systemctl edit danos-netconfd
+# [Service]
+# Group=danos-netconf
+```
+
+The unit already sets `RuntimeDirectoryMode=0750`, so `/run/danos` becomes
+`root:danos-netconf` and the daemon creates the socket as
+`root:danos-netconf 0660`. Alternatively pass
+`--socket-group=danos-netconf` on `ExecStart` (the socket is chowned after
+bind); `--socket-mode` can override the 0660 mode, but do not make the socket
+world-writable. Any local process that can connect is still authenticated by
+uid and mapped through the role policy.
 
 Restart `sshd` after the change. A client connects with the subsystem name:
 
@@ -44,19 +108,23 @@ ssh -s netconf user@router
 ```
 
 Use key-only authentication. The subsystem never sees the password or key; it
-trusts the `LOGNAME`/`USER` value and the `DANOS_NETCONF_ROLE` set by `sshd`.
+trusts the `LOGNAME`/`USER` value set by `sshd`. The requested
+`DANOS_NETCONF_ROLE` is forwarded only as audit context and is ignored for
+authorization.
 
 ## Authorization and audit
 
-`sshd` authenticates the user. The subsystem records that user as the session
-identity and maps `DANOS_NETCONF_ROLE` through RBAC:
+`sshd` authenticates the user. The subsystem forwards the user name and the
+requested role as audit context. The daemon ignores the requested role and
+resolves the effective role from the peer uid through the policy above:
 
 - `admin` and `operator` may run `edit-config`.
 - `viewer` may run `get` and `get-config`.
-- An unknown role name is reported on stderr and the deployment default applies.
 
-Every RPC decision is evaluated by `danos_authz_check_identity`, so permitted
-and denied operations both reach the audit log with the SSH user attached.
+If the requested role differs from the resolved role, the daemon logs the
+mismatch and uses the policy result. Every RPC decision is evaluated by
+`danos_authz_check_identity`, so permitted and denied operations both reach the
+audit log with the SSH user attached.
 
 ## Capabilities and RPCs
 
@@ -139,16 +207,22 @@ back immediately. A token that does not match returns `access-denied`.
 `<persist-id>` is refused together with `<confirmed/>`, and `<persist>`,
 `<confirm-timeout>` require `<confirmed/>`.
 
-The timer runs in the subsystem process, so it bounds a session's confirmed
-commit while that process lives. Although the current in-process handler has
-tests for persist tokens, the SSH deployment starts a separate process for
-each session: a persisted commit cannot be confirmed/cancelled from a later
-SSH session, and neither its timer nor rollback baseline survives process
-exit/reboot. The advertised capability therefore remains `confirmed-commit:1.0`
-and **confirmed commit is not qualified for production SSH use**. Do not rely
-on `<persist>` or `<persist-id>` until the shared NETCONF daemon and durable
-rollback state are implemented. RFC 6241 requires persistent tokens to work
-across sessions and requires rollback after a reboot before timeout.
+With `danos-netconfd` the pending confirmed commit, its rollback baseline and
+its timer live in the daemon process, so a `<persist>` token issued by one SSH
+session can be confirmed or cancelled by a later, different SSH session, even
+after the issuing session closes. A confirming `<commit><persist-id>` is
+accepted by token ownership even while the issuing session still holds a
+datastore lock, because it publishes no new candidate state. Closing a session
+without a token still rolls its commit back immediately.
+
+The timer and baseline are process-local: a daemon restart loses a pending
+confirmed commit. Rollback-after-reboot therefore remains unqualified, because
+the in-memory running store is rebuilt and there is no durable pending-commit
+record. Keep `<persist>` out of a release gate that requires RFC 6241 reboot
+recovery until the running store itself is durable. Candidate locks follow
+RFC 6241 7.5 for both plain and confirmed commits; a cross-session `persist-id`
+confirmation skips the lock check only when the candidate is empty (there is
+no queued edit to publish).
 
 Locks follow RFC 6241: a lock belongs to one session, blocks writes to that
 datastore by other sessions (`in-use`), refuses a second lock
@@ -159,14 +233,17 @@ interfaces that already exist in the selected datastore.
 
 ### Process model
 
-OpenSSH starts one subsystem process per SSH session. The running, candidate
-and startup datastores and the lock table therefore live inside that process:
-two concurrent SSH sessions do not see each other's candidate edits or locks,
-and `commit` updates only the committing session's in-memory running store.
-The startup file is shared, so `copy-config` to startup is visible to later
-sessions. A single NETCONF daemon that hosts all sessions would make candidate,
-locks and confirmed-commit state global; the datastore module is written for
-that host and does not depend on the transport.
+`danos-netconfd` hosts every session in one process: candidate edits, locks,
+the running store and a pending confirmed commit are shared, which is what
+RFC 6241 requires. The daemon serialises RPC handling across sessions and
+keeps the confirmed-commit timer on its own thread. Session threads are
+independent; a disconnect releases that session's locks and rolls back its
+non-persisted confirmed commit.
+
+The subsystem still falls back to an in-process session engine when no socket
+is reachable and no daemon path was configured explicitly. That mode is
+single-session and is kept for laboratory use and for tests that do not start
+a daemon; it does not provide cross-session state.
 
 ## Framing limits
 
@@ -196,21 +273,38 @@ With a real `sshd` (root, or a user permitted to run `sshd`):
 
 ```
 sudo bash danos-test/integration/run_netconf_ssh.sh \
-  build/danos-mgmt/danos-netconf-subsystem
+  build/danos-mgmt/danos-netconf-subsystem \
+  build/danos-mgmt/danos-netconfd
 ```
 
-The script generates a throwaway host key, client key, `authorized_keys` and
+Passing the daemon binary also runs the cross-session client check: two
+concurrent SSH sessions must share candidate locks, a persist token must be
+cancellable from the other session, and a non-persisted commit must be
+session-owned. Omitting the daemon argument exercises the in-process
+single-session fallback.
+
+The cross-uid check (root) starts a daemon with a role map that grants `root`
+admin and `nobody` viewer, then confirms that a `nobody` session claiming
+`admin` is denied a mutating RPC. The daemon test itself skips the check when
+run unprivileged. The script generates a throwaway host key, client key,
+`authorized_keys` and
 `sshd_config`, starts `sshd` on loopback port 2222, and runs
 `danos-test/integration/netconf_ssh_client.py` for base 1.0 and base 1.1. The
 Interop Gate workflow runs the same script in the `netconf-ssh` job.
 
 ## Known limits
 
-- Candidate state, locks and pending confirmed-commit state are process-local
-  because the SSH subsystem runs one process per session (see "Process
-  model"). Confirmed commit is not release-qualified over SSH; persistent
-  cross-session tokens and rollback recovery across process restart remain
-  open.
+- Candidate state, locks and pending confirmed-commit state are shared between
+  SSH sessions while `danos-netconfd` runs. A daemon restart loses a pending
+  confirmed commit and its rollback baseline; durable pending-commit recovery
+  across reboot remains open (see "Confirmed commit").
+- The daemon socket is a local trust boundary. Run it in a root-owned
+  directory and do not expose it to unprivileged local writers. Roles come
+  from the uid policy, never from the client preamble.
+- A silent client is bounded by a 5 s preamble timeout and a 10 s hello
+  timeout, with a 128-connection cap, but there is no idle-session timeout
+  after the hello. A second daemon is refused by a lock file, and the socket
+  is unlinked only when its inode still belongs to that instance.
 - `copy-config` does not accept an inline `<config>` source or `<url>`.
 - `edit-config` covers interface `mtu` and `enabled`. Other subtrees are not
   modeled by the server yet.

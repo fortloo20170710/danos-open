@@ -30,7 +30,16 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
           gnmic version
       - name: Configure & build DANOS
         run: |
@@ -61,6 +70,12 @@ jobs:
       - name: Test over a loopback sshd
         run: |
           sudo bash danos-test/integration/run_netconf_ssh.sh \
+            "$PWD/build-netconf/danos-mgmt/danos-netconf-subsystem" \
+            "$PWD/build-netconf/danos-mgmt/danos-netconfd"
+      - name: Cross-uid RBAC
+        run: |
+          sudo python3 danos-test/integration/test_netconf_cross_uid.py \
+            "$PWD/build-netconf/danos-mgmt/danos-netconfd" \
             "$PWD/build-netconf/danos-mgmt/danos-netconf-subsystem"
 
   sanitizers:
@@ -221,11 +236,21 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j$(nproc) --target danos-mgrd --target programming_pipeline_test
+          cmake --build build -j$(nproc) --target danos-mgrd --target programming_pipeline_test \
+            --target netlink_route_ecmp_readback_test
       - name: "K4/K5 verification (root runner: real netns + ping)"
         run: sudo -E env PATH="$PATH" GNMIC=/usr/local/bin/gnmic bash danos-test/integration/run_v0.10_kernel.sh
 
@@ -348,7 +373,16 @@ jobs:
           # Build from the checked-in module so go.sum verifies every
           # dependency instead of resolving a fresh graph at CI time.
           cd tools/gnmic
-          GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic
+          # proxy.golang.org occasionally returns transient stream errors while
+          # fetching the module graph; retry before failing the lane.
+          for attempt in 1 2 3; do
+            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+              break
+            fi
+            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            sleep $((attempt * 10))
+          done
+          test -x /usr/local/bin/gnmic
       - name: Build DANOS
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release

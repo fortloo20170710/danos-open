@@ -61,6 +61,17 @@ typedef struct danos_backend_ops {
                                const void *desired, size_t size,
                                void *out, void *user);
 
+    /* Optional route-specific operational readback.  Routes are the one
+     * object whose backend identity spans dependent NH/NHGroup objects, so
+     * the pipeline resolves the next-hop set first and passes it here.
+     * Returns DANOS_OK with `out` holding the desired route bytes when the
+     * FIB entry and its ECMP members match, DANOS_ERR_NOT_FOUND when the
+     * route is gone, and DANOS_ERR_VERIFY_FAIL when it is present but its
+     * attributes or next-hop set differ.  When set, this replaces `readback`
+     * for routes. */
+    danos_status_t (*route_readback)(const danos_resolved_route_t *resolved,
+                                     void *out, void *user);
+
     void *user;
 } danos_backend_ops_t;
 

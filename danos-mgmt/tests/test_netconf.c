@@ -484,6 +484,11 @@ int test_netconf_locks(void)
     resp = nc_call(&b, "<rpc><commit/></rpc>");
     assert(strstr(resp, "in-use") != NULL);
     free(resp);
+    /* A confirmed commit is still a commit: it publishes the candidate and
+     * must be refused while another session holds the candidate lock. */
+    resp = nc_call(&b, "<rpc><commit><confirmed/></commit></rpc>");
+    assert(strstr(resp, "in-use") != NULL);
+    free(resp);
 
     resp = nc_call(&a, "<rpc><discard-changes/></rpc>");
     assert(strstr(resp, "<ok/>") != NULL);

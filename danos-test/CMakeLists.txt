@@ -99,6 +99,14 @@ add_executable(netlink_route_readback_test
 target_link_libraries(netlink_route_readback_test PRIVATE danos-netlink danos-core pthread)
 target_compile_options(netlink_route_readback_test PRIVATE -UNDEBUG)
 add_test(NAME netlink_route_readback COMMAND netlink_route_readback_test)
+
+# Live ECMP readback in a private netns.  Non-root runs print [SKIP] and pass;
+# the K6 kernel lane runs it as root and requires [PASS].
+add_executable(netlink_route_ecmp_readback_test
+  integration_test/netlink_route_ecmp_readback_test.c)
+target_link_libraries(netlink_route_ecmp_readback_test PRIVATE danos-netlink danos-core pthread)
+target_compile_options(netlink_route_ecmp_readback_test PRIVATE -UNDEBUG)
+add_test(NAME netlink_route_ecmp_readback COMMAND netlink_route_ecmp_readback_test)
 set_tests_properties(netlink_route_readback PROPERTIES TIMEOUT 10)
 
 # v0.12: gNMI composite route write end to end
