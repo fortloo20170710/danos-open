@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -292,12 +293,21 @@ int main(int argc, char **argv)
             break;
         }
 
+        /* Bound the preamble read: this runs on the accept loop, so a local
+         * client that connects and stays silent would otherwise stall every
+         * later session.  The timeout applies to the preamble only and is
+         * cleared before the session thread starts reading RPCs. */
+        struct timeval hs_to = { .tv_sec = 5, .tv_usec = 0 };
+        struct timeval no_to = { .tv_sec = 0, .tv_usec = 0 };
+        (void)setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &hs_to, sizeof(hs_to));
+
         char line[NETCONF_HANDSHAKE_MAX];
         if (read_handshake(cfd, line, sizeof(line)) != 0) {
             fprintf(stderr, "netconfd: connection without identity preamble\n");
             close(cfd);
             continue;
         }
+        (void)setsockopt(cfd, SOL_SOCKET, SO_RCVTIMEO, &no_to, sizeof(no_to));
 
         char magic[32] = {0}, user[64] = {0}, role[64] = {0};
         int fields = sscanf(line, "%31s %63s %63s", magic, user, role);
