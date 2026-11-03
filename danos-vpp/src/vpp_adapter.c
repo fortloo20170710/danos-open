@@ -297,6 +297,11 @@ static danos_status_t vpp_route_readback(
     if (route->prefix.addr.af != DANOS_AF_IPV4 ||
         route->prefix.prefix_len > 32)
         return DANOS_ERR_NOT_SUPPORTED;
+    /* VPP's FIB dump exposes paths and prefix, but not a route metric.
+     * Claiming OK after path equality would silently report the metric as
+     * verified, so non-zero metrics are an explicit unsupported result. */
+    if (route->metric != 0)
+        return DANOS_ERR_NOT_SUPPORTED;
 
     uint8_t req[69];                      /* ip_table { u32; bool; name[64] } */
     memset(req, 0, sizeof(req));

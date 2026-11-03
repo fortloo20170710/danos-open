@@ -44,7 +44,7 @@
 - PCI/DPDK 持续性能测试仍标记 `ENVIRONMENT-OPEN`，缺少独立接收端数据。
 - 物理 R2→R3 恢复、FRR→DPA→VPP 动态路由全链路、四节点统一部署尚未完成。
 - VMware VMXNET3 lane 仍需在 v0.16 发布前重跑。
-- IPv4 路由 OPER 读回使用 `RTM_F_FIB_MATCH` 核验前缀/表项、黑洞/单播类型、metric 与 ECMP 成员；缺失或差异都会触发同轮幂等 repair。VPP 通过 `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 提供接口、VRF 和路由 OPER 读回；真实 VPP 的 wire 路径由 V6 lane 覆盖。
+- IPv4 路由 OPER 读回使用 `RTM_F_FIB_MATCH` 核验前缀/表项、黑洞/单播类型、metric 与 ECMP 成员；缺失或差异都会触发同轮幂等 repair。VPP 通过 `sw_interface_dump`/`ip_table_dump`/`ip_route_dump` 提供接口、VRF 和路由 OPER 读回；VPP dump 不含 metric，非零 metric 明确返回 `NOT_SUPPORTED`（mock 与 V6 测试覆盖），metric 0 路由仍校验前缀/路径/类型。真实 VPP 的 wire 路径由 V6 lane 覆盖。
 - 测试证书需替换为生产 PKI。
 - BFD、VLAN、VXLAN、EVPN、OVS、P4 功能未纳入 v0.16。
 - 事务提交后的 `danos_tx_rollback` 返回 `DANOS_ERR_TX_ROLLBACK`（无法撤销），

@@ -160,6 +160,16 @@ int main(void)
             } else {
                 printf("V6 route mismatch detected as VERIFY_FAIL\n");
             }
+            rr.nh_gw[0][3] ^= 1;
+            rr.route.metric = 600;
+            if (ops && ops->route_readback &&
+                ops->route_readback(&rr, &oper_route, ops->user) !=
+                    DANOS_ERR_NOT_SUPPORTED) {
+                fprintf(stderr, "V6 FAIL: VPP metric not reported unsupported\n");
+                failed++;
+            } else {
+                printf("V6 metric readback explicitly NOT_SUPPORTED\n");
+            }
         }
 
         if (!getenv("VPP_LIVE_KEEP_ROUTE")) {
