@@ -16,13 +16,13 @@
 已通过的工程验证：
 
 - x86_64 / aarch64 构建，`-Wall -Wextra -Wpedantic -Werror`
-- 全量 CTest **94/94**（Release；CI 的 ASan+UBSan 同套件通过）
+- 全量 CTest **95/95**（Release；CI 的 ASan+UBSan 同套件通过）
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
 - 生产 C 覆盖率 81.0%（函数 91.1%、分支 60.1%），Coverage 门禁 79%
 - libFuzzer 目标：gNMI protobuf、HPACK、HTTP/2 帧头（CI 构建并冒烟运行）
-- 根 `Dockerfile` 源码镜像：构建阶段 CTest **94/94**，运行时 `/metrics` 冒烟通过
+- 根 `Dockerfile` 源码镜像：构建阶段 CTest **95/95**，运行时 `/metrics` 冒烟通过
 
 ## 2. 模块状态
 

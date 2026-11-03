@@ -52,3 +52,27 @@ This is real API/FIB evidence, not packet forwarding, FRR→DPA integration,
 dataplane restart/reconnect, ECMP traffic distribution or PCI performance.
 Those remain separate required gates. Stop only the dedicated containers when
 finished; preserve evidence directories.
+
+
+## FRR -> ZAPI -> DPA -> VPP topology
+
+`run_frr_zapi_vpp.sh` now provisions a usable VPP dataplane interface before
+starting the bridge. A fresh software runtime has only `local0`
+(sw_if_index 0); the helper `ensure_vpp_dataplane.sh` creates `loop0`, brings
+it up, assigns `10.0.0.1/24` and prints the sw_if_index. The runner combines
+that index with `--dpa-ifindex` (the FRR/Linux interface index) into
+`DANOS_VPP_IFINDEX_MAP=<dpa-ifindex>:<vpp-sw-if-index>`. An existing
+non-local interface is reused, so the helper is idempotent. The default ZAPI
+route-type subscription for this static harness is type 3; override
+`DANOS_ZAPI_ROUTE_TYPES` for other protocols.
+
+Verified locally against VPP 26.10 with FRR 10.3 and a `dummy0` interface:
+the helper created `loop0` at sw_if_index 1, the bridge registered with
+zebra, and a VPP CLI route via `loop0` installed successfully. End-to-end
+DPA programming is **not yet accepted**: with the external ZAPI client, zebra
+delivered only connected/local replay entries (types 1/2); the configured
+static `10.99.0.0/24` type-3 entry was not delivered even with
+`DANOS_ZAPI_ROUTE_TYPES=3`, and `ip_route_add_del` for the replayed
+connected `/32` prefixes returned VPP retval -54. The missing static
+redistribution and the route-add encoding are the remaining blockers, not the
+absence of a dataplane interface.
