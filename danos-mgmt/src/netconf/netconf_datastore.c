@@ -26,10 +26,14 @@
 #define DS_RECORD_SIZE    20u
 #define DS_PERSIST_MAX    64u
 #define DS_CONFIRM_TIMEOUT_DEFAULT 600u
+#define DS_CONFIRMED_MAGIC "DNCCONF1\n"
+#define DS_CONFIRMED_VERSION 1u
+#define DS_CONFIRMED_HEADER_SIZE 48u
 
 typedef struct {
     bool              initialized;
     char             *path;
+    char             *confirmed_path;   /* durable pending confirmed commit */
     danos_object_store_t *startup;
     bool              startup_valid;   /* false when the file is corrupt */
     danos_object_store_t *candidate;   /* NULL means "equal to running" */
@@ -223,6 +227,15 @@ static void save_count_iter(danos_object_entry_t *e, void *user)
     (*(uint64_t *)user)++;
 }
 
+static void fsync_parent_dir(const char *path);
+
+static uint64_t store_count(danos_object_store_t *store)
+{
+    uint64_t count = 0;
+    danos_object_iterate(store, save_count_iter, &count);
+    return count;
+}
+
 static void save_write_iter(danos_object_entry_t *e, void *user)
 {
     struct save_ctx *s = user;
@@ -240,6 +253,79 @@ static void save_write_iter(danos_object_entry_t *e, void *user)
         s->rc = write_all_fd(s->fd, e->data, e->data_size);
 }
 
+/* Caller holds g_ds_lock. */
+static int records_write(int fd, danos_object_store_t *store)
+{
+    struct save_ctx s = { .fd = fd, .rc = 0 };
+    danos_object_iterate(store, save_write_iter, &s);
+    return s.rc;
+}
+
+/* Read `count` versioned, per-record checksummed objects into `dst`.
+ * Returns 0 on success, -1 on corruption/allocation failure. */
+static int records_read(FILE *f, uint32_t count, danos_object_store_t *dst)
+{
+    for (uint32_t i = 0; i < count; i++) {
+        uint8_t rec[DS_RECORD_SIZE];
+        if (fread(rec, 1, sizeof(rec), f) != sizeof(rec)) return -1;
+        uint16_t type = get_u16(rec + 0);
+        uint64_t id = get_u64(rec + 4);
+        uint32_t size = get_u32(rec + 12);
+        uint32_t crc = get_u32(rec + 16);
+        if (size == 0 || size > DANOS_MAX_OBJECT_BYTES) return -1;
+        uint8_t *data = malloc(size);
+        if (!data) return -1;
+        if (fread(data, 1, size, f) != size ||
+            crc32_calc(data, size) != crc ||
+            !payload_valid(type, data, size)) {
+            free(data);
+            return -1;
+        }
+        danos_status_t st = danos_object_create(dst, (danos_obj_type_t)type,
+                                                id, data, size);
+        free(data);
+        if (st != DANOS_OK) return -1;
+    }
+    return 0;
+}
+
+/* Write `header` followed by the snapshot records through a fresh temporary
+ * file, fsync and rename.  A crash leaves the previous file or the new one. */
+static int snapshot_write_file(danos_object_store_t *store, const char *path,
+                               const uint8_t *header, size_t header_size,
+                               const uint8_t *extra, size_t extra_size)
+{
+    if (!store || !path || !*path || !header) return -1;
+    uint64_t count = store_count(store);
+    if (count > DS_MAX_OBJECTS) return -1;
+
+    char tmp[DS_PATH_MAX];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp.XXXXXX", path);
+    if (n < 0 || (size_t)n >= sizeof(tmp)) return -1;
+
+    int fd = mkstemp(tmp);
+    if (fd < 0) return -1;
+    (void)fchmod(fd, 0600);
+
+    int rc = write_all_fd(fd, header, header_size);
+    if (rc == 0 && extra && extra_size > 0)
+        rc = write_all_fd(fd, extra, extra_size);
+    if (rc == 0) rc = records_write(fd, store);
+    if (rc == 0 && fsync(fd) != 0) rc = -1;
+    if (close(fd) != 0) rc = -1;
+
+    if (rc == 0 && rename(tmp, path) != 0) rc = -1;
+    if (rc != 0) {
+        int err = errno;
+        unlink(tmp);
+        fprintf(stderr, "netconf: cannot write %s: %s\n", path,
+                strerror(err));
+        return -1;
+    }
+    fsync_parent_dir(path);
+    return 0;
+}
+
 static void fsync_parent_dir(const char *path)
 {
     char dir[DS_PATH_MAX];
@@ -255,49 +341,20 @@ static void fsync_parent_dir(const char *path)
     close(fd);
 }
 
-/* Write a versioned, per-record checksummed snapshot.  The caller holds
- * g_ds_lock so two writers cannot race on the temporary file or rename. */
+/* Write a versioned, per-record checksummed startup snapshot.  The caller
+ * holds g_ds_lock so two writers cannot race on the temporary file. */
 static int startup_save(danos_object_store_t *store)
 {
     if (!g_ds.path || !*g_ds.path) return -1;
-
-    uint64_t count = 0;
-    danos_object_iterate(store, save_count_iter, &count);
+    uint64_t count = store_count(store);
     if (count > DS_MAX_OBJECTS) return -1;
 
     uint8_t header[DS_HEADER_SIZE];
     memcpy(header, DS_FILE_MAGIC, 8);
     put_u32(header + 8, DS_FILE_VERSION);
     put_u32(header + 12, (uint32_t)count);
-
-    char tmp[DS_PATH_MAX];
-    int n = snprintf(tmp, sizeof(tmp), "%s.tmp.XXXXXX", g_ds.path);
-    if (n < 0 || (size_t)n >= sizeof(tmp)) return -1;
-
-    int fd = mkstemp(tmp);
-    if (fd < 0) return -1;
-    (void)fchmod(fd, 0600);
-
-    int rc = write_all_fd(fd, header, sizeof(header));
-    if (rc == 0) {
-        struct save_ctx s = { .fd = fd, .rc = 0 };
-        danos_object_iterate(store, save_write_iter, &s);
-        rc = s.rc;
-    }
-
-    if (rc == 0 && fsync(fd) != 0) rc = -1;
-    if (close(fd) != 0) rc = -1;
-
-    if (rc == 0 && rename(tmp, g_ds.path) != 0) rc = -1;
-    if (rc != 0) {
-        int err = errno;
-        unlink(tmp);
-        fprintf(stderr, "netconf: cannot write startup file %s: %s\n",
-                g_ds.path, strerror(err));
-        return -1;
-    }
-    fsync_parent_dir(g_ds.path);
-    return 0;
+    return snapshot_write_file(store, g_ds.path, header, sizeof(header),
+                               NULL, 0);
 }
 
 /* Returns 0 when the file is absent or loaded, -1 when it is corrupt. */
@@ -325,40 +382,9 @@ static int startup_load(void)
         return -1;
     }
 
-    for (uint32_t i = 0; i < count; i++) {
-        uint8_t rec[DS_RECORD_SIZE];
-        if (fread(rec, 1, sizeof(rec), f) != sizeof(rec)) {
-            fclose(f);
-            return -1;
-        }
-        uint16_t type = get_u16(rec + 0);
-        uint64_t id = get_u64(rec + 4);
-        uint32_t size = get_u32(rec + 12);
-        uint32_t crc = get_u32(rec + 16);
-        if (size == 0 || size > DANOS_MAX_OBJECT_BYTES) {
-            fclose(f);
-            return -1;
-        }
-        uint8_t *data = malloc(size);
-        if (!data) {
-            fclose(f);
-            return -1;
-        }
-        if (fread(data, 1, size, f) != size ||
-            crc32_calc(data, size) != crc ||
-            !payload_valid(type, data, size)) {
-            free(data);
-            fclose(f);
-            return -1;
-        }
-        danos_status_t st = danos_object_create(g_ds.startup,
-                                                (danos_obj_type_t)type,
-                                                id, data, size);
-        free(data);
-        if (st != DANOS_OK) {
-            fclose(f);
-            return -1;
-        }
+    if (records_read(f, count, g_ds.startup) != 0) {
+        fclose(f);
+        return -1;
     }
 
     /* Trailing bytes mean the file was not written by this version. */
@@ -368,6 +394,130 @@ static int startup_load(void)
     }
     fclose(f);
     return 0;
+}
+
+/* ---- durable confirmed-commit state -------------------------------------
+ * RFC 6241 8.4 requires an unconfirmed commit to be rolled back when the
+ * device reboots.  The pending baseline therefore lives in a checksummed
+ * file next to the startup datastore; netconf_ds_init() restores it before
+ * any session exists.  A confirming <commit> removes the file. */
+typedef struct {
+    uint64_t deadline_sec;
+    uint64_t deadline_nsec;
+    uint64_t session;
+    char     persist[DS_PERSIST_MAX + 1];
+} confirmed_meta_t;
+
+/* Caller holds g_ds_lock.  Returns 0 saved, -1 on IO failure. */
+static int confirmed_state_save_locked(void)
+{
+    if (!g_ds.confirmed_path || !g_ds.confirmed_baseline) return -1;
+
+    size_t persist_len = strlen(g_ds.confirmed_persist);
+    if (persist_len > DS_PERSIST_MAX) return -1;
+    uint64_t count = store_count(g_ds.confirmed_baseline);
+    if (count > DS_MAX_OBJECTS) return -1;
+
+    uint8_t header[DS_CONFIRMED_HEADER_SIZE];
+    memset(header, 0, sizeof(header));
+    memcpy(header, DS_CONFIRMED_MAGIC, 8);
+    put_u32(header + 8, DS_CONFIRMED_VERSION);
+    put_u32(header + 12, 0);
+    put_u64(header + 16, (uint64_t)g_ds.confirmed_deadline.tv_sec);
+    put_u64(header + 24, (uint64_t)g_ds.confirmed_deadline.tv_nsec);
+    put_u64(header + 32, g_ds.confirmed_session);
+    put_u16(header + 40, (uint16_t)persist_len);
+    put_u16(header + 42, 0);
+    put_u32(header + 44, (uint32_t)count);
+
+    return snapshot_write_file(g_ds.confirmed_baseline, g_ds.confirmed_path,
+                               header, sizeof(header),
+                               (const uint8_t *)g_ds.confirmed_persist,
+                               persist_len);
+}
+
+/* Returns 0 loaded, 1 absent, -1 corrupt.  On success `baseline` owns the
+ * recovered snapshot and must be destroyed by the caller. */
+static int confirmed_state_load(confirmed_meta_t *meta,
+                                danos_object_store_t **baseline)
+{
+    if (!g_ds.confirmed_path || !meta || !baseline) return 1;
+    *baseline = NULL;
+
+    FILE *f = fopen(g_ds.confirmed_path, "rb");
+    if (!f) return errno == ENOENT ? 1 : -1;
+
+    uint8_t header[DS_CONFIRMED_HEADER_SIZE];
+    if (fread(header, 1, sizeof(header), f) != sizeof(header) ||
+        memcmp(header, DS_CONFIRMED_MAGIC, 8) != 0 ||
+        get_u32(header + 8) != DS_CONFIRMED_VERSION) {
+        fclose(f);
+        return -1;
+    }
+    uint16_t persist_len = get_u16(header + 40);
+    uint32_t count = get_u32(header + 44);
+    if (persist_len > DS_PERSIST_MAX || count > DS_MAX_OBJECTS) {
+        fclose(f);
+        return -1;
+    }
+
+    memset(meta, 0, sizeof(*meta));
+    meta->deadline_sec = get_u64(header + 16);
+    meta->deadline_nsec = get_u64(header + 24);
+    meta->session = get_u64(header + 32);
+    if (persist_len > 0 &&
+        fread(meta->persist, 1, persist_len, f) != persist_len) {
+        fclose(f);
+        return -1;
+    }
+    meta->persist[persist_len] = '\0';
+
+    danos_object_store_t *store = danos_object_store_create(0);
+    if (!store) {
+        fclose(f);
+        return -1;
+    }
+    if (records_read(f, count, store) != 0 || fgetc(f) != EOF) {
+        danos_object_store_destroy(store);
+        fclose(f);
+        return -1;
+    }
+    fclose(f);
+    *baseline = store;
+    return 0;
+}
+
+/* Caller holds g_ds_lock.  A reboot always rolls the unconfirmed commit back;
+ * a persist token only protects the commit across session close, not reboot. */
+static void confirmed_recover_locked(void)
+{
+    confirmed_meta_t meta;
+    danos_object_store_t *baseline = NULL;
+    int rc = confirmed_state_load(&meta, &baseline);
+    if (rc == 1) return;
+    if (rc != 0) {
+        fprintf(stderr,
+                "netconf: cannot read %s; discarding pending confirmed commit\n",
+                g_ds.confirmed_path ? g_ds.confirmed_path : "state");
+        if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
+        return;
+    }
+
+    netconf_ds_status_t st = apply_snapshot_locked(baseline, 0, false);
+    if (st == NETCONF_DS_OK) {
+        fprintf(stderr,
+                "netconf: rolled back an unconfirmed commit from a previous "
+                "boot (session %llu%s%s)\n",
+                (unsigned long long)meta.session,
+                meta.persist[0] ? ", persist " : "",
+                meta.persist[0] ? meta.persist : "");
+        if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
+    } else {
+        fprintf(stderr, "netconf: confirmed-commit recovery failed (status %d); "
+                "keeping %s for the next boot\n", (int)st,
+                g_ds.confirmed_path ? g_ds.confirmed_path : "state");
+    }
+    danos_object_store_destroy(baseline);
 }
 
 /* ---- lifecycle ---------------------------------------------------------- */
@@ -391,18 +541,39 @@ void netconf_ds_init(const char *startup_path)
         return;
     }
 
-    /* The subsystem process hosts NETCONF without mgrd, so the running
-     * store may not exist yet.  Create it lazily like the gNMI server. */
-    if (!g_default_store)
-        g_default_store = danos_object_store_create(1024);
-    if (!g_default_store) {
+    const char *confirmed_path = getenv("DANOS_NETCONF_CONFIRMED");
+    if (!confirmed_path || !*confirmed_path) {
+        size_t len = strlen(path) + strlen(".confirmed") + 1;
+        g_ds.confirmed_path = malloc(len);
+        if (g_ds.confirmed_path)
+            snprintf(g_ds.confirmed_path, len, "%s.confirmed", path);
+    } else {
+        g_ds.confirmed_path = strdup(confirmed_path);
+    }
+    if (!g_ds.confirmed_path) {
         free(g_ds.path);
         g_ds.path = NULL;
         pthread_mutex_unlock(&g_ds_lock);
         return;
     }
 
+    /* The subsystem process hosts NETCONF without mgrd, so the running
+     * store may not exist yet.  Create it lazily like the gNMI server. */
+    if (!g_default_store)
+        g_default_store = danos_object_store_create(1024);
+    if (!g_default_store) {
+        free(g_ds.confirmed_path);
+        free(g_ds.path);
+        g_ds.confirmed_path = NULL;
+        g_ds.path = NULL;
+        pthread_mutex_unlock(&g_ds_lock);
+        return;
+    }
+
     g_ds.startup_valid = startup_load() == 0;
+    /* A pending confirmed commit from a previous boot is rolled back before
+     * the daemon can accept a session (RFC 6241 8.4). */
+    confirmed_recover_locked();
     g_ds.initialized = true;
     pthread_mutex_unlock(&g_ds_lock);
 }
@@ -428,8 +599,10 @@ void netconf_ds_fini(void)
         (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
         danos_object_store_destroy(g_ds.confirmed_baseline);
     }
+    if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
     danos_object_store_destroy(g_ds.startup);
     danos_object_store_destroy(g_ds.candidate);
+    free(g_ds.confirmed_path);
     free(g_ds.path);
     g_confirmed_stop = false;
     memset(&g_ds, 0, sizeof(g_ds));
@@ -748,6 +921,7 @@ static bool write_allowed_locked(netconf_datastore_t ds, uint64_t session_id)
 
 static void confirmed_disarm_locked(void)
 {
+    if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
     g_ds.confirmed = false;
     danos_object_store_destroy(g_ds.confirmed_baseline);
     g_ds.confirmed_baseline = NULL;
@@ -903,8 +1077,17 @@ netconf_ds_status_t netconf_ds_commit(uint64_t session_id,
                                                : DS_CONFIRM_TIMEOUT_DEFAULT;
             (void)clock_gettime(CLOCK_REALTIME, &g_ds.confirmed_deadline);
             g_ds.confirmed_deadline.tv_sec += (time_t)timeout;
-            g_confirmed_gen++;
-            pthread_cond_broadcast(&g_confirmed_cv);
+
+            /* A pending commit that cannot be recorded durably must not be
+             * reported as armed: revert to the baseline and fail the RPC. */
+            if (confirmed_state_save_locked() != 0) {
+                (void)apply_snapshot_locked(g_ds.confirmed_baseline, 0, false);
+                confirmed_disarm_locked();
+                rc = NETCONF_DS_IO;
+            } else {
+                g_confirmed_gen++;
+                pthread_cond_broadcast(&g_confirmed_cv);
+            }
         } else if (!replacing) {
             danos_object_store_destroy(baseline);
         }
