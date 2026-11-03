@@ -7,6 +7,8 @@
 #include "../src/netconf/netconf_session.h"
 #include "../src/netconf/netconf_datastore.h"
 #include <danos/security/rbac.h>
+#include <danos/dpa.h>
+#include <danos/core/object_registry.h>
 #include <assert.h>
 #include <pthread.h>
 #include <signal.h>
@@ -240,6 +242,95 @@ static void test_invalid_read_fd(void)
     printf("[PASS] invalid client-read descriptor is rejected\n");
 }
 
+static danos_iface_t read_iface(uint32_t ifindex)
+{
+    danos_iface_t ifc;
+    memset(&ifc, 0, sizeof(ifc));
+    size_t sz = sizeof(ifc);
+    assert(danos_object_read(g_default_store, DANOS_OBJ_IFACE, ifindex,
+                             &ifc, &sz) == DANOS_OK);
+    return ifc;
+}
+
+static void seed_idle_iface(void)
+{
+    danos_iface_t ifc;
+    memset(&ifc, 0, sizeof(ifc));
+    ifc.ifindex = 7601;
+    snprintf(ifc.name, sizeof(ifc.name), "idle0");
+    ifc.mtu = 1500;
+    ifc.admin_up = true;
+    size_t sz = sizeof(ifc);
+    if (danos_object_read(g_default_store, DANOS_OBJ_IFACE, 7601, &ifc,
+                          &sz) == DANOS_OK)
+        return;
+    assert(danos_object_create(g_default_store, DANOS_OBJ_IFACE, 7601,
+                               &ifc, sizeof(ifc)) == DANOS_OK);
+}
+
+static void candidate_mtu(uint32_t mtu)
+{
+    danos_iface_t ifc = read_iface(7601);
+    ifc.mtu = (uint16_t)mtu;
+    assert(netconf_ds_write(NETCONF_DS_CANDIDATE, DANOS_OBJ_IFACE, 7601,
+                            &ifc, sizeof(ifc)) == NETCONF_DS_OK);
+}
+
+static netconf_session_t *open_idle_session(int in[2], int out[2])
+{
+    assert(pipe(in) == 0 && pipe(out) == 0);
+    write_all(in[1], HELLO10 EOM);
+    netconf_session_t *s = netconf_session_new(in[0], out[1], "tester",
+                                               DANOS_ROLE_ADMIN);
+    assert(s);
+    return s;
+}
+
+static void test_idle_timeout_and_confirmed_ownership(void)
+{
+    seed_idle_iface();
+
+    /* Non-persisted confirmed commit owned by the idle session. */
+    int in[2], out[2];
+    netconf_session_set_idle_timeout(1);
+    netconf_session_t *s = open_idle_session(in, out);
+    uint64_t id = netconf_session_id(s);
+    candidate_mtu(9000);
+    netconf_commit_opts_t opts = { .confirmed = true, .timeout_s = 60 };
+    assert(netconf_ds_commit(id, &opts) == NETCONF_DS_OK);
+    assert(netconf_ds_confirmed_pending());
+
+    assert(netconf_session_run(s) == 1);
+    assert(netconf_session_timed_out(s));
+    netconf_ds_release_session(id);
+    assert(!netconf_ds_confirmed_pending());   /* session close rolls back */
+    assert(read_iface(7601).mtu == 1500);
+    netconf_session_free(s);
+    close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+
+    /* Persist-token confirmed commit survives the idle close. */
+    s = open_idle_session(in, out);
+    id = netconf_session_id(s);
+    candidate_mtu(9000);
+    opts = (netconf_commit_opts_t){ .confirmed = true, .timeout_s = 60,
+                                    .persist = "idle-token" };
+    assert(netconf_ds_commit(id, &opts) == NETCONF_DS_OK);
+    assert(netconf_ds_confirmed_pending());
+    assert(netconf_session_run(s) == 1);
+    assert(netconf_session_timed_out(s));
+    netconf_ds_release_session(id);
+    assert(netconf_ds_confirmed_pending());    /* token keeps it armed */
+    assert(netconf_ds_cancel_commit(0, "idle-token") == NETCONF_DS_OK);
+    assert(!netconf_ds_confirmed_pending());
+    assert(read_iface(7601).mtu == 1500);
+    netconf_session_free(s);
+    close(in[0]); close(in[1]); close(out[0]); close(out[1]);
+
+    netconf_session_set_idle_timeout(NETCONF_SESSION_IDLE_TIMEOUT_DEFAULT);
+    printf("[PASS] idle timeout closes an authenticated session and releases "
+           "confirmed-commit ownership; persist token survives\n");
+}
+
 static void test_null_api(void)
 {
     assert(netconf_session_run(NULL) == -1);
@@ -269,6 +360,7 @@ int main(void)
     test_valid_base11();
     test_reply_write_failure();
     test_invalid_read_fd();
+    test_idle_timeout_and_confirmed_ownership();
     test_null_api();
 
     /* A failed datastore init (corrupt running) must not open a session. */

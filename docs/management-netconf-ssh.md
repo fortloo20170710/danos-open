@@ -326,12 +326,30 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
   directory and do not expose it to unprivileged local writers. Roles come
   from the uid policy, never from the client preamble.
 - A silent client is bounded by a 5 s preamble timeout and a 10 s hello
-  timeout, with a 128-connection cap, but there is no idle-session timeout
-  after the hello. A second daemon is refused by a lock file, and the socket
-  is unlinked only when its inode still belongs to that instance.
+  timeout, with a 128-connection cap. After the authenticated client hello,
+  an idle session is closed after the configured idle timeout (default
+  300 s; see below). A second daemon is refused by a lock file, and the
+  socket is unlinked only when its inode still belongs to that instance.
 - `copy-config` does not accept an inline `<config>` source or `<url>`.
 - `edit-config` covers interface `mtu` and `enabled`. Other subtrees are not
   modeled by the server yet.
 - The subsystem trusts `sshd` for identity; it does not re-verify the peer.
+
+## Idle sessions
+
+After the client `<hello>` completes, a session with no further bytes for the
+idle timeout is closed. The default is **300 seconds**. Configure it with:
+
+- `danos-netconfd --idle-timeout <seconds>`, or
+- `DANOS_NETCONF_IDLE_TIMEOUT=<seconds>` (also honored by the in-process
+  subsystem fallback; the CLI takes precedence).
+
+`0` disables the timeout; the accepted maximum is 604800 s (7 days). The
+timeout is armed only after authentication/hello, never for the pre-login
+preamble or hello read. Closing an idle session follows the same path as any
+transport disconnect: datastore locks are released and a non-persisted
+confirmed commit owned by that session is rolled back. A confirmed commit
+armed with a persist token survives the session close and can still be
+confirmed or cancelled by another authenticated session.
 - Replies are built in memory, so a very large `get-config` is bounded by the
   8 MiB message limit rather than streamed.

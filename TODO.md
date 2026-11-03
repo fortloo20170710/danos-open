@@ -76,7 +76,7 @@
 - [x] NETCONF committed running 持久化：plain/confirmed commit、running copy-config、直接 edit-config 与回滚都写 `<startup>.running`，重启加载；写失败使提交失败并回滚，fork/exec 重启回归覆盖
 - [x] NETCONF 损坏 running 快照 fail-closed：拒绝启动并给出操作员可见错误；`DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` 为显式 override，提交可修复坏文件
 - [x] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid/group 策略决定并失败关闭，非 root socket 组权限与 systemd 配方已文档化，真实 sshd 双会话验收通过
-- [ ] NETCONF idle-session 超时（hello 后长连接目前仅受连接数上限约束）
+- [x] NETCONF idle-session 超时：hello 后默认 300s 无流量即关闭，`--idle-timeout` / `DANOS_NETCONF_IDLE_TIMEOUT` 可配（0 关闭，上限 7 天）；关闭路径释放锁并回滚非 persist 的 confirmed commit，persist token 保留；daemon 与 in-process 回归覆盖
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）

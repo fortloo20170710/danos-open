@@ -182,7 +182,12 @@ static void *client_thread(void *arg)
     struct timeval no_to = { .tv_sec = 0, .tv_usec = 0 };
     (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &no_to, sizeof(no_to));
 
-    if (netconf_session_run(s) != 0)
+    int rc = netconf_session_run(s);
+    if (rc == 1 && netconf_session_timed_out(s))
+        fprintf(stderr, "netconfd: closing idle session %llu after %u s\n",
+                (unsigned long long)netconf_session_id(s),
+                netconf_session_idle_timeout());
+    else if (rc != 0)
         fprintf(stderr, "netconfd: session ended on a protocol error\n");
 
     /* A disconnect must release locks and roll back a non-persisted
@@ -292,9 +297,13 @@ static void usage(const char *argv0)
     fprintf(stderr,
             "usage: %s [--socket <path>] [--startup <path>]\n"
             "          [--socket-group <name>] [--socket-mode <octal>]\n"
+            "          [--idle-timeout <seconds>]\n"
             "  socket defaults to $DANOS_NETCONF_SOCKET or %s\n"
-            "  mode defaults to 0660; group defaults to the process egid\n",
-            argv0, NETCONF_DEFAULT_SOCKET);
+            "  mode defaults to 0660; group defaults to the process egid\n"
+            "  idle timeout defaults to %u s (0 disables); env "
+            "DANOS_NETCONF_IDLE_TIMEOUT is also accepted\n",
+            argv0, NETCONF_DEFAULT_SOCKET,
+            NETCONF_SESSION_IDLE_TIMEOUT_DEFAULT);
 }
 
 int main(int argc, char **argv)
@@ -303,6 +312,18 @@ int main(int argc, char **argv)
     const char *startup_path = NULL;
     const char *socket_group = NULL;
     unsigned long socket_mode = 0660;
+    unsigned long idle_timeout = NETCONF_SESSION_IDLE_TIMEOUT_DEFAULT;
+
+    const char *idle_env = getenv("DANOS_NETCONF_IDLE_TIMEOUT");
+    if (idle_env && *idle_env) {
+        char *end = NULL;
+        idle_timeout = strtoul(idle_env, &end, 10);
+        if (!end || *end != '\0' || idle_timeout > 604800UL) {
+            fprintf(stderr, "netconfd: invalid DANOS_NETCONF_IDLE_TIMEOUT '%s'\n",
+                    idle_env);
+            return 2;
+        }
+    }
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
@@ -316,6 +337,14 @@ int main(int argc, char **argv)
             socket_mode = strtoul(argv[++i], &end, 8);
             if (!end || *end != '\0' || socket_mode > 0777) {
                 fprintf(stderr, "netconfd: invalid --socket-mode '%s'\n",
+                        argv[i]);
+                return 2;
+            }
+        } else if (strcmp(argv[i], "--idle-timeout") == 0 && i + 1 < argc) {
+            char *end = NULL;
+            idle_timeout = strtoul(argv[++i], &end, 10);
+            if (!end || *end != '\0' || idle_timeout > 604800UL) {
+                fprintf(stderr, "netconfd: invalid --idle-timeout '%s'\n",
                         argv[i]);
                 return 2;
             }
@@ -352,6 +381,7 @@ int main(int argc, char **argv)
     }
 
     (void)danos_authz_init(NULL);
+    netconf_session_set_idle_timeout((unsigned)idle_timeout);
     netconf_ds_init(startup_path);
     if (!netconf_ds_ready()) {
         fprintf(stderr, "netconfd: refusing to start with an unreadable running "
@@ -368,7 +398,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    fprintf(stderr, "netconfd: listening on %s\n", socket_path);
+    fprintf(stderr, "netconfd: listening on %s (idle timeout %lu s)\n",
+            socket_path, idle_timeout);
 
     while (!g_signal_stop) {
         struct pollfd pfd = { .fd = lfd, .events = POLLIN };

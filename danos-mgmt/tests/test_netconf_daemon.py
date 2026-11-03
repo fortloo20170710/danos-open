@@ -163,7 +163,9 @@ def main():
             (["--help"], 0),
             (["--bogus"], 2),
             (["--socket-mode", "999"], 2),
-            (["--socket-group", "nosuchgroup"], 2)):
+            (["--socket-group", "nosuchgroup"], 2),
+            (["--idle-timeout", "not-a-number"], 2),
+            (["--idle-timeout", "9999999"], 2)):
         result = subprocess.run([daemon, *args],
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL, timeout=10)
@@ -312,6 +314,27 @@ def main():
         assert d.proc.wait(timeout=10) == 0
         d.proc.stdout.close()
         d.proc.stderr.close()
+
+        # Authenticated idle sessions are closed by the daemon after the
+        # configured timeout, and the close path releases their state.
+        idle_sock = os.path.join(tmp, "idle.sock")
+        idle = subprocess.Popen(
+            [daemon, "--socket", idle_sock, "--startup", startup,
+             "--idle-timeout", "1"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            env=env_for(role_map=role_map))
+        try:
+            wait_socket(idle_sock)
+            isock, _ = raw_login(idle_sock, user, "admin")
+            start = time.time()
+            isock.settimeout(6)
+            assert isock.recv(1) == b""
+            elapsed = time.time() - start
+            assert 1.0 <= elapsed < 6.0, elapsed
+            isock.close()
+        finally:
+            idle.send_signal(signal.SIGTERM)
+            assert idle.wait(timeout=10) == 0
 
         # SIGTERM with a live session tears it down cleanly.
         live = Session(subsystem, sock, env)
