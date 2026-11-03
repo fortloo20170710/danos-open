@@ -2,6 +2,11 @@
 
 ### 2026-11-03 confirmed-commit reboot recovery and VRF/VPP OPER readback
 
+- NETCONF committed running state is now durable: every successful plain or
+  confirmed commit, running `copy-config`, direct running `edit-config` and
+  rollback writes `<startup>.running`; startup loads it before accepting
+  sessions, and a write failure fails the commit. A fork/exec test commits a
+  plain MTU change and proves a fresh process starts with it.
 - NETCONF confirmed commits are now durable. Arming one writes the rollback
   baseline, deadline, session and persist token to `<startup>.confirmed`
   (temporary file + fsync + rename). A confirming/cancelling commit, timeout or
@@ -21,13 +26,12 @@
   injection exercises the decoders and adapter without VPP, and the live VPP
   lane gains V6 checks for interface, VRF, route and mismatch detection.
 - Verification: Release CTest 90/90, targeted ASan/UBSan and TSan pass, and
-  the fresh coverage run is 9341/11622 lines (80.4%), 777/861 functions
-  (90.2%) and 5453/9256 branches (58.9%); the 79% line gate passes.
+  the fresh coverage run is 9393/11716 lines (80.2%), 780/864 functions
+  (90.3%) and 5487/9324 branches (58.8%); the 79% line gate passes.
 - Known limits: VPP `ip_route` dumps do not expose the configured metric, so
   VPP route OPER verification covers prefix, path membership and type but not
-  metric; netlink continues to verify metric. The committed running
-  configuration itself is still in-memory in the NETCONF subsystem (mgrd owns
-  the WAL); only the pending rollback is persisted.
+  metric; netlink continues to verify metric. The NETCONF running snapshot is
+  the subsystem's own file; mgrd's WAL remains the system control-plane WAL.
 
 ### 2026-11-02 NETCONF single daemon, ECMP OPER verification and coverage
 

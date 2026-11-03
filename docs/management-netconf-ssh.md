@@ -155,7 +155,7 @@ transaction. Interface names and other text in replies are XML-escaped.
 
 | Datastore | Storage | Writable through |
 |-----------|---------|------------------|
-| running | process object store, DPA transactions | `edit-config`, `commit`, `copy-config` |
+| running | object store + checksummed `<startup>.running` snapshot, DPA transactions | `edit-config`, `commit`, `copy-config` |
 | candidate | snapshot of running, created on first use | `edit-config`, `copy-config`, `discard-changes` |
 | pending confirmed | checksummed file `<startup>.confirmed`, rolled back at next startup | `commit` (arm), confirm/cancel/timeout (remove) |
 
@@ -215,7 +215,14 @@ accepted by token ownership even while the issuing session still holds a
 datastore lock, because it publishes no new candidate state. Closing a session
 without a token still rolls its commit back immediately.
 
-The pending commit is durable. When a confirmed commit is armed, the daemon
+The committed running configuration is durable. Every successful plain
+commit, confirmed-commit publish, `copy-config` to running, direct
+`edit-config` to running, and rollback writes a checksummed running snapshot
+(`<startup>.running`, or `DANOS_NETCONF_RUNNING`). A restart loads it before
+accepting sessions; a write failure fails the commit instead of acknowledging
+state that would not survive a restart.
+
+The pending commit is durable too. When a confirmed commit is armed, the daemon
 writes a checksummed file containing the rollback baseline, deadline, session
 and persist token next to the startup datastore (`<startup>.confirmed`, or
 `DANOS_NETCONF_CONFIRMED`). The file is written with a temporary file, fsync
@@ -301,11 +308,11 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
 
 ## Known limits
 
-- Candidate state, locks and pending confirmed-commit state are shared between
-  SSH sessions while `danos-netconfd` runs. A pending confirmed commit and its
-  rollback baseline are durable across restart/reboot; the *committed* running
-  configuration itself still lives in memory because this subsystem does not
-  own the mgrd WAL, so only the unconfirmed rollback is persisted here.
+- Candidate state and locks are shared between SSH sessions while
+  `danos-netconfd` runs. The committed running configuration and a pending
+  confirmed-commit rollback baseline are durable across restart/reboot in
+  checksummed files next to the startup datastore. This is the NETCONF
+  subsystem's own snapshot; mgrd's WAL remains the system control-plane WAL.
 - The daemon socket is a local trust boundary. Run it in a root-owned
   directory and do not expose it to unprivileged local writers. Roles come
   from the uid policy, never from the client preamble.

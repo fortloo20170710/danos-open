@@ -15,6 +15,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 static danos_iface_t lookup_iface(const char *name)
 {
@@ -89,7 +90,13 @@ int main(void)
     assert(danos_cli_process(&cli, "set interface eth0 mtu 50") != 0);
     assert(lookup_iface("eth0").mtu == 3000);
 
-    /* 3. NETCONF edit-config sets mtu 4000 */
+    /* 3. NETCONF edit-config sets mtu 4000.  Running persistence needs a
+     * writable datastore path, as it does in a real deployment. */
+    char nc_path[160];
+    snprintf(nc_path, sizeof(nc_path), "/tmp/danos-frontends-%ld.db",
+             (long)getpid());
+    unlink(nc_path);
+    setenv("DANOS_NETCONF_STARTUP", nc_path, 1);
     netconf_ctx_t nc;
     netconf_init(&nc, 0);
     char *xml = strdup(

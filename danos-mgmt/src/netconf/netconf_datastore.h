@@ -91,6 +91,10 @@ typedef struct {
     const char *persist_id;
 } netconf_commit_opts_t;
 
+/* Persist a running change made by a caller that bypassed commit (the RPC
+ * layer's direct edit-config path). */
+netconf_ds_status_t netconf_ds_running_changed(void);
+
 /* Publish candidate as running in one transaction and reset the candidate
  * snapshot to the new running state. */
 netconf_ds_status_t netconf_ds_commit(uint64_t session_id,

@@ -573,6 +573,7 @@ int test_netconf_copy_and_startup(const char *path)
 
     assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 7201)
            == DANOS_OK);
+    assert(netconf_ds_running_changed() == NETCONF_DS_OK);
     netconf_fini(&ctx);
 
     printf("[PASS] test_netconf_copy_and_startup: copy, reload, delete\n");
@@ -668,6 +669,7 @@ int test_netconf_validate(void)
 
     assert(danos_object_delete(g_default_store, DANOS_OBJ_IFACE, 7201)
            == DANOS_OK);
+    assert(netconf_ds_running_changed() == NETCONF_DS_OK);
     netconf_fini(&ctx);
 
     printf("[PASS] test_netconf_validate: datastore and inline validation\n");
@@ -796,6 +798,16 @@ static int recover_check(const char *startup_path)
     return rc;
 }
 
+static int running_check(const char *startup_path, unsigned expected_mtu)
+{
+    netconf_ds_init(startup_path);
+    danos_iface_t ifc;
+    bool found = find_iface("recp2", &ifc);
+    int rc = (found && ifc.mtu == expected_mtu) ? 0 : 1;
+    netconf_ds_fini();
+    return rc;
+}
+
 int test_netconf_confirmed_recovery(const char *base_path)
 {
     char path[160], confirmed[192];
@@ -854,10 +866,61 @@ int test_netconf_confirmed_recovery(const char *base_path)
     return 0;
 }
 
+int test_netconf_running_persistence(const char *base_path)
+{
+    char path[160], running[192], confirmed[192];
+    snprintf(path, sizeof(path), "%s.run", base_path);
+    snprintf(running, sizeof(running), "%s.running", path);
+    snprintf(confirmed, sizeof(confirmed), "%s.confirmed", path);
+    unlink(path);
+    unlink(running);
+    unlink(confirmed);
+
+    netconf_ds_fini();
+    netconf_ds_init(path);
+    seed_iface(7399, "recp2", 1400, true);
+
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 92;
+    edit_candidate_mtu(&ctx, 7399, "recp2", "9000");
+    char *resp = nc_call(&ctx, "<rpc><commit/></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    danos_iface_t ifc;
+    assert(find_iface("recp2", &ifc));
+    assert(ifc.mtu == 9000);
+    assert(access(running, F_OK) == 0);
+
+    pid_t pid = fork();
+    assert(pid >= 0);
+    if (pid == 0) {
+        execl("/proc/self/exe", "netconf_test", "--running-check", path,
+              "9000", (char *)NULL);
+        _exit(127);
+    }
+    int status = 0;
+    assert(waitpid(pid, &status, 0) == pid);
+    assert(WIFEXITED(status));
+    assert(WEXITSTATUS(status) == 0);
+
+    netconf_fini(&ctx);
+    netconf_ds_fini();
+    unlink(path);
+    unlink(running);
+    unlink(confirmed);
+
+    printf("[PASS] test_netconf_running_persistence: a plain commit survives "
+           "a fresh process restart\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--recover-check") == 0)
         return recover_check(argv[2]);
+    if (argc == 4 && strcmp(argv[1], "--running-check") == 0)
+        return running_check(argv[2], (unsigned)strtoul(argv[3], NULL, 10));
 
     char path[128];
     snprintf(path, sizeof(path), "/tmp/danos-netconf-test-%ld.db",
@@ -882,8 +945,20 @@ int main(int argc, char **argv)
     if (test_netconf_validate() != 0) failed++;
     if (test_netconf_confirmed_commit() != 0) failed++;
     if (test_netconf_confirmed_recovery(path) != 0) failed++;
+    if (test_netconf_running_persistence(path) != 0) failed++;
 
     netconf_ds_fini();
+    char aux[192];
+    snprintf(aux, sizeof(aux), "%s.running", path);
+    unlink(aux);
+    snprintf(aux, sizeof(aux), "%s.confirmed", path);
+    unlink(aux);
+    snprintf(aux, sizeof(aux), "%s.recover", path);
+    unlink(aux);
+    snprintf(aux, sizeof(aux), "%s.recover.running", path);
+    unlink(aux);
+    snprintf(aux, sizeof(aux), "%s.recover.confirmed", path);
+    unlink(aux);
     unlink(path);
     printf("=== netconf_test: %s ===\n",
            failed == 0 ? "ALL PASSED" : "FAILURES");
