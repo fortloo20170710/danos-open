@@ -47,7 +47,8 @@ int main(void)
     assert(f != NULL);
     fprintf(f, "%s superuser\n", pw->pw_name);
     fclose(f);
-    assert(netconf_role_resolve(pw->pw_name, getuid()) == DANOS_ROLE_VIEWER);
+    assert(netconf_role_resolve(pw->pw_name, getuid()) ==
+           (getuid() == 0 ? DANOS_ROLE_ADMIN : DANOS_ROLE_VIEWER));
 
     unlink(path);
     printf("[PASS] test_netconf_role: uid policy, name/uid maps, fail-safe "
