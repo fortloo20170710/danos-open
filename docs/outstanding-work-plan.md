@@ -26,12 +26,14 @@
   injection exercises the decoders and adapter without VPP, and the live VPP
   lane gains V6 checks for interface, VRF, route and mismatch detection.
 - Verification: Release CTest 90/90, targeted ASan/UBSan and TSan pass, and
-  the fresh coverage run is 9393/11716 lines (80.2%), 780/864 functions
-  (90.3%) and 5487/9324 branches (58.8%); the 79% line gate passes.
-- Known limits: VPP `ip_route` dumps do not expose the configured metric, so
-  VPP route OPER verification covers prefix, path membership and type but not
-  metric; netlink continues to verify metric. The NETCONF running snapshot is
-  the subsystem's own file; mgrd's WAL remains the system control-plane WAL.
+  the fresh coverage run is 9395/11718 lines (80.2%), 780/864 functions
+  (90.3%) and 5488/9326 branches (58.8%); the 79% line gate passes.
+- Known limits: VPP `ip_route` dumps do not expose the configured metric. A
+  metric-bearing route now returns `DANOS_ERR_NOT_SUPPORTED` from VPP readback
+  (unit and V6 tests) instead of claiming path equality verified it; metric 0
+  routes retain prefix/path/type verification. Netlink continues to verify
+  metric. The NETCONF running snapshot is the subsystem's own file; mgrd's WAL
+  remains the system control-plane WAL.
 
 ### 2026-11-02 NETCONF single daemon, ECMP OPER verification and coverage
 

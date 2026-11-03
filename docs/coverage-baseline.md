@@ -42,9 +42,9 @@ readback changes (dirty). CTest 90/90 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 9393 / 11716 | 80.2% |
+| Lines | 9395 / 11718 | 80.2% |
 | Functions | 780 / 864 | 90.3% |
-| Branches | 5487 / 9324 | 58.8% |
+| Branches | 5488 / 9326 | 58.8% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and

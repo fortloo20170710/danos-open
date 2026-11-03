@@ -153,6 +153,13 @@ int main(void)
     danos_route_t oper_route;
     assert(ops->route_readback(&rr, &oper_route, ops->user) == DANOS_OK);
 
+    /* VPP dumps do not expose the metric: a metric-bearing route must produce
+     * an explicit unsupported result, never a false OK. */
+    rr.route.metric = 42;
+    assert(ops->route_readback(&rr, &oper_route, ops->user)
+           == DANOS_ERR_NOT_SUPPORTED);
+    rr.route.metric = 0;
+
     /* A different second gateway is a verification failure, not absence. */
     rr.nh_gw[1][3] = 99;
     assert(ops->route_readback(&rr, &oper_route, ops->user)
