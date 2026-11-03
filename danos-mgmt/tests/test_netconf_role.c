@@ -24,7 +24,9 @@ int main(void)
     struct passwd *pw = getpwuid(getuid());
     assert(pw != NULL);
     assert(netconf_role_resolve("root", 0) == DANOS_ROLE_ADMIN);
-    assert(netconf_role_resolve(pw->pw_name, getuid()) == DANOS_ROLE_VIEWER);
+    /* Container builds run the suite as root, whose default is admin. */
+    assert(netconf_role_resolve(pw->pw_name, getuid()) ==
+           (getuid() == 0 ? DANOS_ROLE_ADMIN : DANOS_ROLE_VIEWER));
 
     /* Explicit name, numeric uid and unknown-role handling. */
     FILE *f = fopen(path, "w");

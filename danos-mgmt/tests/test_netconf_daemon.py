@@ -161,6 +161,10 @@ def main():
     try:
         wait_socket(sock)
         env = env_for(role_map=role_map)
+        # The proxy derives its claimed identity from these variables; CI
+        # container builders may not export them.
+        env["LOGNAME"] = user
+        env["USER"] = user
 
         a = Session(subsystem, sock, env)
         b = Session(subsystem, sock, env)
