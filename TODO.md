@@ -25,10 +25,11 @@
 ## 功能
 - [x] v0.16 ECMP northbound route representation（gNMI `gateways[]` + NHGroup；真实 dataplane 多路径仍待）
 - [x] FRR trixie BGP EVPN 邻居与 OSPF 邻居特权拓扑基线验收
-- [ ] v0.16 FRR BGP/OSPF → ZAPI → DPA → backend route install/withdraw 全链路验收
-      （FRR 注册、真实 route notification 与 DPA 入口已验收；当前 VPP
-      software runtime 仅有 local0，`ip_route_add_del` 返回 -54，等待可用
-      dataplane interface/path）
+- [~] v0.16 FRR BGP/OSPF → ZAPI → DPA → backend route install/withdraw 全链路验收
+      （FRR 注册、真实 route notification 与 DPA 入口已验收；static 链路已在
+      VPP 26.10 + FRR 10.3 上端到端通过：loop0/loop1 fixture、FRR static
+      type=4、`10.99.0.0/24` API FIB 引用与撤路消失；BGP=10、OSPF=7 的默认
+      映射已修正，但未重新跑 live BGP/OSPF 拓扑）
 - [x] 真实 FRR zebra ZAPI socket 可达性验收（V5）
 - [x] 增加可运行的 danos-fib daemon wiring，完成 live ZAPI → DPA → VPP route lifecycle 入口（`fib_live_bridge`；需特权拓扑验收）
 - [x] 3 节点 BGP/ECMP、OSPF 收敛与 ping 验收（F1/F2）

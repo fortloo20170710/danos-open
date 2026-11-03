@@ -37,7 +37,7 @@ quality, correct behavior or adequate security coverage.
 ## 2026-11-03 current baseline
 
 Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
-`bdce485` plus the NHGroup/NH tombstone-cascade tests (dirty). CTest 94/94
+`bdce485` plus the NHGroup/NH tombstone-cascade tests (dirty). CTest 95/95
 passed.
 
 | Metric | Executed / total | Coverage |

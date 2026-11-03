@@ -9,7 +9,7 @@
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
 release has not been qualified. The current tree passes Release CTest
-**94/94**, the deterministic backend contract gate, and GitHub CI (including
+**95/95**, the deterministic backend contract gate, and GitHub CI (including
 ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.0%
 (functions 91.1%, branches 60.1%). The full unified QEMU/VMware release gate
 was not rerun on this checkpoint.
@@ -76,7 +76,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current source checkpoint reports 94/94.
+by build configuration; the current source checkpoint reports 95/95.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)

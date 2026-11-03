@@ -12,9 +12,10 @@ MESSAGES="${MESSAGES:-0}"
 TIMEOUT="${TIMEOUT:-60}"
 LOG="${LOG:-$(mktemp /tmp/danos-frr-dynamic.XXXXXX.log)}"
 
+# FRR 10.3 route type values from lib/route_types.txt: OSPF=7, BGP=10.
 case "$PROTOCOL" in
-  bgp) ZAPI_PROTOCOL=2 ;;
-  ospf) ZAPI_PROTOCOL=3 ;;
+  bgp) ZAPI_PROTOCOL=10 ;;
+  ospf) ZAPI_PROTOCOL=7 ;;
   *) echo "usage: $0 [--protocol bgp|ospf] [--messages N]"; exit 2 ;;
 esac
 while [ "$#" -gt 0 ]; do
@@ -27,8 +28,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$PROTOCOL" in
-  bgp) ZAPI_PROTOCOL=2 ;;
-  ospf) ZAPI_PROTOCOL=3 ;;
+  bgp) ZAPI_PROTOCOL=10 ;;
+  ospf) ZAPI_PROTOCOL=7 ;;
   *) echo "[FAIL] unsupported protocol: $PROTOCOL"; exit 2 ;;
 esac
 
@@ -39,7 +40,8 @@ test -S "$VPP_SOCK" || { echo "[BLOCKED] VPP API socket missing: $VPP_SOCK"; exi
 echo "[INFO] protocol=$PROTOCOL zapi_protocol=$ZAPI_PROTOCOL"
 echo "[INFO] waiting up to ${TIMEOUT}s for externally provisioned FRR route add/withdraw events"
 set +e
-timeout "$TIMEOUT" env DANOS_ZAPI_PROTOCOL="$ZAPI_PROTOCOL" DANOS_ZAPI_DEBUG=1 \
+timeout "$TIMEOUT" env DANOS_ZAPI_PROTOCOL="$ZAPI_PROTOCOL" \
+  DANOS_ZAPI_ROUTE_TYPES="$ZAPI_PROTOCOL" DANOS_ZAPI_DEBUG=1 \
   "$BRIDGE" --zebra-sock "$ZEBRA_SOCK" --vpp-sock "$VPP_SOCK" \
   --messages "$MESSAGES" --reconnect 2>&1 | tee "$LOG"
 rc=${PIPESTATUS[0]}

@@ -11,7 +11,7 @@
   bookkeeping). Replayed sweeps are idempotent, and restoring the dependency
   reprograms the route. `tombstone_cascade` covers NHGroup removal, member-NH
   removal, ordering, idempotence and replay through both the reconciler and
-  the sweep. CTest is 94/94.
+  the sweep. CTest is 95/95.
 
 ### 2026-11-03 fail-closed corrupt NETCONF running snapshot
 

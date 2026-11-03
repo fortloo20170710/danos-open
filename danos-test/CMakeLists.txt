@@ -170,6 +170,9 @@ set_tests_properties(r3_ecmp_failover_serial_evidence PROPERTIES TIMEOUT 30)
 add_test(NAME r3_ecmp_counter_window
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_verify_r3_ecmp_counter_window.py)
 set_tests_properties(r3_ecmp_counter_window PROPERTIES TIMEOUT 30)
+add_test(NAME ensure_vpp_dataplane
+  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_ensure_vpp_dataplane.py)
+set_tests_properties(ensure_vpp_dataplane PROPERTIES TIMEOUT 30)
 add_test(NAME physical_receiver_counter_capture
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integration/test_capture_physical_receiver_serial.py)
 set_tests_properties(physical_receiver_counter_capture PROPERTIES TIMEOUT 30)
