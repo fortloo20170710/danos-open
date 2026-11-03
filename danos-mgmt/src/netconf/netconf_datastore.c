@@ -507,10 +507,9 @@ static void confirmed_recover_locked(void)
     if (st == NETCONF_DS_OK) {
         fprintf(stderr,
                 "netconf: rolled back an unconfirmed commit from a previous "
-                "boot (session %llu%s%s)\n",
+                "boot (session %llu%s)\n",
                 (unsigned long long)meta.session,
-                meta.persist[0] ? ", persist " : "",
-                meta.persist[0] ? meta.persist : "");
+                meta.persist[0] ? ", persisted token" : "");
         if (g_ds.confirmed_path) unlink(g_ds.confirmed_path);
     } else {
         fprintf(stderr, "netconf: confirmed-commit recovery failed (status %d); "

@@ -33,10 +33,15 @@ jobs:
           # proxy.golang.org occasionally returns transient stream errors while
           # fetching the module graph; retry before failing the lane.
           for attempt in 1 2 3; do
-            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+            # A proxy.golang.org stream can hang rather than fail.  Bound each
+            # attempt and fall back to direct GitHub fetches after the first.
+            proxy="https://proxy.golang.org,direct"
+            if [ "$attempt" -gt 1 ]; then proxy="direct"; fi
+            if timeout 180 env GOPROXY="$proxy" GOFLAGS=-mod=readonly \
+                go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
               break
             fi
-            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            echo "gnmic build failed/hung (attempt $attempt, proxy=$proxy); retrying" >&2
             sleep $((attempt * 10))
           done
           test -x /usr/local/bin/gnmic
@@ -239,10 +244,15 @@ jobs:
           # proxy.golang.org occasionally returns transient stream errors while
           # fetching the module graph; retry before failing the lane.
           for attempt in 1 2 3; do
-            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+            # A proxy.golang.org stream can hang rather than fail.  Bound each
+            # attempt and fall back to direct GitHub fetches after the first.
+            proxy="https://proxy.golang.org,direct"
+            if [ "$attempt" -gt 1 ]; then proxy="direct"; fi
+            if timeout 180 env GOPROXY="$proxy" GOFLAGS=-mod=readonly \
+                go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
               break
             fi
-            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            echo "gnmic build failed/hung (attempt $attempt, proxy=$proxy); retrying" >&2
             sleep $((attempt * 10))
           done
           test -x /usr/local/bin/gnmic
@@ -376,10 +386,15 @@ jobs:
           # proxy.golang.org occasionally returns transient stream errors while
           # fetching the module graph; retry before failing the lane.
           for attempt in 1 2 3; do
-            if GOFLAGS=-mod=readonly go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
+            # A proxy.golang.org stream can hang rather than fail.  Bound each
+            # attempt and fall back to direct GitHub fetches after the first.
+            proxy="https://proxy.golang.org,direct"
+            if [ "$attempt" -gt 1 ]; then proxy="direct"; fi
+            if timeout 180 env GOPROXY="$proxy" GOFLAGS=-mod=readonly \
+                go build -o /usr/local/bin/gnmic github.com/openconfig/gnmic; then
               break
             fi
-            echo "gnmic build failed (attempt $attempt); retrying" >&2
+            echo "gnmic build failed/hung (attempt $attempt, proxy=$proxy); retrying" >&2
             sleep $((attempt * 10))
           done
           test -x /usr/local/bin/gnmic
