@@ -38,14 +38,13 @@ quality, correct behavior or adequate security coverage.
 
 Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
 d771a5a plus the NETCONF daemon and route-ECMP readback worktree changes
-(dirty). CTest 86/86 passed after fixing the rootfs fixture's non-root tar
-extraction to preserve the archived mode.
+(dirty), including the human-review follow-up. CTest 87/87 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 8739 / 10852 | 80.5% |
-| Functions | 739 / 827 | 89.4% |
-| Branches | 5090 / 8566 | 59.4% |
+| Lines | 8963 / 11169 | 80.2% |
+| Functions | — | 89.3% |
+| Branches | 5272 / 8914 | 59.1% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and

@@ -72,7 +72,7 @@
 - [x] NETCONF candidate/startup 数据存储、commit/discard/lock/unlock/copy-config/delete-config
 - [x] NETCONF validate（具名 datastore 与 inline config；对 modeled interface leaves 做语义校验）
 - [~] NETCONF confirmed commit：共享 daemon 已支持跨 SSH 会话 persist/persist-id、超时回滚与会话关闭回滚；daemon 重启后的持久化 pending-commit 恢复仍未实现，不作生产验收
-- [x] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；真实 sshd 双会话验收通过
+- [~] NETCONF 单守护进程托管：`danos-netconfd` 托管 candidate、锁、running 与 confirmed-commit 定时器，SSH subsystem 通过 Unix socket 代理；角色由 uid 策略决定并失败关闭，真实 sshd 双会话验收通过。剩余：非 root 子系统的 socket 组权限部署示例、hello 后 idle-session 超时
 
 ## 质量
 - [x] libFuzzer 集成 target/CI（本地未安装 clang）

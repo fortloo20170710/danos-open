@@ -26,11 +26,14 @@ behaviour).
 
 ## Server configuration
 
-Install the daemon and subsystem (both default to
-`${CMAKE_INSTALL_SBINDIR}`) and add the subsystem to `sshd_config`. Start
-`danos-netconfd` with the same startup path before accepting sessions:
+Install the daemon, subsystem and systemd unit (`danos-netconfd.service`,
+which creates `/run/danos` and `/var/lib/danos`) and add the subsystem to
+`sshd_config`. Start `danos-netconfd` with the same startup path before
+accepting sessions:
 
 ```
+systemctl enable --now danos-netconfd
+# equivalent manual form:
 danos-netconfd --socket /run/danos/netconf.sock \
   --startup /var/lib/danos/netconf-startup.db
 ```
@@ -50,11 +53,41 @@ SetEnv DANOS_NETCONF_ROLE=admin
 Subsystem netconf /usr/local/sbin/danos-netconf-subsystem --daemon /run/danos/netconf.sock
 ```
 
-The socket directory is the access boundary: create `/run/danos` root-owned
-and not world-writable. The daemon checks `SO_PEERCRED` against the claimed
-user name when that name resolves, so a local process cannot claim another
-user's audit identity. The subsystem process is spawned by `sshd` as the
-authenticated user, so the daemon does not see the password or key.
+### Socket trust boundary and RBAC
+
+The Unix socket is a local authorization boundary, not just an audit channel.
+The daemon authenticates the claimed user against `SO_PEERCRED` and fails
+closed: an unavailable peer credential, an unresolvable user, or a uid that
+does not match the claimed name rejects the connection before the NETCONF
+hello.
+
+The RBAC role is **not** taken from the client. The subsystem's
+`DANOS_NETCONF_ROLE` (and the role field in the socket preamble) is audit
+context only. The daemon derives the effective role from the peer uid:
+
+- default policy: uid 0 is `admin`, every other uid is `viewer`;
+- `DANOS_NETCONF_ROLE_MAP` (default `/etc/danos/netconf-roles`) overrides the
+  default with one `<user-or-uid> <role>` mapping per line. Unknown users
+  remain `viewer`; unknown role names are ignored.
+
+```
+# /etc/danos/netconf-roles
+root admin
+netadmin operator
+1001 viewer
+```
+
+Keep the mapping file root-owned and not group/other writable; it grants
+authorization to local uids.
+
+The packaged unit uses a root-owned, root-only `/run/danos`, so only root
+subsystems can connect. To serve non-root SSH users, provision a dedicated
+group, set `RuntimeDirectoryMode=0750` with that group in a unit override, and
+add the subsystem users to it. Do not make the socket world-writable: any
+local process that can connect is authenticated by uid, but a world-writable
+socket still widens the attack surface. The subsystem process is spawned by
+`sshd` as the authenticated user, so the daemon does not see the password or
+key.
 
 Restart `sshd` after the change. A client connects with the subsystem name:
 
@@ -170,7 +203,10 @@ The timer and baseline are process-local: a daemon restart loses a pending
 confirmed commit. Rollback-after-reboot therefore remains unqualified, because
 the in-memory running store is rebuilt and there is no durable pending-commit
 record. Keep `<persist>` out of a release gate that requires RFC 6241 reboot
-recovery until the running store itself is durable.
+recovery until the running store itself is durable. Candidate locks follow
+RFC 6241 7.5 for both plain and confirmed commits; a cross-session `persist-id`
+confirmation skips the lock check only when the candidate is empty (there is
+no queued edit to publish).
 
 Locks follow RFC 6241: a lock belongs to one session, blocks writes to that
 datastore by other sessions (`in-use`), refuses a second lock
@@ -243,7 +279,12 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
   confirmed commit and its rollback baseline; durable pending-commit recovery
   across reboot remains open (see "Confirmed commit").
 - The daemon socket is a local trust boundary. Run it in a root-owned
-  directory and do not expose it to unprivileged local writers.
+  directory and do not expose it to unprivileged local writers. Roles come
+  from the uid policy, never from the client preamble.
+- A silent client is bounded by a 5 s preamble timeout and a 10 s hello
+  timeout, with a 128-connection cap, but there is no idle-session timeout
+  after the hello. A second daemon is refused by a lock file, and the socket
+  is unlinked only when its inode still belongs to that instance.
 - `copy-config` does not accept an inline `<config>` source or `<url>`.
 - `edit-config` covers interface `mtu` and `enabled`. Other subtrees are not
   modeled by the server yet.

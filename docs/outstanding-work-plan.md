@@ -9,8 +9,14 @@
   `netconf_session.c`; the in-process subsystem remains as a no-daemon
   fallback. A persist token can be confirmed or cancelled from another SSH
   session, while a non-persisted confirmed commit still rolls back when its
-  issuing session closes. The daemon restart boundary is explicitly not
-  qualified: a pending commit and its baseline are in-memory only.
+  issuing session closes. After review, the socket preamble role is audit-only:
+  the daemon derives RBAC from `SO_PEERCRED` + a uid policy (`root=admin`,
+  others=viewer, overridable via `DANOS_NETCONF_ROLE_MAP`) and fails closed on
+  missing credentials or NSS lookup failure. Confirmed commits honour candidate
+  locks, and the daemon has a connection cap, preamble/hello timeouts, a
+  single-instance lock, inode-checked socket cleanup and a systemd unit. The
+  daemon restart boundary is explicitly not qualified: a pending commit and its
+  baseline are in-memory only.
 - Verification: new `netconf_daemon` CTest covers malformed/missing identity
   preambles, shared locks, cross-session persist confirm/cancel, timer rollback,
   disconnect rollback and SIGTERM with a live session. The loopback-sshd
@@ -19,15 +25,17 @@
   cross-session case.
 - OPER readback: the netlink backend now programs route metric and ECMP
   `RTA_MULTIPATH`, and verifies the complete next-hop set and metric through a
-  route-specific hook. A present but different route returns
-  `DANOS_ERR_VERIFY_FAIL`, clears the stale OPER copy and is counted as a failed
-  programming pass; an absent route still repairs in the same pass. The mock
-  backend stores the resolved next-hop set so the deterministic pipeline test
-  covers ECMP mismatch, recovery and withdrawal. VRF readback and a VPP
-  interface/route dump remain open because the VPP message layer has no dump
-  binding yet.
-- Coverage: fresh gcovr run on the changed tree is 80.5% lines, 89.4%
-  functions, 59.4% branches with CTest 86/86; the 79% line gate passes.
+  route-specific hook using `RTM_F_FIB_MATCH`. A present-but-different route
+  now triggers an idempotent repair in the same pass; if the rewrite still
+  does not verify, the ledger entry is dropped and the bounded retry/backoff
+  path records the failure. The default prefix is reported `NOT_SUPPORTED`
+  rather than a false absence because current kernels reject FIB_MATCH for
+  `0.0.0.0/0`. The live netlink test now asserts a real route is present and a
+  metric mismatch is detected (the old `OK || NOT_FOUND` assertion could not
+  fail). VRF readback and a VPP interface/route dump remain open because the
+  VPP message layer has no dump binding yet.
+- Coverage: fresh gcovr run on the changed tree is 80.2% lines, 89.3%
+  functions, 59.1% branches with CTest 87/87; the 79% line gate passes.
 - Hardware lanes remain environment-open. The host exposes only
   `0000:04:00.0` (`10ec:8168`, bound to `r8169`) with HugePages 0 and no
   qualified DPDK NIC/ISO, so the PCI lane still emits `SKIP` plus
