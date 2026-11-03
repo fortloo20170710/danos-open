@@ -32,6 +32,7 @@
 
 typedef struct {
     bool              initialized;
+    bool              init_failed;
     char             *path;
     char             *running_path;     /* durable committed running state */
     char             *confirmed_path;   /* durable pending confirmed commit */
@@ -531,15 +532,26 @@ static void confirmed_recover_locked(void)
  * committed running snapshot is therefore written next to the startup
  * datastore in the same checksummed format, so a daemon restart/reboot does
  * not come up with an empty running configuration. */
+static bool running_corrupt_allowed(void)
+{
+    const char *v = getenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING");
+    return v && (strcmp(v, "1") == 0 || strcasecmp(v, "true") == 0 ||
+                 strcasecmp(v, "yes") == 0);
+}
+
+/* Returns 0 for absent/valid, -1 for unreadable/corrupt.  A damaged running
+ * snapshot must not silently become an empty configuration: the caller
+ * refuses startup unless the explicit override is set. */
 static int running_load_locked(void)
 {
     if (!g_ds.running_path) return 0;
     FILE *f = fopen(g_ds.running_path, "rb");
     if (!f) {
-        if (errno != ENOENT)
-            fprintf(stderr, "netconf: cannot open running state %s: %s\n",
-                    g_ds.running_path, strerror(errno));
-        return 0;
+        if (errno == ENOENT) return 0;
+        int err = errno;
+        fprintf(stderr, "netconf: cannot open running state %s: %s\n",
+                g_ds.running_path, strerror(err));
+        return -1;
     }
 
     uint8_t header[DS_HEADER_SIZE];
@@ -547,13 +559,15 @@ static int running_load_locked(void)
         memcmp(header, DS_FILE_MAGIC, 8) != 0 ||
         get_u32(header + 8) != DS_FILE_VERSION) {
         fclose(f);
-        fprintf(stderr, "netconf: ignoring corrupt running state %s\n",
+        fprintf(stderr, "netconf: corrupt running state %s\n",
                 g_ds.running_path);
         return -1;
     }
     uint32_t count = get_u32(header + 12);
     if (count > DS_MAX_OBJECTS) {
         fclose(f);
+        fprintf(stderr, "netconf: corrupt running state %s\n",
+                g_ds.running_path);
         return -1;
     }
 
@@ -565,7 +579,7 @@ static int running_load_locked(void)
     if (records_read(f, count, snapshot) != 0 || fgetc(f) != EOF) {
         danos_object_store_destroy(snapshot);
         fclose(f);
-        fprintf(stderr, "netconf: ignoring corrupt running state %s\n",
+        fprintf(stderr, "netconf: corrupt running state %s\n",
                 g_ds.running_path);
         return -1;
     }
@@ -600,7 +614,7 @@ static int running_save_locked(void)
 void netconf_ds_init(const char *startup_path)
 {
     pthread_mutex_lock(&g_ds_lock);
-    if (g_ds.initialized) {
+    if (g_ds.initialized || g_ds.init_failed) {
         pthread_mutex_unlock(&g_ds_lock);
         return;
     }
@@ -667,10 +681,32 @@ void netconf_ds_init(const char *startup_path)
     g_ds.startup_valid = startup_load() == 0;
     /* Restore the committed running configuration first, then roll back any
      * pending unconfirmed commit from a previous boot (RFC 6241 8.4). */
-    running_load_locked();
+    if (running_load_locked() != 0) {
+        if (!running_corrupt_allowed()) {
+            fprintf(stderr,
+                    "netconf: refusing startup: running state is unreadable. "
+                    "Repair or remove %s, or set "
+                    "DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1 to start empty.\n",
+                    g_ds.running_path ? g_ds.running_path : "the state file");
+            g_ds.init_failed = true;
+            pthread_mutex_unlock(&g_ds_lock);
+            return;
+        }
+        fprintf(stderr,
+                "netconf: DANOS_NETCONF_ALLOW_CORRUPT_RUNNING is set; "
+                "starting with an empty running datastore\n");
+    }
     confirmed_recover_locked();
     g_ds.initialized = true;
     pthread_mutex_unlock(&g_ds_lock);
+}
+
+bool netconf_ds_ready(void)
+{
+    pthread_mutex_lock(&g_ds_lock);
+    bool ready = g_ds.initialized;
+    pthread_mutex_unlock(&g_ds_lock);
+    return ready;
 }
 
 void netconf_ds_fini(void)

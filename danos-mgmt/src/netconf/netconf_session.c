@@ -102,6 +102,11 @@ netconf_session_t *netconf_session_new(int rfd, int wfd,
     s->wfd = wfd;
 
     netconf_init(&s->ctx, 830);
+    if (!netconf_ds_ready()) {
+        netconf_fini(&s->ctx);
+        free(s);
+        return NULL;
+    }
     s->ctx.session_id = netconf_new_session_id();
     if (!s->ctx.session_id) s->ctx.session_id = 1;
     if (identity && *identity)

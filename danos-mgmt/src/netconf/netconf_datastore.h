@@ -52,6 +52,10 @@ typedef enum {
  * or the built-in default.  A missing file is an empty startup datastore. */
 void netconf_ds_init(const char *startup_path);
 
+/* True once the datastores loaded successfully.  False after a failed init
+ * (for example a corrupt running snapshot without the explicit override). */
+bool netconf_ds_ready(void);
+
 /* Release every datastore and lock.  A later init starts from the file. */
 void netconf_ds_fini(void);
 

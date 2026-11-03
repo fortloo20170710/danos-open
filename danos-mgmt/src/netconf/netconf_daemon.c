@@ -353,6 +353,13 @@ int main(int argc, char **argv)
 
     (void)danos_authz_init(NULL);
     netconf_ds_init(startup_path);
+    if (!netconf_ds_ready()) {
+        fprintf(stderr, "netconfd: refusing to start with an unreadable running "
+                "datastore\n");
+        netconf_ds_fini();
+        danos_authz_shutdown();
+        return 1;
+    }
 
     int lfd = listen_socket(socket_path, socket_gid, (mode_t)socket_mode);
     if (lfd < 0) {

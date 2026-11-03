@@ -169,6 +169,28 @@ def main():
                                 stderr=subprocess.DEVNULL, timeout=10)
         assert result.returncode == expected, (args, result.returncode)
 
+    # A corrupt running snapshot must refuse startup unless the explicit
+    # override is set; the override starts empty and can be committed over.
+    corrupt = startup + ".running"
+    with open(corrupt, "wb") as f:
+        f.write(b"not a running snapshot")
+    bad = subprocess.run(
+        [daemon, "--socket", sock + "-bad", "--startup", startup],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        env=env_for(role_map=role_map), timeout=15)
+    assert bad.returncode != 0
+    assert b"refusing" in bad.stderr or b"corrupt" in bad.stderr, bad.stderr
+
+    override_env = env_for(role_map=role_map)
+    override_env["DANOS_NETCONF_ALLOW_CORRUPT_RUNNING"] = "1"
+    over = subprocess.Popen(
+        [daemon, "--socket", sock + "-override", "--startup", startup],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=override_env)
+    wait_socket(sock + "-override")
+    over.send_signal(signal.SIGTERM)
+    assert over.wait(timeout=10) == 0
+    os.unlink(corrupt)
+
     try:
         wait_socket(sock)
         env = env_for(role_map=role_map)

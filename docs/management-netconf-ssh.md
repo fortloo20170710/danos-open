@@ -222,6 +222,13 @@ commit, confirmed-commit publish, `copy-config` to running, direct
 accepting sessions; a write failure fails the commit instead of acknowledging
 state that would not survive a restart.
 
+A corrupt or unreadable running snapshot is **fail-closed**: the daemon refuses
+to start rather than silently serving an empty configuration. Operators must
+repair/remove the file, or set
+`DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` to explicitly start empty (the next
+successful commit replaces the damaged file). A missing file is an empty
+running configuration, not an error.
+
 The pending commit is durable too. When a confirmed commit is armed, the daemon
 writes a checksummed file containing the rollback baseline, deadline, session
 and persist token next to the startup datastore (`<startup>.confirmed`, or
@@ -311,8 +318,10 @@ Interop Gate workflow runs the same script in the `netconf-ssh` job.
 - Candidate state and locks are shared between SSH sessions while
   `danos-netconfd` runs. The committed running configuration and a pending
   confirmed-commit rollback baseline are durable across restart/reboot in
-  checksummed files next to the startup datastore. This is the NETCONF
-  subsystem's own snapshot; mgrd's WAL remains the system control-plane WAL.
+  checksummed files next to the startup datastore. A damaged running file
+  refuses startup unless `DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` is set. This
+  is the NETCONF subsystem's own snapshot; mgrd's WAL remains the system
+  control-plane WAL.
 - The daemon socket is a local trust boundary. Run it in a root-owned
   directory and do not expose it to unprivileged local writers. Roles come
   from the uid policy, never from the client preamble.

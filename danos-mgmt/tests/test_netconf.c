@@ -930,7 +930,9 @@ int test_netconf_running_save_failure(const char *base_path)
 
     netconf_ds_fini();
     setenv("DANOS_NETCONF_RUNNING", dir, 1);
+    setenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING", "1", 1);
     netconf_ds_init(path);
+    assert(netconf_ds_ready());
     seed_iface(7401, "sf0", 1500, true);
 
     netconf_ctx_t ctx;
@@ -948,6 +950,7 @@ int test_netconf_running_save_failure(const char *base_path)
     free(resp);
 
     unsetenv("DANOS_NETCONF_RUNNING");
+    unsetenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING");
     netconf_fini(&ctx);
     netconf_ds_fini();
     rmdir(dir);
@@ -1040,6 +1043,59 @@ int test_netconf_datastore_api_errors(void)
     return 0;
 }
 
+/* A damaged running snapshot must not silently load as an empty config.
+ * Without the override, startup is refused; with it, the daemon may start
+ * empty and the next commit replaces the bad file. */
+int test_netconf_corrupt_running(const char *base_path)
+{
+    char path[160], running[192];
+    snprintf(path, sizeof(path), "%s.corruptrun", base_path);
+    snprintf(running, sizeof(running), "%s.running", path);
+    unlink(path);
+    unlink(running);
+    FILE *f = fopen(running, "wb");
+    assert(f != NULL);
+    assert(fwrite("not a running snapshot", 1, 22, f) == 22);
+    fclose(f);
+
+    netconf_ds_fini();
+    unsetenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING");
+    netconf_ds_init(path);
+    assert(!netconf_ds_ready());
+    netconf_ds_init(path);          /* repeated init stays failed */
+    assert(!netconf_ds_ready());
+    netconf_ds_fini();
+
+    setenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING", "1", 1);
+    netconf_ds_init(path);
+    assert(netconf_ds_ready());
+    seed_iface(7501, "cr0", 1500, true);
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 95;
+    edit_candidate_mtu(&ctx, 7501, "cr0", "9000");
+    char *resp = nc_call(&ctx, "<rpc><commit/></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+    netconf_fini(&ctx);
+    netconf_ds_fini();
+
+    /* The override allowed a commit to replace the damaged file. */
+    unsetenv("DANOS_NETCONF_ALLOW_CORRUPT_RUNNING");
+    netconf_ds_init(path);
+    assert(netconf_ds_ready());
+    danos_iface_t ifc;
+    assert(find_iface("cr0", &ifc));
+    assert(ifc.mtu == 9000);
+    netconf_ds_fini();
+
+    unlink(running);
+    unlink(path);
+    printf("[PASS] test_netconf_corrupt_running: damaged state refuses startup "
+           "unless explicitly overridden\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--recover-check") == 0)
@@ -1074,6 +1130,7 @@ int main(int argc, char **argv)
     if (test_netconf_running_save_failure(path) != 0) failed++;
     if (test_netconf_confirmed_save_failure(path) != 0) failed++;
     if (test_netconf_datastore_api_errors() != 0) failed++;
+    if (test_netconf_corrupt_running(path) != 0) failed++;
 
     netconf_ds_fini();
     char aux[192];
