@@ -329,6 +329,15 @@ static void test_oper_route_ecmp_verify(void)
     assert(ops->route_readback(&good, &oper, ops->user) == DANOS_OK);
     assert(oper.metric == rt.metric);
 
+    /* ECMP members are a set: the kernel may report them in any order. */
+    danos_resolved_route_t reordered = good;
+    memcpy(reordered.nh_gw[0], good.nh_gw[1], 4);
+    memcpy(reordered.nh_gw[1], good.nh_gw[0], 4);
+    uint32_t tmp_oif = reordered.nh_oif[0];
+    reordered.nh_oif[0] = reordered.nh_oif[1];
+    reordered.nh_oif[1] = tmp_oif;
+    assert(ops->route_readback(&reordered, &oper, ops->user) == DANOS_OK);
+
     /* A partially withdrawn/rewritten ECMP group: one member changed.  The
      * next pass must repair it with an idempotent REPLACE, not report a
      * permanent failure. */

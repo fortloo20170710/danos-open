@@ -818,26 +818,33 @@ static danos_status_t ops_route_readback(
 
     bool expected_blackhole =
         (route->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
+    struct nl_verify_expected expected[MOCK_ROUTE_MAX_NH];
     uint32_t expected_count = 0;
     if (!expected_blackhole) {
-        if (resolved->nh_count > 0)
+        if (resolved->nh_count > 0) {
             expected_count = resolved->nh_count > MOCK_ROUTE_MAX_NH
                                  ? MOCK_ROUTE_MAX_NH : resolved->nh_count;
-        else if (resolved->has_gw)
+            for (uint32_t i = 0; i < expected_count; i++) {
+                memcpy(expected[i].gw, resolved->nh_gw[i], 4);
+                expected[i].oif = resolved->nh_oif[i];
+                expected[i].used = false;
+            }
+        } else if (resolved->has_gw) {
             expected_count = 1;
+            memcpy(expected[0].gw, resolved->gw, 4);
+            expected[0].oif = resolved->oif;
+            expected[0].used = false;
+        }
     }
     if (r->blackhole != expected_blackhole ||
         r->metric != route->metric || r->nh_count != expected_count)
         return DANOS_ERR_VERIFY_FAIL;
 
-    for (uint32_t i = 0; i < expected_count; i++) {
-        const uint8_t *gw = resolved->nh_count > 0
-                                ? resolved->nh_gw[i] : resolved->gw;
-        uint32_t oif = resolved->nh_count > 0
-                           ? resolved->nh_oif[i] : resolved->oif;
-        if (memcmp(r->nh_gw[i], gw, 4) != 0)
-            return DANOS_ERR_VERIFY_FAIL;
-        if (oif && r->nh_oif[i] && oif != r->nh_oif[i])
+    /* Compare as a multiset, matching the real FIB verifier: the kernel is
+     * free to report ECMP members in any order. */
+    for (uint32_t i = 0; i < r->nh_count; i++) {
+        if (!nl_verify_nh(expected, expected_count, r->nh_gw[i],
+                          r->nh_oif[i]))
             return DANOS_ERR_VERIFY_FAIL;
     }
     memcpy(out, route, sizeof(*route));
