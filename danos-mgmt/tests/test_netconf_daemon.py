@@ -158,6 +158,17 @@ def main():
         stderr=subprocess.PIPE,
         env=env_for(role_map=role_map),
     )
+    # CLI argument handling and fail-fast policy validation.
+    for args, expected in (
+            (["--help"], 0),
+            (["--bogus"], 2),
+            (["--socket-mode", "999"], 2),
+            (["--socket-group", "nosuchgroup"], 2)):
+        result = subprocess.run([daemon, *args],
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, timeout=10)
+        assert result.returncode == expected, (args, result.returncode)
+
     try:
         wait_socket(sock)
         env = env_for(role_map=role_map)

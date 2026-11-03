@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <assert.h>
 
 int test_netconf_parse(void)
@@ -915,6 +916,130 @@ int test_netconf_running_persistence(const char *base_path)
     return 0;
 }
 
+/* A durable-write failure must fail the commit and restore the pre-commit
+ * running state rather than acknowledging state that would not survive a
+ * restart.  Pointing the running path at a directory makes the rename fail. */
+int test_netconf_running_save_failure(const char *base_path)
+{
+    char path[160], dir[192];
+    snprintf(path, sizeof(path), "%s.savefail", base_path);
+    snprintf(dir, sizeof(dir), "%s.dir", path);
+    unlink(path);
+    rmdir(dir);
+    assert(mkdir(dir, 0700) == 0);
+
+    netconf_ds_fini();
+    setenv("DANOS_NETCONF_RUNNING", dir, 1);
+    netconf_ds_init(path);
+    seed_iface(7401, "sf0", 1500, true);
+
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 93;
+    edit_candidate_mtu(&ctx, 7401, "sf0", "9000");
+    char *resp = nc_call(&ctx, "<rpc><commit/></rpc>");
+    assert(strstr(resp, "operation-failed") != NULL);
+    free(resp);
+    danos_iface_t ifc;
+    assert(find_iface("sf0", &ifc));
+    assert(ifc.mtu == 1500);        /* rolled back after the failed write */
+    resp = nc_call(&ctx, "<rpc><discard-changes/></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+
+    unsetenv("DANOS_NETCONF_RUNNING");
+    netconf_fini(&ctx);
+    netconf_ds_fini();
+    rmdir(dir);
+    unlink(path);
+    printf("[PASS] test_netconf_running_save_failure: commit fails and "
+           "restores state when running cannot be persisted\n");
+    return 0;
+}
+
+/* The same fail-closed rule for the pending confirmed-commit file. */
+int test_netconf_confirmed_save_failure(const char *base_path)
+{
+    char path[160], dir[192];
+    snprintf(path, sizeof(path), "%s.cfsavefail", base_path);
+    snprintf(dir, sizeof(dir), "%s.dir", path);
+    unlink(path);
+    rmdir(dir);
+    assert(mkdir(dir, 0700) == 0);
+
+    netconf_ds_fini();
+    setenv("DANOS_NETCONF_CONFIRMED", dir, 1);
+    netconf_ds_init(path);
+    seed_iface(7402, "cf0", 1500, true);
+
+    netconf_ctx_t ctx;
+    netconf_init(&ctx, 830);
+    ctx.session_id = 94;
+    edit_candidate_mtu(&ctx, 7402, "cf0", "9000");
+    char *resp = nc_call(&ctx,
+        "<rpc><commit><confirmed/><confirm-timeout>60</confirm-timeout>"
+        "</commit></rpc>");
+    assert(strstr(resp, "operation-failed") != NULL);
+    free(resp);
+    danos_iface_t ifc;
+    assert(find_iface("cf0", &ifc));
+    assert(ifc.mtu == 1500);
+    assert(!netconf_ds_confirmed_pending());
+    resp = nc_call(&ctx, "<rpc><discard-changes/></rpc>");
+    assert(strstr(resp, "<ok/>") != NULL);
+    free(resp);
+
+    unsetenv("DANOS_NETCONF_CONFIRMED");
+    netconf_fini(&ctx);
+    netconf_ds_fini();
+    rmdir(dir);
+    unlink(path);
+    printf("[PASS] test_netconf_confirmed_save_failure: armed commit fails "
+           "closed when the rollback file cannot be written\n");
+    return 0;
+}
+
+int test_netconf_datastore_api_errors(void)
+{
+    uint8_t buf[64];
+    size_t size = sizeof(buf);
+    assert(netconf_ds_read((netconf_datastore_t)0, DANOS_OBJ_IFACE, 1,
+                           (void **)&buf, &size) == NETCONF_DS_INVALID);
+    assert(netconf_ds_write(NETCONF_DS_RUNNING, DANOS_OBJ_IFACE, 1,
+                            buf, sizeof(buf)) == NETCONF_DS_INVALID);
+    assert(netconf_ds_delete(NETCONF_DS_RUNNING, DANOS_OBJ_IFACE, 1)
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_validate((netconf_datastore_t)0)
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_copy((netconf_datastore_t)0, NETCONF_DS_RUNNING, 1)
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_copy(NETCONF_DS_RUNNING, NETCONF_DS_RUNNING, 1)
+           == NETCONF_DS_OK);
+    assert(netconf_ds_delete_config(NETCONF_DS_RUNNING, 1)
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_lock((netconf_datastore_t)0, 1, "x")
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_unlock((netconf_datastore_t)0, 1)
+           == NETCONF_DS_INVALID);
+    assert(!netconf_ds_locked_by_other((netconf_datastore_t)0, 1));
+
+    netconf_commit_opts_t opts = {0};
+    opts.persist = "token";
+    assert(netconf_ds_commit(1, &opts) == NETCONF_DS_INVALID);
+    opts = (netconf_commit_opts_t){ .confirmed = true, .persist_id = "x" };
+    assert(netconf_ds_commit(1, &opts) == NETCONF_DS_INVALID);
+    char too_long[128];
+    memset(too_long, 'a', sizeof(too_long) - 1);
+    too_long[sizeof(too_long) - 1] = '\0';
+    opts = (netconf_commit_opts_t){ .confirmed = true, .persist = too_long };
+    assert(netconf_ds_commit(1, &opts) == NETCONF_DS_INVALID);
+    assert(netconf_ds_cancel_commit(1, "nope") == NETCONF_DS_INVALID);
+
+    printf("[PASS] test_netconf_datastore_api_errors: invalid arguments and "
+           "option combinations are refused\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     if (argc == 3 && strcmp(argv[1], "--recover-check") == 0)
@@ -946,6 +1071,9 @@ int main(int argc, char **argv)
     if (test_netconf_confirmed_commit() != 0) failed++;
     if (test_netconf_confirmed_recovery(path) != 0) failed++;
     if (test_netconf_running_persistence(path) != 0) failed++;
+    if (test_netconf_running_save_failure(path) != 0) failed++;
+    if (test_netconf_confirmed_save_failure(path) != 0) failed++;
+    if (test_netconf_datastore_api_errors() != 0) failed++;
 
     netconf_ds_fini();
     char aux[192];

@@ -1,5 +1,32 @@
 # Outstanding work plan
 
+### 2026-11-03 error-path coverage for NETCONF, VPP dumps and netlink
+
+- Branch coverage rose from 58.9% to 60.0% while line coverage moved from
+  80.2% to 81.0% (functions 90.3% -> 91.1%); the 79% line gate remains intact.
+  Focused additions:
+  - `netconf_session`: direct pipe-driven tests for missing base 1.0, EOF,
+    server-hello write failure, oversized hello, malformed pipelined and
+    runtime chunked frames, base-1.1 request/reply, reply-write failure,
+    invalid read descriptors and NULL APIs (branch 52.6% -> 73.7%).
+  - `vpp_dump`: NULL/truncated bodies at every offset, over-large path counts,
+    over-large label counts, non-NUL fixed names and IPv6 routes/paths
+    (54.5% -> 84.1%).
+  - `danos_netlink`: mock interface/VRF/ECMP/interface-only/blackhole readback,
+    metric/member mismatch, invalid ids/sizes, idempotent programming and
+    withdrawal (37.0% -> 41.9%).
+  - `netconf_datastore`: running/confirmed save-failure rollback, invalid
+    datastore/commit arguments and option combinations (57.7% -> 63.2%).
+  - `backend_ops`: readback I/O failure preserves the ledger,
+    `NOT_SUPPORTED` is not drift, `NOT_FOUND` repairs, success repopulates
+    OPER.
+  - `netconf_daemon`: CLI option validation (help, unknown option, invalid
+    socket mode/group) and role group rules (53.2% -> 63.5%).
+- Remaining low coverage is dominated by real-kernel netlink branches that
+  need privileged hardware/netns variations, and broad datastore lock-state
+  combinations; further gains should be driven by real acceptance lanes rather
+  than synthetic unit coverage.
+
 ### 2026-11-03 confirmed-commit reboot recovery and VRF/VPP OPER readback
 
 - NETCONF committed running state is now durable: every successful plain or
@@ -26,8 +53,8 @@
   injection exercises the decoders and adapter without VPP, and the live VPP
   lane gains V6 checks for interface, VRF, route and mismatch detection.
 - Verification: Release CTest 90/90, targeted ASan/UBSan and TSan pass, and
-  the fresh coverage run is 9395/11718 lines (80.2%), 780/864 functions
-  (90.3%) and 5488/9326 branches (58.8%); the 79% line gate passes.
+  the fresh coverage run was 9395/11718 lines (80.2%), 780/864 functions
+  (90.3%) and 5488/9326 branches (58.8%); the 79% line gate passed.
 - Known limits: VPP `ip_route` dumps do not expose the configured metric. A
   metric-bearing route now returns `DANOS_ERR_NOT_SUPPORTED` from VPP readback
   (unit and V6 tests) instead of claiming path equality verified it; metric 0

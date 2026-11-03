@@ -100,6 +100,18 @@ target_link_libraries(netlink_route_readback_test PRIVATE danos-netlink danos-co
 target_compile_options(netlink_route_readback_test PRIVATE -UNDEBUG)
 add_test(NAME netlink_route_readback COMMAND netlink_route_readback_test)
 
+add_executable(netlink_readback_unit_test
+  integration_test/netlink_readback_unit_test.c)
+target_link_libraries(netlink_readback_unit_test PRIVATE danos-netlink danos-core pthread)
+target_compile_options(netlink_readback_unit_test PRIVATE -UNDEBUG)
+add_test(NAME netlink_readback_unit COMMAND netlink_readback_unit_test)
+
+add_executable(backend_readback_failure_test
+  integration_test/backend_readback_failure_test.c)
+target_link_libraries(backend_readback_failure_test PRIVATE danos-core danos-dpa pthread)
+target_compile_options(backend_readback_failure_test PRIVATE -UNDEBUG)
+add_test(NAME backend_readback_failure COMMAND backend_readback_failure_test)
+
 # Live ECMP readback in a private netns.  Non-root runs print [SKIP] and pass;
 # the K6 kernel lane runs it as root and requires [PASS].
 add_executable(netlink_route_ecmp_readback_test
