@@ -17,6 +17,7 @@
  * src/vlibmemory/socket.c (see also vpp_wire.h).
  */
 
+#include "vpp_api.h"
 #include "vpp_wire.h"
 #include <danos/dpa.h>
 #include <stdio.h>
@@ -77,6 +78,16 @@ typedef struct {
 
 static vpp_api_ctx_impl_t g_ctx;
 static vpp_mock_stat_t    g_mock_stats[VPP_MOCK_STAT_MAX];
+
+#define VPP_MOCK_DUMP_MAX 16
+typedef struct {
+    char     detail_name[64];
+    uint8_t *body;
+    uint32_t len;
+} vpp_mock_dump_t;
+static vpp_mock_dump_t g_mock_dumps[VPP_MOCK_DUMP_MAX];
+static uint32_t g_mock_dump_count;
+
 static bool g_initialized = false;
 
 /* The binary API is one shared socket with one request context counter, and
@@ -151,6 +162,7 @@ int danos_vpp_api_init(void)
         snprintf(g_ctx.stat_sock_path, sizeof(g_ctx.stat_sock_path), "%s", stat_env);
     g_ctx.reconnect_delay_ms = VPP_RECONNECT_INITIAL_MS;
     vpp_msg_table_init(&g_ctx.msg_table);
+    danos_vpp_api_mock_dump_clear();
     g_initialized = true;
     vpp_ctx_unlock();
     return 0;
@@ -164,6 +176,46 @@ void danos_vpp_api_enable_mock(void)
     g_ctx.msg_fd = -1;
     g_ctx.stat_fd = -1;
     vpp_ctx_unlock();
+}
+
+void danos_vpp_api_mock_dump_add(const char *detail_name,
+                                 const void *body, uint32_t len)
+{
+    if (!detail_name || !body || len == 0) return;
+    vpp_ctx_lock();
+    if (g_mock_dump_count >= VPP_MOCK_DUMP_MAX) {
+        vpp_ctx_unlock();
+        return;
+    }
+    vpp_mock_dump_t *d = &g_mock_dumps[g_mock_dump_count];
+    snprintf(d->detail_name, sizeof(d->detail_name), "%s", detail_name);
+    d->body = malloc(len);
+    if (!d->body) {
+        vpp_ctx_unlock();
+        return;
+    }
+    memcpy(d->body, body, len);
+    d->len = len;
+    g_mock_dump_count++;
+    vpp_ctx_unlock();
+}
+
+void danos_vpp_api_mock_dump_clear(void)
+{
+    vpp_ctx_lock();
+    for (uint32_t i = 0; i < g_mock_dump_count; i++)
+        free(g_mock_dumps[i].body);
+    memset(g_mock_dumps, 0, sizeof(g_mock_dumps));
+    g_mock_dump_count = 0;
+    vpp_ctx_unlock();
+}
+
+uint32_t danos_vpp_api_mock_dump_total(void)
+{
+    vpp_ctx_lock();
+    uint32_t n = g_mock_dump_count;
+    vpp_ctx_unlock();
+    return n;
 }
 
 static int connect_unix_stream(const char *path)
@@ -499,6 +551,91 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
             return n;
         }
         /* Not ours (e.g. an async event): keep reading. */
+    }
+    vpp_ctx_unlock();
+    return -1;
+}
+
+/* Multipart dump: send the dump request followed by control_ping, collect
+ * every detail reply carrying the dump context, and stop on the ping reply.
+ * The callback receives the detail struct starting at its context field. */
+int danos_vpp_api_dump(const char *request_name, const char *detail_name,
+                       const uint8_t *payload, uint32_t payload_size,
+                       danos_vpp_dump_cb cb, void *user)
+{
+    if (!request_name || !detail_name || !cb) return -1;
+    uint16_t request_id = 0, detail_id = 0, ping_id = 0, ping_reply_id = 0;
+    if (!danos_vpp_api_lookup_msg_id(request_name, &request_id) ||
+        !danos_vpp_api_lookup_msg_id(detail_name, &detail_id) ||
+        !danos_vpp_api_lookup_msg_id("control_ping", &ping_id) ||
+        !danos_vpp_api_lookup_msg_id("control_ping_reply", &ping_reply_id))
+        return -1;
+
+    vpp_ctx_lock();
+    if (g_ctx.state == VPP_API_MOCK) {
+        int entries = 0;
+        for (uint32_t i = 0; i < g_mock_dump_count; i++) {
+            if (strcmp(g_mock_dumps[i].detail_name, detail_name) != 0)
+                continue;
+            if (cb(g_mock_dumps[i].body, g_mock_dumps[i].len, user) != 0) {
+                vpp_ctx_unlock();
+                return -1;
+            }
+            entries++;
+        }
+        vpp_ctx_unlock();
+        return entries;
+    }
+    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
+
+    if (danos_vpp_api_send(request_id, payload, payload_size) != 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
+    uint32_t dump_ctx = g_ctx.context;
+    if (danos_vpp_api_send(ping_id, NULL, 0) != 0) {
+        vpp_ctx_unlock();
+        return -1;
+    }
+    uint32_t ping_ctx = g_ctx.context;
+
+    const uint64_t deadline_ns = now_ns() +
+        (uint64_t)VPP_RECV_TIMEOUT_MS * 1000000ULL;
+    uint8_t rbuf[64 * 1024];
+    int entries = 0;
+    for (int attempt = 0; attempt < 4096; attempt++) {
+        uint64_t now = now_ns();
+        if (now >= deadline_ns || g_ctx.msg_fd < 0) {
+            danos_vpp_api_disconnect();
+            vpp_ctx_unlock();
+            return -1;
+        }
+        int remaining_ms = (int)((deadline_ns - now + 999999ULL) / 1000000ULL);
+        if (remaining_ms < 1) remaining_ms = 1;
+        fd_set_timeout(g_ctx.msg_fd, remaining_ms);
+
+        int n = danos_vpp_api_recv(rbuf, sizeof(rbuf));
+        if (n < 6) {
+            vpp_ctx_unlock();
+            return -1;
+        }
+        uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
+        uint32_t ctx = ((uint32_t)rbuf[2] << 24) | ((uint32_t)rbuf[3] << 16) |
+                       ((uint32_t)rbuf[4] << 8) | (uint32_t)rbuf[5];
+        if (reply_id == detail_id && ctx == dump_ctx) {
+            if (cb(rbuf + 2, (uint32_t)n - 2, user) != 0) {
+                vpp_ctx_unlock();
+                return -1;
+            }
+            entries++;
+        } else if (reply_id == ping_reply_id && ctx == ping_ctx) {
+            fd_set_timeout(g_ctx.msg_fd, VPP_RECV_TIMEOUT_MS);
+            vpp_ctx_unlock();
+            return entries;
+        }
     }
     vpp_ctx_unlock();
     return -1;

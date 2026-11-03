@@ -36,6 +36,23 @@ int  danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
                             uint32_t payload_size, uint8_t *reply,
                             uint32_t reply_size);
 
+/* Multipart dump request.  Sends `request_name` (payload excludes
+ * client_index/context), then a control_ping, and invokes `cb` for every
+ * `detail_name` message with its struct body (starting at the context field).
+ * Returns the number of entries, or -1 on transport/table failure. */
+typedef int (*danos_vpp_dump_cb)(const uint8_t *body, uint32_t len,
+                                 void *user);
+int danos_vpp_api_dump(const char *request_name, const char *detail_name,
+                       const uint8_t *payload, uint32_t payload_size,
+                       danos_vpp_dump_cb cb, void *user);
+
+/* Mock dump storage used by unit tests.  `danos_vpp_api_dump` replays these
+ * entries in mock mode; a mock with no injected entries reports zero. */
+void danos_vpp_api_mock_dump_add(const char *detail_name,
+                                 const void *body, uint32_t len);
+void danos_vpp_api_mock_dump_clear(void);
+uint32_t danos_vpp_api_mock_dump_total(void);
+
 /* Name -> msg_id resolution (from the handshake message table) */
 bool danos_vpp_api_lookup_msg_id(const char *name, uint16_t *msg_id);
 uint32_t danos_vpp_api_client_index(void);

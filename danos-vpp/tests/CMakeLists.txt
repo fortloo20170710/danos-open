@@ -21,3 +21,8 @@ add_executable(vpp_golden_test test_vpp_golden.c)
 target_link_libraries(vpp_golden_test PRIVATE danos-vpp danos-dpa pthread)
 target_compile_options(vpp_golden_test PRIVATE -UNDEBUG)
 add_test(NAME vpp_golden COMMAND vpp_golden_test)
+
+add_executable(test_vpp_dump test_vpp_dump.c)
+target_link_libraries(test_vpp_dump PRIVATE danos-vpp danos-core danos-dpa pthread)
+target_compile_options(test_vpp_dump PRIVATE -UNDEBUG)
+add_test(NAME vpp_dump COMMAND test_vpp_dump)

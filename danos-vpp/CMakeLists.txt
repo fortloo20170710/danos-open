@@ -5,6 +5,7 @@ add_library(danos-vpp STATIC
   src/api/vpp_api.c
   src/api/vpp_stat.c
   src/api/vpp_msgs.c
+  src/api/vpp_dump.c
   src/capability/vpp_capability.c
   src/vpp_adapter.c
   src/mapper/vpp_mapper.c
