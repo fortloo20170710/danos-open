@@ -12,8 +12,9 @@
   ISO was rebuilt and smoke-passed (VPP API/stats + DPDK interfaces), a valid
   Debian 13 base image and pinned topology files were generated at
   `build/qemu-shared-b3804e0-v4`, and FRR guests bring up their interfaces;
-  guest apt update then stalls on the Debian `Packages` download, so FRR never
-  installs and the lane cannot run. Raw evidence:
+  guest apt update then stalls on the Debian `Packages` download even with a
+  300 s timeout, no HTTP pipelining, forced IPv4 and five retries, so FRR
+  never installs and the lane cannot run. Raw evidence:
   `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
   `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 
