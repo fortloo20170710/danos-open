@@ -8,6 +8,8 @@
  */
 
 #include <danos/core/transaction.h>
+#include <danos/core/backend_ops.h>
+#include <danos/core/reconciler.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -15,6 +17,8 @@
 #include <sys/types.h>
 
 danos_tx_manager_t *g_tx_mgr = NULL;
+
+#define TX_ROLLBACK_RETENTION_NS (30ULL * 1000000000ULL)
 
 static uint64_t now_ns(void)
 {
@@ -127,7 +131,9 @@ static danos_tx_record_t *reclaim_expired(void)
     pthread_mutex_lock(&g_tx_mgr->pool_lock);
     for (danos_tx_record_t *r = g_tx_mgr->live_list; r; r = r->live_next) {
         if (!__atomic_load_n(&r->in_use, __ATOMIC_SEQ_CST) || r->reclaiming) continue;
-        if (r->pub.deadline_ns == 0 || now < r->pub.deadline_ns) continue;
+        uint64_t deadline = r->pub.state >= DANOS_TX_COMMIT
+            ? r->rollback_deadline_ns : r->pub.deadline_ns;
+        if (deadline == 0 || now < deadline) continue;
         if (!best || r->seq < best->seq) best = r;
     }
     if (best) best->reclaiming = true;
@@ -136,10 +142,10 @@ static danos_tx_record_t *reclaim_expired(void)
     if (best) {
         pthread_mutex_lock(&best->lock);
         now = now_ns();
+        uint64_t deadline = best->pub.state >= DANOS_TX_COMMIT
+            ? best->rollback_deadline_ns : best->pub.deadline_ns;
         bool expired = __atomic_load_n(&best->in_use, __ATOMIC_SEQ_CST) &&
-                       best->pub.deadline_ns != 0 &&
-                       now >= best->pub.deadline_ns &&
-                       best->pub.state < DANOS_TX_COMMIT;
+                       deadline != 0 && now >= deadline;
         if (expired) {
         for (size_t i = 0; i < best->staged_count; i++) {
             free(best->staged[i].data);
@@ -151,7 +157,11 @@ static danos_tx_record_t *reclaim_expired(void)
         __atomic_store_n(&best->in_use, false, __ATOMIC_SEQ_CST);
         best->pub.state = DANOS_TX_ABORT;
         best->pub._internal = NULL;
-        __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
+        best->rollback_deadline_ns = 0;
+        if (best->counted) {
+            best->counted = false;
+            __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
+        }
         }
         pthread_mutex_unlock(&best->lock);
         pthread_mutex_lock(&g_tx_mgr->pool_lock);
@@ -423,9 +433,13 @@ static void tx_retire(danos_tx_record_t *rec, danos_tx_t *tx)
     rec->staged_count = rec->staged_capacity = 0;
     if (tx) tx->_internal = NULL;
     rec->pub._internal = NULL;
+    rec->rollback_deadline_ns = 0;
     __atomic_store_n(&rec->in_use, false, __ATOMIC_SEQ_CST);
+    bool counted = rec->counted;
+    rec->counted = false;
     pthread_mutex_unlock(&rec->lock);
-    __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
+    if (counted)
+        __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
     danos_tx_record_free(rec);
 }
 
@@ -484,6 +498,7 @@ danos_status_t danos_tx_begin(danos_tx_t *tx,
     __atomic_store_n(&rec->in_use, true, __ATOMIC_SEQ_CST);
     pthread_mutex_unlock(&rec->lock);
 
+    rec->counted = true;
     __atomic_add_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
     return DANOS_OK;
 }
@@ -566,14 +581,17 @@ danos_status_t danos_tx_commit(danos_tx_t *tx)
         return apply_status;
     }
 
-    /* Release write lock after commit */
+    pthread_mutex_lock(&rec->lock);
+    if (rec->counted) {
+        rec->counted = false;
+        __atomic_sub_fetch(&g_tx_mgr->active_count, 1, __ATOMIC_SEQ_CST);
+    }
+    rec->rollback_deadline_ns = now_ns() + TX_ROLLBACK_RETENTION_NS;
+    pthread_mutex_unlock(&rec->lock);
+    /* Keep the record and staged pre-commit snapshots alive: rollback needs
+     * them. verify()/rollback() retire it; an unclaimed snapshot is reclaimed
+     * after the retention window. */
     pthread_mutex_unlock(&g_tx_mgr->write_lock);
-
-    /* Commit is the last step for most callers (the management plane
-     * never follows it with verify), so retire the record here. Any later
-     * verify/rollback still works: those transitions read tx->state, and
-     * tx_retire is a no-op when the record is already detached. */
-    tx_retire(rec, tx);
     return DANOS_OK;
 }
 
@@ -621,20 +639,96 @@ danos_status_t danos_tx_abort(danos_tx_t *tx)
     return DANOS_OK;
 }
 
+/* Re-run reconciliation after restoring the store. Returns
+ * DANOS_ERR_TX_ROLLBACK when the backend or sweep could not reach the
+ * restored state, even though the desired store itself was restored. */
+static danos_status_t reconcile_after_restore(void)
+{
+    if (g_reconciler) {
+        uint64_t runs0, diffs0, repairs0, failures0;
+        uint64_t runs1, diffs1, repairs1, failures1;
+        danos_reconciler_global_stats(&runs0, &diffs0, &repairs0, &failures0);
+        (void)danos_reconciler_run_once();
+        danos_reconciler_global_stats(&runs1, &diffs1, &repairs1, &failures1);
+        (void)runs0; (void)diffs0; (void)repairs0;
+        (void)runs1; (void)diffs1; (void)repairs1;
+        return failures1 > failures0 ? DANOS_ERR_TX_ROLLBACK : DANOS_OK;
+    }
+    uint64_t attempted = 0, failed = 0, sweep_failed = 0;
+    (void)danos_programming_run(&attempted, &failed);
+    (void)danos_programming_sweep(&sweep_failed);
+    return (failed + sweep_failed) ? DANOS_ERR_TX_ROLLBACK : DANOS_OK;
+}
+
 danos_status_t danos_tx_rollback(danos_tx_t *tx)
 {
     if (!tx) return DANOS_ERR_INVALID_ARG;
     if (tx->state != DANOS_TX_COMMIT && tx->state != DANOS_TX_VERIFY)
         return DANOS_ERR_TX_INVALID;
 
-    /* Commit has already published the batch, and the staged base
-     * snapshots were released with the record. Reporting success without
-     * undoing the data would be a lie; this status is the documented
-     * "manual repair needed" signal. */
-    tx_retire(danos_tx_validate_ptr(tx), tx);
-    return DANOS_ERR_TX_ROLLBACK;
-}
+    danos_tx_record_t *rec = danos_tx_validate_ptr(tx);
+    if (!rec) {
+        /* The record already retired (for example after a restart or an
+         * explicit release): the pre-commit snapshot is gone. */
+        tx->state = DANOS_TX_ABORT;
+        return DANOS_ERR_TX_ROLLBACK;
+    }
 
+    pthread_mutex_lock(&rec->lock);
+    size_t n = rec->staged_count;
+    danos_object_mutation_t *muts = n ? calloc(n, sizeof(*muts)) : NULL;
+    if (n && !muts) {
+        pthread_mutex_unlock(&rec->lock);
+        return DANOS_ERR_NO_MEMORY;
+    }
+    /* Build the inverse batch. `base_*` describes the currently published
+     * state, so the existing conflict checks still protect against a
+     * concurrent writer changing the object after commit. */
+    for (size_t i = 0; i < n; i++) {
+        const danos_object_mutation_t *m = &rec->staged[i];
+        danos_object_mutation_t *r = &muts[i];
+        r->type = m->type;
+        r->id = m->id;
+        if (m->remove) {
+            r->base_exists = false;
+            r->remove = false;             /* recreate the deleted object */
+            r->data = m->base_data;
+            r->data_size = m->base_size;
+        } else {
+            r->base_exists = true;         /* current value is m->data */
+            r->base_data = m->data;
+            r->base_size = m->data_size;
+            if (m->base_exists) {
+                r->data = m->base_data;    /* restore the old value */
+                r->data_size = m->base_size;
+            } else {
+                r->remove = true;          /* created by this commit */
+            }
+        }
+    }
+    pthread_mutex_unlock(&rec->lock);
+
+    danos_status_t rc = DANOS_OK;
+    if (n) {
+        int applied = danos_object_apply_transaction_batch(g_default_store,
+                                                           muts, n,
+                                                           rec->pub.id);
+        if (applied < 0)
+            rc = DANOS_ERR_TX_ROLLBACK;
+        else if ((size_t)applied != n)
+            rc = DANOS_ERR_TX_ROLLBACK;
+    }
+    free(muts);
+
+    if (rc == DANOS_OK) {
+        danos_status_t reconcile = reconcile_after_restore();
+        if (reconcile != DANOS_OK) rc = reconcile;
+    }
+
+    tx->state = DANOS_TX_ABORT;
+    tx_retire(rec, tx);
+    return rc;
+}
 danos_status_t danos_tx_get_state(const danos_tx_t *tx, danos_tx_state_t *out)
 {
     if (!tx || !out) return DANOS_ERR_INVALID_ARG;

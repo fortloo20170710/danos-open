@@ -53,13 +53,34 @@ ECMP 撤销/恢复及全部四目的地址恢复探测。shared-L2 learned-route
 - conformance gate 至少覆盖 add/update/delete 幂等、ECMP、不可解析 NH、
   restart replay 和 ledger sweep；Linux 与 VPP 都必须执行同一语义集合。
 
-## 5. v0.16 冻结范围
+## 5. 已提交事务的回滚
+
+`danos_tx_commit` 发布批次后保留 staged 的 pre-commit base 快照，直到
+`danos_tx_verify` 或 `danos_tx_rollback`。`danos_tx_rollback` 在 commit 之后：
+
+1. 用当前已发布值作为 batch 的 base 校验，构造逆批次：update 恢复旧值，
+   create 删除，delete 重建；
+2. 原子恢复 desired store（WAL 记录这次恢复）；
+3. 重新运行 reconciler/programming pass 和 tombstone sweep，使 backend
+   跟随恢复后的 desired state。
+
+成功返回 `DANOS_OK`，事务进入 ABORT。以下情况返回
+`DANOS_ERR_TX_ROLLBACK`，表示需要人工修复：快照已不可用（record 已
+verify/release，或进程已重启，内存快照不存在）；逆批次冲突或应用失败；
+或者 desired store 已恢复但 backend 编程/sweep 失败。最后一种情况下 store
+已经恢复，重试 reconciler 即可，但调用方不得把返回值当作“完全成功”。
+
+verify 是成功提交后的正常终态，会释放快照；commit 之后不 verify 也不
+rollback 的调用方会保留快照直到显式释放。重启不会保留可回滚事务快照；
+重启后的 desired state 是 WAL 已发布的（或已回滚的）状态。
+
+## 6. v0.16 冻结范围
 
 本版本冻结上述生命周期、错误/重试、删除/tombstone、重启 replay 和观测语义。
 VLAN/VXLAN/EVPN/BFD 可增加能力和对象类型，但不得改变既有 route/NH/NHGroup
 语义；扩展前必须补充 capability、依赖顺序及 conformance case。
 
-## 6. 2026-10-07 契约回归与边界
+## 7. 2026-10-07 契约回归与边界
 
 Route/NH/NHGroup 的 DPA 存储门现验证：创建/读回、重复创建 EXISTS、
 缺失 update/delete NOT_FOUND、候选读写与跨事务隔离、update/delete abort、
@@ -79,7 +100,7 @@ Linux mock 验证耗尽预算后的 NHGroup 恢复及实际 mock FIB presence。
 QEMU/FRR/VPP runtime 证据与当前剩余的 PCI 边界见下节；冻结的是目标语义，
 并不宣称所有硬件 backend 都已验收。
 
-## 7. 2026-10-08 运行时符合性历史快照（当前状态见 §8）
+## 8. 2026-10-08 运行时符合性历史快照（当前状态见 §9）
 
 当前共享分支 `8776da3` 的本机全量 CTest 为 52/52 PASS，且
 `danos-test/integration/run_backend_contract.sh` 的 DPA、programming pipeline、
@@ -104,7 +125,7 @@ add/withdraw/restore、ECMP next-hop down/up、FRR/zserv 重启、VPP restart/re
 转发。真实 PCI DPDK preflight/performance 仍为 `ENVIRONMENT-OPEN`；QEMU 与
 mock 证据不替代该物理 lane，也没有 waiver 将其改为 PASS。
 
-## 8. 2026-10-09 当前验收复核
+## 9. 2026-10-09 当前验收复核
 
 在 clean shared commit `b86aa6d216277ae428674e36c8c37e0a74b91359` 上重新执行
 `danos-test/integration/run_backend_contract.sh`，DPA 11/11、programming pipeline

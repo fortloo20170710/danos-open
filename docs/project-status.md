@@ -20,7 +20,7 @@
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
-- 生产 C 覆盖率 80.8%（函数 91.4%、分支 59.9%），Coverage 门禁 79%
+- 生产 C 覆盖率 81.0%（函数 91.6%、分支 60.1%），Coverage 门禁 79%
 - libFuzzer 目标：gNMI protobuf、HPACK、HTTP/2 帧头（CI 构建并冒烟运行）
 - 根 `Dockerfile` 源码镜像：构建阶段 CTest **96/96**，运行时 `/metrics` 冒烟通过
 
@@ -48,8 +48,7 @@
 - 损坏的 `<startup>.running` 会拒绝启动；需修复/删除该文件，或显式设置 `DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1` 以空配置启动，下一次成功提交会覆盖坏文件。
 - 测试证书需替换为生产 PKI。
 - BFD、VLAN、VXLAN、EVPN、OVS、P4 功能未纳入 v0.16。
-- 事务提交后的 `danos_tx_rollback` 返回 `DANOS_ERR_TX_ROLLBACK`（无法撤销），
-  调用方应在提交前使用 abort。
+- 事务提交后保留 pre-commit 快照，`danos_tx_rollback` 可恢复 desired store 并重跑 reconciler；仅当快照已释放、逆批次冲突/应用失败或 backend 无法编程恢复值时返回 `DANOS_ERR_TX_ROLLBACK`（backend 失败时 store 已恢复）。进程重启不会保留内存快照；重启后的 desired state 是 WAL 已发布/已回滚状态。
 
 ## 4. 复现入口
 

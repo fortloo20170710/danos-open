@@ -26,6 +26,8 @@ typedef struct danos_tx_record {
     pthread_mutex_t     lock;       /* per-tx lock */
     bool                 in_use;
     bool                 reclaiming;
+    bool                 counted;    /* still included in active_count */
+    uint64_t             rollback_deadline_ns; /* retain committed snapshot */
     uint64_t             seq;        /* allocation order, for expiry reclaim */
     struct danos_tx_record *next;   /* chain in pool */
     struct danos_tx_record *live_next; /* chain of every live record */
@@ -62,8 +64,8 @@ void danos_tx_manager_fini(void);
 danos_tx_record_t *danos_tx_record_alloc(void);
 void danos_tx_record_free(danos_tx_record_t *rec);
 
-/* Number of transactions begun but not yet retired (begun minus
- * verify/abort/rollback/commit/release). Exposed for leak assertions. */
+/* Number of transactions begun but not yet committed or retired (begun
+ * minus commit/verify/abort/rollback/release). Exposed for leak assertions. */
 uint64_t danos_tx_active_count(void);
 
 /* Check if tx is in expected state */
