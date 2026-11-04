@@ -9,9 +9,11 @@
 - Fixed the ISO builder to package `libz.so.1`/`libzstd.so.1`; without them
   the live `danos-mgrd` failed at startup.
 - FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: the VPP-enabled
-  ISO was rebuilt and smoke-passed (VPP API/stats + DPDK interfaces), but the
-  Debian 13 FRR base image is corrupt/truncated and the cloud image download is
-  too slow; no topology qcow2/seed files were created. Raw evidence:
+  ISO was rebuilt and smoke-passed (VPP API/stats + DPDK interfaces), a valid
+  Debian 13 base image and pinned topology files were generated at
+  `build/qemu-shared-b3804e0-v4`, and FRR guests bring up their interfaces;
+  guest apt update then stalls on the Debian `Packages` download, so FRR never
+  installs and the lane cannot run. Raw evidence:
   `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
   `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 

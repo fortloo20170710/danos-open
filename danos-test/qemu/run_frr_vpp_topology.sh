@@ -16,6 +16,7 @@ QEMU_MONITOR="${QEMU_MONITOR:-0}"
 QEMU_HMP="${QEMU_HMP:-0}"
 FRR_DRIVE_EXTRA=""
 QEMU_DATAPLANE_MODEL="${QEMU_DATAPLANE_MODEL:-e1000}"
+FRR_NIC_MODEL="${FRR_NIC_MODEL:-e1000}"
 QEMU_MACHINE="${QEMU_MACHINE:-pc}"
 FRR_SHARED_PEER_L2="${FRR_SHARED_PEER_L2:-0}"
 [[ "$FRR_SHARED_PEER_L2" = 0 || "$FRR_SHARED_PEER_L2" = 1 ]] || {
@@ -122,13 +123,13 @@ qemu-system-x86_64 -enable-kvm -machine "$QEMU_MACHINE" -cpu host -m 1024 -smp 1
   -drive file="$T/frr-1.qcow2",if=virtio,format=qcow2${FRR_DRIVE_EXTRA} \
   -cdrom "$T/r1-seed.iso" \
   -netdev user,id=internet,hostfwd=tcp:127.0.0.1:$ZAPI_PORT-:2600 \
-  -device e1000,netdev=internet,addr=0x5,mac=52:54:00:11:01:00 \
+  -device "$FRR_NIC_MODEL",netdev=internet,addr=0x5,mac=52:54:00:11:01:00 \
   -netdev socket,id=mgmt,connect=127.0.0.1:$MGMT_PORT \
-  -device e1000,netdev=mgmt,addr=0x6,mac=52:54:00:11:01:01 \
+  -device "$FRR_NIC_MODEL",netdev=mgmt,addr=0x6,mac=52:54:00:11:01:01 \
   -netdev socket,id=dp,connect=127.0.0.1:$LAN1_PORT \
-  -device e1000,netdev=dp,addr=0x3,mac=52:54:00:11:01:02 \
+  -device "$FRR_NIC_MODEL",netdev=dp,addr=0x3,mac=52:54:00:11:01:02 \
   "${FRR1_PEER_ARGS[@]}" \
-  -device e1000,netdev=peer,addr=0x4,mac=52:54:00:11:01:03 \
+  -device "$FRR_NIC_MODEL",netdev=peer,addr=0x4,mac=52:54:00:11:01:03 \
   "${FRR1_CAPTURE_ARGS[@]}" \
   -display none -serial file:"$T/frr-1.serial.log" -monitor none \
   -daemonize -pidfile "$T/frr-1.pid"
@@ -138,11 +139,11 @@ qemu-system-x86_64 -enable-kvm -machine "$QEMU_MACHINE" -cpu host -m 1024 -smp 1
   -drive file="$T/frr-2.qcow2",if=virtio,format=qcow2${FRR_DRIVE_EXTRA} \
   -cdrom "$T/r2-seed.iso" \
   -netdev user,id=internet2 \
-  -device e1000,netdev=internet2,addr=0x5,mac=52:54:00:12:01:00 \
+  -device "$FRR_NIC_MODEL",netdev=internet2,addr=0x5,mac=52:54:00:12:01:00 \
   -netdev socket,id=dp,connect=127.0.0.1:$LAN2_PORT \
-  -device e1000,netdev=dp,addr=0x3,mac=52:54:00:12:01:02 \
+  -device "$FRR_NIC_MODEL",netdev=dp,addr=0x3,mac=52:54:00:12:01:02 \
   "${FRR2_PEER_ARGS[@]}" \
-  -device e1000,netdev=peer,addr=0x4,mac=52:54:00:12:01:03 \
+  -device "$FRR_NIC_MODEL",netdev=peer,addr=0x4,mac=52:54:00:12:01:03 \
   "${FRR2_CAPTURE_ARGS[@]}" \
   -display none -serial file:"$T/frr-2.serial.log" -monitor none \
   -daemonize -pidfile "$T/frr-2.pid"
