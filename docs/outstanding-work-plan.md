@@ -9,12 +9,12 @@
 - Fixed the ISO builder to package `libz.so.1`/`libzstd.so.1`; without them
   the live `danos-mgrd` failed at startup.
 - FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: the VPP-enabled
-  ISO was rebuilt and smoke-passed (VPP API/stats + DPDK interfaces), a valid
-  Debian 13 base image and pinned topology files were generated at
-  `build/qemu-shared-b3804e0-v4`, and FRR guests bring up their interfaces;
-  guest apt update then stalls on the Debian `Packages` download even with a
-  300 s timeout, no HTTP pipelining, forced IPv4 and five retries, so FRR
-  never installs and the lane cannot run. Raw evidence:
+  ISO was rebuilt with FIB bridge/restart test, a valid Debian 13 base image
+  and pinned topology files were generated at `build/qemu-shared-b3804e0-v4`,
+  and FRR was installed offline from the VPP runtime image (both guests expose
+  zserv). The VPP restart replay still fails the connected 10.10.0.0/24 route
+  (`replay attempted=4 failed=1`), so `VPP-RESTART-TEST FAIL` blocks the
+  learned-route runner. Raw evidence:
   `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
   `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 
