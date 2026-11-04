@@ -8,9 +8,12 @@
   serial root shell lanes.
 - Fixed the ISO builder to package `libz.so.1`/`libzstd.so.1`; without them
   the live `danos-mgrd` failed at startup.
-- FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: missing
-  VPP-enabled ISO, FRR base image and topology artifacts. Raw evidence:
-  `docs/evidence/v016-qemu-live-preflight-2026-11-04.env`.
+- FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: the VPP-enabled
+  ISO was rebuilt and smoke-passed (VPP API/stats + DPDK interfaces), but the
+  Debian 13 FRR base image is corrupt/truncated and the cloud image download is
+  too slow; no topology qcow2/seed files were created. Raw evidence:
+  `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
+  `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 
 ### 2026-11-03 focused branch coverage: netlink and NETCONF locks
 
