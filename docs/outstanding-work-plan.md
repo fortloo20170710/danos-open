@@ -8,9 +8,17 @@
   serial root shell lanes.
 - Fixed the ISO builder to package `libz.so.1`/`libzstd.so.1`; without them
   the live `danos-mgrd` failed at startup.
-- FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: missing
-  VPP-enabled ISO, FRR base image and topology artifacts. Raw evidence:
-  `docs/evidence/v016-qemu-live-preflight-2026-11-04.env`.
+- FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: the VPP-enabled
+  ISO was rebuilt with FIB bridge/restart test, a valid Debian 13 base image
+  and pinned topology files were generated at `build/qemu-shared-b3804e0-v4`,
+  and FRR was installed offline from the VPP runtime image (both guests expose
+  zserv). The replay fixes make `VPP-RESTART-TEST PASS`; the learned-route ADD failure
+  was root-caused to missing connected-subnet coverage for `172.31.0.3`.
+  Adding `172.31.0.1/24` on the dataplane interface makes ADD, WITHDRAW,
+  RESTORE and POSTFRR pass. Build env is recorded in
+  `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`. Raw evidence:
+  `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
+  `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 
 ### 2026-11-03 focused branch coverage: netlink and NETCONF locks
 

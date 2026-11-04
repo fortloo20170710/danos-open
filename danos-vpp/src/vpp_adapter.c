@@ -114,6 +114,14 @@ static danos_status_t vpp_adapter_route_add(const danos_resolved_route_t *res,
         if (nh_ifs[i] == 0) nh_ifs[i] = 1;
     }
 
+    /* A single zero-gateway path is the connected route for an interface
+     * address. VPP creates it when the address is programmed; adding it again
+     * as a zero-gateway path fails, especially during ledger replay after a
+     * VPP restart. Mark it handled here. */
+    if (count == 1 && !nhs[0].addr[0] && !nhs[0].addr[1] &&
+        !nhs[0].addr[2] && !nhs[0].addr[3])
+        return DANOS_OK;
+
     const char *debug = getenv("DANOS_VPP_DEBUG");
     if (debug && debug[0] == '1') {
         fprintf(stderr, "vpp route add vrf=%u prefix-len=%u gw=%u.%u.%u.%u if=%u\n",

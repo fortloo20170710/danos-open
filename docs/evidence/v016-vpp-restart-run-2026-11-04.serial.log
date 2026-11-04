@@ -1,0 +1,1538 @@
+
+ISOLINUX 6.04 20250413  Copyright (C) 1994-2015 H. Peter Anvin et al
+Loading /vmlinuz... ok
+Loading /initramfs.cpio.gz...ok
+[    0.000000] Linux version 6.12.107+deb13-amd64 (debian-kernel@lists.debian.org) (x86_64-linux-gnu-gcc-14 (Debian 14.2.0-19) 14.2.0, GNU ld (GNU Binutils for Debian) 2.44) #1 SMP PREEMPT_DYNAMIC Debian 6.12.107-1 (2026-08-29)
+[    0.000000] Command line: BOOT_IMAGE=/vmlinuz initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0
+[    0.000000] BIOS-provided physical RAM map:
+[    0.000000] BIOS-e820: [mem 0x0000000000000000-0x000000000009fbff] usable
+[    0.000000] BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000000f0000-0x00000000000fffff] reserved
+[    0.000000] BIOS-e820: [mem 0x0000000000100000-0x000000007ffdefff] usable
+[    0.000000] BIOS-e820: [mem 0x000000007ffdf000-0x000000007fffffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000feffc000-0x00000000feffffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000fffc0000-0x00000000ffffffff] reserved
+[    0.000000] NX (Execute Disable) protection: active
+[    0.000000] APIC: Static calls initialized
+[    0.000000] SMBIOS 2.8 present.
+[    0.000000] DMI: QEMU Standard PC (i440FX + PIIX, 1996), BIOS 1.17.0-debian-1.17.0-1ubuntu1 04/01/2014
+[    0.000000] DMI: Memory slots populated: 1/1
+[    0.000000] Hypervisor detected: KVM
+[    0.000000] last_pfn = 0x7ffdf max_arch_pfn = 0x400000000
+[    0.000000] kvm-clock: Using msrs 4b564d01 and 4b564d00
+[    0.000001] kvm-clock: using sched offset of 23562920182 cycles
+[    0.000021] clocksource: kvm-clock: mask: 0xffffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
+[    0.000025] tsc: Detected 2495.998 MHz processor
+[    0.001101] last_pfn = 0x7ffdf max_arch_pfn = 0x400000000
+[    0.001140] MTRR map: 4 entries (3 fixed + 1 variable; max 19), built from 8 variable MTRRs
+[    0.001144] x86/PAT: Configuration [0-7]: WB  WC  UC- UC  WB  WP  UC- WT  
+[    0.009979] found SMP MP-table at [mem 0x000f5440-0x000f544f]
+[    0.010001] Using GB pages for direct mapping
+[    0.010073] RAMDISK: [mem 0x764c7000-0x7ffdefff]
+[    0.010083] ACPI: Early table checksum verification disabled
+[    0.010087] ACPI: RSDP 0x00000000000F5270 000014 (v00 BOCHS )
+[    0.010092] ACPI: RSDT 0x000000007FFE23A2 000034 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010097] ACPI: FACP 0x000000007FFE224E 000074 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010103] ACPI: DSDT 0x000000007FFE0040 00220E (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010107] ACPI: FACS 0x000000007FFE0000 000040
+[    0.010111] ACPI: APIC 0x000000007FFE22C2 000080 (v03 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010114] ACPI: HPET 0x000000007FFE2342 000038 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010118] ACPI: WAET 0x000000007FFE237A 000028 (v01 BOCHS  BXPC     00000001 BXPC 00000001)
+[    0.010121] ACPI: Reserving FACP table memory at [mem 0x7ffe224e-0x7ffe22c1]
+[    0.010122] ACPI: Reserving DSDT table memory at [mem 0x7ffe0040-0x7ffe224d]
+[    0.010123] ACPI: Reserving FACS table memory at [mem 0x7ffe0000-0x7ffe003f]
+[    0.010123] ACPI: Reserving APIC table memory at [mem 0x7ffe22c2-0x7ffe2341]
+[    0.010124] ACPI: Reserving HPET table memory at [mem 0x7ffe2342-0x7ffe2379]
+[    0.010125] ACPI: Reserving WAET table memory at [mem 0x7ffe237a-0x7ffe23a1]
+[    0.010724] No NUMA configuration found
+[    0.010725] Faking a node at [mem 0x0000000000000000-0x000000007ffdefff]
+[    0.010734] NODE_DATA(0) allocated [mem 0x7649c680-0x764c6fff]
+[    0.011121] Zone ranges:
+[    0.011122]   DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+[    0.011123]   DMA32    [mem 0x0000000001000000-0x000000007ffdefff]
+[    0.011125]   Normal   empty
+[    0.011126]   Device   empty
+[    0.011126] Movable zone start for each node
+[    0.011128] Early memory node ranges
+[    0.011129]   node   0: [mem 0x0000000000001000-0x000000000009efff]
+[    0.011130]   node   0: [mem 0x0000000000100000-0x000000007ffdefff]
+[    0.011132] Initmem setup node 0 [mem 0x0000000000001000-0x000000007ffdefff]
+[    0.011860] On node 0, zone DMA: 1 pages in unavailable ranges
+[    0.012069] On node 0, zone DMA: 97 pages in unavailable ranges
+[    0.017042] On node 0, zone DMA32: 33 pages in unavailable ranges
+[    0.017996] ACPI: PM-Timer IO Port: 0x608
+[    0.018016] ACPI: LAPIC_NMI (acpi_id[0xff] dfl dfl lint[0x1])
+[    0.018060] IOAPIC[0]: apic_id 0, version 17, address 0xfec00000, GSI 0-23
+[    0.018065] ACPI: INT_SRC_OVR (bus 0 bus_irq 0 global_irq 2 dfl dfl)
+[    0.018066] ACPI: INT_SRC_OVR (bus 0 bus_irq 5 global_irq 5 high level)
+[    0.018068] ACPI: INT_SRC_OVR (bus 0 bus_irq 9 global_irq 9 high level)
+[    0.018069] ACPI: INT_SRC_OVR (bus 0 bus_irq 10 global_irq 10 high level)
+[    0.018070] ACPI: INT_SRC_OVR (bus 0 bus_irq 11 global_irq 11 high level)
+[    0.018075] ACPI: Using ACPI (MADT) for SMP configuration information
+[    0.018076] ACPI: HPET id: 0x8086a201 base: 0xfed00000
+[    0.018081] TSC deadline timer available
+[    0.018086] CPU topo: Max. logical packages:   1
+[    0.018087] CPU topo: Max. logical dies:       1
+[    0.018087] CPU topo: Max. dies per package:   1
+[    0.018091] CPU topo: Max. threads per core:   1
+[    0.018092] CPU topo: Num. cores per package:     2
+[    0.018092] CPU topo: Num. threads per package:   2
+[    0.018093] CPU topo: Allowing 2 present CPUs plus 0 hotplug CPUs
+[    0.018112] kvm-guest: APIC: eoi() replaced with kvm_guest_apic_eoi_write()
+[    0.018125] kvm-guest: KVM setup pv remote TLB flush
+[    0.018130] kvm-guest: setup PV sched yield
+[    0.018144] PM: hibernation: Registered nosave memory: [mem 0x00000000-0x00000fff]
+[    0.018146] PM: hibernation: Registered nosave memory: [mem 0x0009f000-0x000fffff]
+[    0.018148] [mem 0x80000000-0xfeffbfff] available for PCI devices
+[    0.018149] Booting paravirtualized kernel on KVM
+[    0.018151] clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645519600211568 ns
+[    0.023568] setup_percpu: NR_CPUS:8192 nr_cpumask_bits:2 nr_cpu_ids:2 nr_node_ids:1
+[    0.027276] percpu: Embedded 66 pages/cpu s233472 r8192 d28672 u1048576
+[    0.027322] kvm-guest: PV spinlocks enabled
+[    0.027324] PV qspinlock hash table entries: 256 (order: 0, 4096 bytes, linear)
+[    0.027327] Kernel command line: BOOT_IMAGE=/vmlinuz initrd=/initramfs.cpio.gz console=ttyS0,115200 console=tty0
+[    0.027455] random: crng init done
+[    0.030137] Dentry cache hash table entries: 262144 (order: 9, 2097152 bytes, linear)
+[    0.031868] Inode-cache hash table entries: 131072 (order: 8, 1048576 bytes, linear)
+[    0.031951] Fallback order for Node 0: 0 
+[    0.031955] Built 1 zonelists, mobility grouping on.  Total pages: 524157
+[    0.031956] Policy zone: DMA32
+[    0.031981] mem auto-init: stack:all(zero), heap alloc:on, heap free:off
+[    0.043202] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.043221] Kernel/User page tables isolation: enabled
+[    0.050337] ftrace: allocating 45200 entries in 180 pages
+[    0.050339] ftrace: allocated 180 pages with 4 groups
+[    0.051031] Dynamic Preempt: voluntary
+[    0.051060] rcu: Preemptible hierarchical RCU implementation.
+[    0.051061] rcu: 	RCU restricting CPUs from NR_CPUS=8192 to nr_cpu_ids=2.
+[    0.051062] 	Trampoline variant of Tasks RCU enabled.
+[    0.051063] 	Rude variant of Tasks RCU enabled.
+[    0.051063] 	Tracing variant of Tasks RCU enabled.
+[    0.051064] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.051065] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.051069] RCU Tasks: Setting shift to 1 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=2.
+[    0.051071] RCU Tasks Rude: Setting shift to 1 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=2.
+[    0.051072] RCU Tasks Trace: Setting shift to 1 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=2.
+[    0.056144] NR_IRQS: 524544, nr_irqs: 440, preallocated irqs: 16
+[    0.056333] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.056341] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.065781] Console: colour VGA+ 80x25
+[    0.065784] printk: legacy console [tty0] enabled
+[    0.119263] printk: legacy console [ttyS0] enabled
+[    0.323044] ACPI: Core revision 20240827
+[    0.324695] clocksource: hpet: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604467 ns
+[    0.328346] APIC: Switch to symmetric I/O mode setup
+[    0.330580] x2apic enabled
+[    0.332066] APIC: Switched APIC routing to: physical x2apic
+[    0.334208] kvm-guest: APIC: send_IPI_mask() replaced with kvm_send_ipi_mask()
+[    0.337100] kvm-guest: APIC: send_IPI_mask_allbutself() replaced with kvm_send_ipi_mask_allbutself()
+[    0.340512] kvm-guest: setup PV IPIs
+[    0.343629] ..TIMER: vector=0x30 apic1=0 pin1=2 apic2=-1 pin2=-1
+[    0.346132] clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x23fa754787d, max_idle_ns: 440795210092 ns
+[    0.349815] Calibrating delay loop (skipped) preset value.. 4991.99 BogoMIPS (lpj=9983992)
+[    0.353949] x86/cpu: User Mode Instruction Prevention (UMIP) activated
+[    0.356337] Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+[    0.357814] Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+[    0.359928] Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+[    0.361818] Spectre V2 : Spectre BHI mitigation: SW BHB clearing on syscall and VM exit
+[    0.365814] Spectre V2 : Mitigation: IBRS
+[    0.367269] Spectre V2 : Spectre v2 / SpectreRSB: Filling RSB on context switch and VMEXIT
+[    0.369826] Spectre V2 : Enabling IBPB for BPF
+[    0.371431] RETBleed: Mitigation: IBRS
+[    0.374854] Spectre V2 : mitigation: Enabling conditional Indirect Branch Prediction Barrier
+[    0.377815] Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+[    0.380988] MDS: Mitigation: Clear CPU buffers
+[    0.381815] MMIO Stale Data: Mitigation: Clear CPU buffers
+[    0.383775] SRBDS: Unknown: Dependent on hypervisor status
+[    0.385815] GDS: Unknown: Dependent on hypervisor status
+[    0.387678] x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+[    0.393815] x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+[    0.396079] x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+[    0.397814] x86/fpu: Supporting XSAVE feature 0x008: 'MPX bounds registers'
+[    0.400243] x86/fpu: Supporting XSAVE feature 0x010: 'MPX CSR'
+[    0.403600] x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+[    0.405816] x86/fpu: xstate_offset[3]:  832, xstate_sizes[3]:   64
+[    0.408163] x86/fpu: xstate_offset[4]:  896, xstate_sizes[4]:   64
+[    0.409815] x86/fpu: Enabled xstate features 0x1f, context size is 960 bytes, using 'compacted' format.
+[    0.444235] Freeing SMP alternatives memory: 40K
+[    0.445816] pid_max: default: 32768 minimum: 301
+[    0.447471] LSM: initializing lsm=lockdown,capability,landlock,yama,apparmor,tomoyo,bpf,ipe,ima,evm
+[    0.449931] landlock: Up and running.
+[    0.451290] Yama: disabled by default; enable with sysctl kernel.yama.*
+[    0.453893] AppArmor: AppArmor initialized
+[    0.455422] TOMOYO Linux initialized
+[    0.456911] LSM support for eBPF active
+[    0.458870] Mount-cache hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.461436] Mountpoint-cache hash table entries: 4096 (order: 3, 32768 bytes, linear)
+[    0.464595] smpboot: CPU0: Intel(R) Core(TM) i5-7300HQ CPU @ 2.50GHz (family: 0x6, model: 0x9e, stepping: 0x9)
+[    0.465811] Performance Events: Skylake events, full-width counters, Intel PMU driver.
+[    0.467987] ... version:                2
+[    0.469505] ... bit width:              48
+[    0.470966] ... generic registers:      8
+[    0.472480] ... value mask:             0000ffffffffffff
+[    0.473818] ... max period:             00007fffffffffff
+[    0.475755] ... fixed-purpose events:   3
+[    0.477210] ... event mask:             00000007000000ff
+[    0.477947] signal: max sigframe size: 2032
+[    0.479598] rcu: Hierarchical SRCU implementation.
+[    0.481344] rcu: 	Max phase no-delay instances is 1000.
+[    0.481857] Timer migration: 1 hierarchy levels; 8 children per group; 1 crossnode level
+[    0.485064] smp: Bringing up secondary CPUs ...
+[    0.485937] smpboot: x86: Booting SMP configuration:
+[    0.487744] .... node  #0, CPUs:      #1
+[    0.487922] smp: Brought up 1 node, 2 CPUs
+[    0.491219] smpboot: Total of 2 processors activated (9983.99 BogoMIPS)
+[    0.518474] node 0 deferred pages initialised in 28ms
+[    0.520446] Memory: 1851436K/2096628K available (16384K kernel code, 2499K rwdata, 11828K rodata, 4172K init, 4896K bss, 241148K reserved, 0K cma-reserved)
+[    0.522134] devtmpfs: initialized
+[    0.523195] x86/mm: Memory block size: 128MB
+[    0.525906] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+[    0.528473] pinctrl core: initialized pinctrl subsystem
+[    0.530841] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.533166] DMA: preallocated 256 KiB GFP_KERNEL pool for atomic allocations
+[    0.533836] DMA: preallocated 256 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.536725] DMA: preallocated 256 KiB GFP_KERNEL|GFP_DMA32 pool for atomic allocations
+[    0.537846] audit: initializing netlink subsys (disabled)
+[    0.539852] audit: type=2000 audit(1793808673.361:1): state=initialized audit_enabled=0 res=1
+[    0.539852] thermal_sys: Registered thermal governor 'fair_share'
+[    0.541819] thermal_sys: Registered thermal governor 'bang_bang'
+[    0.543975] thermal_sys: Registered thermal governor 'step_wise'
+[    0.545815] thermal_sys: Registered thermal governor 'user_space'
+[    0.547935] thermal_sys: Registered thermal governor 'power_allocator'
+[    0.549854] cpuidle: using governor ladder
+[    0.553845] cpuidle: using governor menu
+[    0.555749] acpiphp: ACPI Hot Plug PCI Controller Driver version: 0.5
+[    0.558030] PCI: Using configuration type 1 for base access
+[    0.561853] kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+[    0.581928] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.584409] HugeTLB: 16380 KiB vmemmap can be freed for a 1.00 GiB page
+[    0.585817] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.588204] HugeTLB: 28 KiB vmemmap can be freed for a 2.00 MiB page
+[    0.590051] ACPI: Added _OSI(Module Device)
+[    0.591447] ACPI: Added _OSI(Processor Device)
+[    0.593817] ACPI: Added _OSI(Processor Aggregator Device)
+[    0.596491] ACPI: 1 ACPI AML tables successfully acquired and loaded
+[    0.598539] ACPI: Interpreter enabled
+[    0.599425] ACPI: PM: (supports S0 S3 S4 S5)
+[    0.601817] ACPI: Using IOAPIC for interrupt routing
+[    0.603605] PCI: Using host bridge windows from ACPI; if necessary, use "pci=nocrs" and report a bug
+[    0.605816] PCI: Using E820 reservations for host bridge windows
+[    0.608283] ACPI: Enabled 2 GPEs in block 00 to 0F
+[    0.612607] ACPI: PCI Root Bridge [PCI0] (domain 0000 [bus 00-ff])
+[    0.613823] acpi PNP0A03:00: _OSC: OS supports [ASPM ClockPM Segments MSI HPX-Type3]
+[    0.616756] acpi PNP0A03:00: _OSC: not requesting OS control; OS requires [ExtendedConfig ASPM ClockPM MSI]
+[    0.617834] acpi PNP0A03:00: fail to add MMCONFIG information, can't access extended configuration space under this bridge
+[    0.622013] acpiphp: Slot [2] registered
+[    0.623546] acpiphp: Slot [3] registered
+[    0.625024] acpiphp: Slot [5] registered
+[    0.625842] acpiphp: Slot [6] registered
+[    0.627298] acpiphp: Slot [7] registered
+[    0.628836] acpiphp: Slot [8] registered
+[    0.629841] acpiphp: Slot [9] registered
+[    0.631438] acpiphp: Slot [10] registered
+[    0.632921] acpiphp: Slot [11] registered
+[    0.633842] acpiphp: Slot [12] registered
+[    0.635284] acpiphp: Slot [13] registered
+[    0.636790] acpiphp: Slot [14] registered
+[    0.637846] acpiphp: Slot [15] registered
+[    0.639356] acpiphp: Slot [16] registered
+[    0.640835] acpiphp: Slot [17] registered
+[    0.641839] acpiphp: Slot [18] registered
+[    0.643319] acpiphp: Slot [19] registered
+[    0.644932] acpiphp: Slot [20] registered
+[    0.645839] acpiphp: Slot [21] registered
+[    0.647372] acpiphp: Slot [22] registered
+[    0.648869] acpiphp: Slot [23] registered
+[    0.649840] acpiphp: Slot [24] registered
+[    0.651346] acpiphp: Slot [25] registered
+[    0.652824] acpiphp: Slot [26] registered
+[    0.653840] acpiphp: Slot [27] registered
+[    0.655320] acpiphp: Slot [28] registered
+[    0.656861] acpiphp: Slot [29] registered
+[    0.657845] acpiphp: Slot [30] registered
+[    0.659381] acpiphp: Slot [31] registered
+[    0.660892] PCI host bridge to bus 0000:00
+[    0.661819] pci_bus 0000:00: root bus resource [io  0x0000-0x0cf7 window]
+[    0.664182] pci_bus 0000:00: root bus resource [io  0x0d00-0xffff window]
+[    0.665816] pci_bus 0000:00: root bus resource [mem 0x000a0000-0x000bffff window]
+[    0.668407] pci_bus 0000:00: root bus resource [mem 0x80000000-0xfebfffff window]
+[    0.669817] pci_bus 0000:00: root bus resource [mem 0x100000000-0x17fffffff window]
+[    0.672468] pci_bus 0000:00: root bus resource [bus 00-ff]
+[    0.673895] pci 0000:00:00.0: [8086:1237] type 00 class 0x060000 conventional PCI endpoint
+[    0.677674] pci 0000:00:01.0: [8086:7000] type 00 class 0x060100 conventional PCI endpoint
+[    0.681553] pci 0000:00:01.1: [8086:7010] type 00 class 0x010180 conventional PCI endpoint
+[    0.687332] pci 0000:00:01.1: BAR 4 [io  0xc0a0-0xc0af]
+[    0.690763] pci 0000:00:01.1: BAR 0 [io  0x01f0-0x01f7]: legacy IDE quirk
+[    0.693159] pci 0000:00:01.1: BAR 1 [io  0x03f6]: legacy IDE quirk
+[    0.693828] pci 0000:00:01.1: BAR 2 [io  0x0170-0x0177]: legacy IDE quirk
+[    0.696247] pci 0000:00:01.1: BAR 3 [io  0x0376]: legacy IDE quirk
+[    0.698137] pci 0000:00:01.3: [8086:7113] type 00 class 0x068000 conventional PCI endpoint
+[    0.701982] pci 0000:00:01.3: quirk: [io  0x0600-0x063f] claimed by PIIX4 ACPI
+[    0.704903] pci 0000:00:01.3: quirk: [io  0x0700-0x070f] claimed by PIIX4 SMB
+[    0.706258] pci 0000:00:02.0: [8086:100e] type 00 class 0x020000 conventional PCI endpoint
+[    0.710371] pci 0000:00:02.0: BAR 0 [mem 0xfeb80000-0xfeb9ffff]
+[    0.713815] pci 0000:00:02.0: BAR 1 [io  0xc000-0xc03f]
+[    0.729192] pci 0000:00:02.0: ROM [mem 0xfea00000-0xfea7ffff pref]
+[    0.732485] pci 0000:00:03.0: [8086:100e] type 00 class 0x020000 conventional PCI endpoint
+[    0.735769] pci 0000:00:03.0: BAR 0 [mem 0xfeba0000-0xfebbffff]
+[    0.739566] pci 0000:00:03.0: BAR 1 [io  0xc040-0xc07f]
+[    0.750427] pci 0000:00:03.0: ROM [mem 0xfea80000-0xfeafffff pref]
+[    0.753945] pci 0000:00:04.0: [1234:1111] type 00 class 0x030000 conventional PCI endpoint
+[    0.758787] pci 0000:00:04.0: BAR 0 [mem 0xfd000000-0xfdffffff pref]
+[    0.764850] pci 0000:00:04.0: BAR 2 [mem 0xfebd4000-0xfebd4fff]
+[    0.773894] pci 0000:00:04.0: ROM [mem 0xfebc0000-0xfebcffff pref]
+[    0.776567] pci 0000:00:04.0: Video device with shadowed ROM at [mem 0x000c0000-0x000dffff]
+[    0.778754] pci 0000:00:05.0: [1af4:1000] type 00 class 0x020000 conventional PCI endpoint
+[    0.783431] pci 0000:00:05.0: BAR 0 [io  0xc080-0xc09f]
+[    0.786743] pci 0000:00:05.0: BAR 1 [mem 0xfebd5000-0xfebd5fff]
+[    0.794702] pci 0000:00:05.0: BAR 4 [mem 0xfe000000-0xfe003fff 64bit pref]
+[    0.798881] pci 0000:00:05.0: ROM [mem 0xfeb00000-0xfeb7ffff pref]
+[    0.803669] pci 0000:00:06.0: [1b36:000d] type 00 class 0x0c0330 conventional PCI endpoint
+[    0.806952] pci 0000:00:06.0: BAR 0 [mem 0xfebd0000-0xfebd3fff 64bit]
+[    0.816622] ACPI: PCI: Interrupt link LNKA configured for IRQ 10
+[    0.818042] ACPI: PCI: Interrupt link LNKB configured for IRQ 10
+[    0.820495] ACPI: PCI: Interrupt link LNKC configured for IRQ 11
+[    0.821957] ACPI: PCI: Interrupt link LNKD configured for IRQ 11
+[    0.824225] ACPI: PCI: Interrupt link LNKS configured for IRQ 9
+[    0.826502] iommu: Default domain type: Translated
+[    0.828136] iommu: DMA domain TLB invalidation policy: lazy mode
+[    0.835916] pps_core: LinuxPPS API ver. 1 registered
+[    0.837739] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.840407] PTP clock support registered
+[    0.841838] EDAC MC: Ver: 3.0.0
+[    0.846469] NetLabel: Initializing
+[    0.846469] NetLabel:  domain hash size = 128
+[    0.847421] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[    0.849459] NetLabel:  unlabeled traffic allowed by default
+[    0.851431] PCI: Using ACPI for IRQ routing
+[    0.853915] pci 0000:00:04.0: vgaarb: setting as boot VGA device
+[    0.856126] pci 0000:00:04.0: vgaarb: bridge control possible
+[    0.857811] pci 0000:00:04.0: vgaarb: VGA device added: decodes=io+mem,owns=io+mem,locks=none
+[    0.861821] vgaarb: loaded
+[    0.863272] hpet0: at MMIO 0xfed00000, IRQs 2, 8, 0
+[    0.865121] hpet0: 3 comparators, 64-bit 100.000000 MHz counter
+[    0.873129] clocksource: Switched to clocksource kvm-clock
+[    0.873129] VFS: Disk quotas dquot_6.6.0
+[    0.873925] VFS: Dquot-cache hash table entries: 512 (order 0, 4096 bytes)
+[    0.876841] AppArmor: AppArmor Filesystem Enabled
+[    0.878877] pnp: PnP ACPI init
+[    0.880606] pnp: PnP ACPI: found 6 devices
+[    0.889224] clocksource: acpi_pm: mask: 0xffffff max_cycles: 0xffffff, max_idle_ns: 2085701024 ns
+[    0.892915] NET: Registered PF_INET protocol family
+[    0.894916] IP idents hash table entries: 32768 (order: 6, 262144 bytes, linear)
+[    0.913162] tcp_listen_portaddr_hash hash table entries: 1024 (order: 2, 16384 bytes, linear)
+[    0.916540] Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.919521] TCP established hash table entries: 16384 (order: 5, 131072 bytes, linear)
+[    0.922654] TCP bind hash table entries: 16384 (order: 7, 524288 bytes, linear)
+[    0.925865] TCP: Hash tables configured (established 16384 bind 16384)
+[    0.928464] MPTCP token hash table entries: 2048 (order: 4, 49152 bytes, linear)
+[    0.931290] UDP hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.934001] UDP-Lite hash table entries: 1024 (order: 3, 32768 bytes, linear)
+[    0.936786] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.938974] NET: Registered PF_XDP protocol family
+[    0.940936] pci_bus 0000:00: resource 4 [io  0x0000-0x0cf7 window]
+[    0.943297] pci_bus 0000:00: resource 5 [io  0x0d00-0xffff window]
+[    0.945586] pci_bus 0000:00: resource 6 [mem 0x000a0000-0x000bffff window]
+[    0.948109] pci_bus 0000:00: resource 7 [mem 0x80000000-0xfebfffff window]
+[    0.950655] pci_bus 0000:00: resource 8 [mem 0x100000000-0x17fffffff window]
+[    0.959382] pci 0000:00:01.0: PIIX3: Enabling Passive Release
+[    0.961712] pci 0000:00:00.0: Limiting direct PCI/PCI transfers
+[    0.967927] ACPI: \_SB_.LNKB: Enabled at IRQ 10
+[    0.974461] PCI: CLS 0 bytes, default 64
+[    0.976467] clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x23fa754787d, max_idle_ns: 440795210092 ns
+[    0.977033] Trying to unpack rootfs image as initramfs...
+[    0.977591] Initialise system trusted keyrings
+[    0.983643] Key type blacklist registered
+[    0.985738] workingset: timestamp_bits=36 max_order=19 bucket_order=0
+[    0.988054] zbud: loaded
+[    0.989249] fuse: init (API version 7.41)
+[    0.991003] integrity: Platform Keyring initialized
+[    0.992827] integrity: Machine keyring initialized
+[    1.013499] Key type asymmetric registered
+[    1.015144] Asymmetric key parser 'x509' registered
+[    4.290171] Freeing initrd memory: 158816K
+[    4.293289] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 246)
+[    4.296231] io scheduler mq-deadline registered
+[    4.299905] ledtrig-cpu: registered to indicate activity on CPUs
+[    4.302194] shpchp: Standard Hot Plug PCI Controller Driver version: 0.4
+[    4.305898] ACPI: \_SB_.LNKA: Enabled at IRQ 11
+[    4.309782] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    4.312707] 00:04: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16550A
+[    4.316464] Linux agpgart interface v0.103
+[    4.318638] i8042: PNP: PS/2 Controller [PNP0303:KBD,PNP0f13:MOU] at 0x60,0x64 irq 1,12
+[    4.322630] serio: i8042 KBD port at 0x60,0x64 irq 1
+[    4.324434] serio: i8042 AUX port at 0x60,0x64 irq 12
+[    4.326432] mousedev: PS/2 mouse device common for all mice
+[    4.328499] rtc_cmos 00:05: RTC can wake from S4
+[    4.331338] input: AT Translated Set 2 keyboard as /devices/platform/i8042/serio0/input/input0
+[    4.333654] rtc_cmos 00:05: registered as rtc0
+[    4.336228] rtc_cmos 00:05: setting system clock to 2026-11-04T16:11:17 UTC (1793808677)
+[    4.339300] rtc_cmos 00:05: alarms up to one day, y3k, 242 bytes nvram, hpet irqs
+[    4.341998] intel_pstate: CPU model not supported
+[    4.344000] NET: Registered PF_INET6 protocol family
+[    4.347941] Segment Routing with IPv6
+[    4.349398] In-situ OAM (IOAM) with IPv6
+[    4.351357] mip6: Mobile IPv6
+[    4.352577] NET: Registered PF_PACKET protocol family
+[    4.354635] mpls_gso: MPLS GSO support
+[    4.356689] IPI shorthand broadcast: enabled
+[    4.360256] sched_clock: Marking stable (4085006333, 273471433)->(4466788687, -108310921)
+[    4.363440] registered taskstats version 1
+[    4.365184] Loading compiled-in X.509 certificates
+[    4.385999] Loaded X.509 cert 'Build time autogenerated kernel key: 092fa7c73d21b4c79e449372fdf50a49a6f4ec79'
+[    4.391518] Demotion targets for Node 0: null
+[    4.393445] Key type .fscrypt registered
+[    4.394922] Key type fscrypt-provisioning registered
+[    4.398176] Key type encrypted registered
+[    4.399699] AppArmor: AppArmor sha256 policy hashing enabled
+[    4.401811] ima: No TPM chip found, activating TPM-bypass!
+[    4.403788] ima: Allocated hash algorithm: sha256
+[    4.405602] ima: No architecture policies found
+[    4.407311] evm: Initialising EVM extended attributes:
+[    4.409190] evm: security.selinux
+[    4.410480] evm: security.SMACK64 (disabled)
+[    4.412070] evm: security.SMACK64EXEC (disabled)
+[    4.413807] evm: security.SMACK64TRANSMUTE (disabled)
+[    4.415596] evm: security.SMACK64MMAP (disabled)
+[    4.417327] evm: security.apparmor
+[    4.418691] evm: security.ima
+[    4.419838] evm: security.capability
+[    4.421230] evm: HMAC attrs: 0x1
+[    4.424542] RAS: Correctable Errors collector initialized.
+[    4.431209] clk: Disabling unused clocks
+[    4.432760] PM: genpd: Disabling unused power domains
+[    4.436819] Freeing unused decrypted memory: 2028K
+[    4.440864] Freeing unused kernel image (initmem) memory: 4172K
+[    4.443215] Write protecting the kernel read-only data: 28672k
+[    4.445863] Freeing unused kernel image (rodata/data gap) memory: 460K
+[    4.499191] x86/mm: Checked W+X mappings: passed, no W+X pages found.
+[    4.501499] x86/mm: Checking user space page tables
+[    4.552628] x86/mm: Checked W+X mappings: passed, no W+X pages found.
+[    4.554987] Run /init as init process
+DANOS-INIT-ENTER
+PCI-NIC 0000:00:02.0 vendor=0x8086 device=0x100e
+PCI-NIC 0000:00:03.0 vendor=0x8086 device=0x100e
+PCI-NIC 0000:00:05.0 vendor=0x1af4 device=0x1000
+DANOS-BUILD commit=fce519a0f2daab5fde350727cd479548ddbe4013 source_dirty=0 iso=danos-vpp-dpdk-e1000-2port-traffic.iso no_rx_interrupts=1 utc=2026-11-04T16:09:59Z
+[    4.619691] ACPI: bus type USB registered
+[    4.621084] usbcore: registered new interface driver usbfs
+[    4.622666] usbcore: registered new interface driver hub
+[    4.624219] usbcore: registered new device driver usb
+[    4.635716] hid: raw HID events driver (C) Jiri Kosina
+[    4.661314] xhci_hcd 0000:00:06.0: xHCI Host Controller
+[    4.662976] xhci_hcd 0000:00:06.0: new USB bus registered, assigned bus number 1
+[    4.665603] xhci_hcd 0000:00:06.0: hcc params 0x00087001 hci version 0x100 quirks 0x0000000000000010
+[    4.669204] xhci_hcd 0000:00:06.0: xHCI Host Controller
+[    4.670772] xhci_hcd 0000:00:06.0: new USB bus registered, assigned bus number 2
+[    4.672883] xhci_hcd 0000:00:06.0: Host supports USB 3.0 SuperSpeed
+[    4.674818] usb usb1: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 6.12
+[    4.677135] usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[    4.679225] usb usb1: Product: xHCI Host Controller
+[    4.680719] usb usb1: Manufacturer: Linux 6.12.107+deb13-amd64 xhci-hcd
+[    4.682486] usb usb1: SerialNumber: 0000:00:06.0
+[    4.684105] hub 1-0:1.0: USB hub found
+[    4.685313] hub 1-0:1.0: 4 ports detected
+[    4.686971] usb usb2: We don't know the algorithms for LPM for this host, disabling LPM.
+[    4.689279] usb usb2: New USB device found, idVendor=1d6b, idProduct=0003, bcdDevice= 6.12
+[    4.691652] usb usb2: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[    4.693684] usb usb2: Product: xHCI Host Controller
+[    4.695146] usb usb2: Manufacturer: Linux 6.12.107+deb13-amd64 xhci-hcd
+[    4.704159] usb usb2: SerialNumber: 0000:00:06.0
+[    4.705698] hub 2-0:1.0: USB hub found
+[    4.706917] hub 2-0:1.0: 4 ports detected
+[    4.742362] usbcore: registered new interface driver usbhid
+[    4.743918] usbhid: USB HID core driver
+USB-INPUT modules initialized
+[    4.933584] usb 1-1: new high-speed USB device number 2 using xhci_hcd
+[    5.070451] usb 1-1: New USB device found, idVendor=0627, idProduct=0001, bcdDevice= 0.00
+[    5.072927] usb 1-1: New USB device strings: Mfr=1, Product=4, SerialNumber=11
+[    5.075002] usb 1-1: Product: QEMU USB Keyboard
+[    5.076382] usb 1-1: Manufacturer: QEMU
+[    5.077543] usb 1-1: SerialNumber: 68284-0000:00:06.0-1
+[    5.080454] input: QEMU QEMU USB Keyboard as /devices/pci0000:00/0000:00:06.0/usb1/1-1/1-1:1.0/0003:0627:0001.0001/input/input2
+[    5.201725] hid-generic 0003:0627:0001.0001: input,hidraw0: USB HID v1.11 Keyboard [QEMU QEMU USB Keyboard] on usb-0000:00:06.0-1/input0
+USB-KEYBOARD detected
+vpp v26.10-release built by root on 46968398d1a5 at 2026-10-28T14:34:56
+[    7.782429] ACPI: \_SB_.LNKC: Enabled at IRQ 11
+vpp[196]: clib_sysfs_prealloc_hugepages:226: pre-allocating 20 additional 2048K hugepages on numa node 0
+vpp[196]: clib_sysfs_prealloc_hugepages:226: pre-allocating 8 additional 2048K hugepages on numa node 0
+VPP API socket: ready
+VPP stats socket: ready
+VPP-DPDK-NEIGHBORS static
+GigabitEthernet0/2/0 (up):
+  L3 10.10.0.1/24
+GigabitEthernet0/3/0 (up):
+  L3 10.20.0.1/24
+  L3 172.31.0.1/24
+local0 (dn):
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+30.30.30.0/24 fib:0 index:21 locks:2
+  CLI refs:1 src-flags:added,contributing,active,
+    path-list:[27] locks:2 flags:shared, uPRF-list:27 len:2 itfs:[1, 2, ]
+      path:[31] pl-index:27 ip4 weight=1 pref=0 attached-nexthop: 
+        10.10.0.2 GigabitEthernet0/2/0
+      [@0]: ipv4 via 10.10.0.2 GigabitEthernet0/2/0: mtu:9000 next:3 flags:[] 5254001101025254001001010800
+      path:[32] pl-index:27 ip4 weight=1 pref=0 attached-nexthop: 
+        10.20.0.2 GigabitEthernet0/3/0
+      [@0]: ipv4 via 10.20.0.2 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201025254001002010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:22 buckets:1 uRPF:27 to:[0:0]]
+    [0] [@0]: dpo-drop ip4
+VPP-DPDK-INTERFACES PASS
+--- VPP DPDK traffic test ---
+VPP-TRAFFIC-PEER-READY waiting endpoint=10.0.3.2:2603 timeout=15s
+VPP-TRAFFIC-PEER-READY PASS endpoint=10.0.3.2:2603
+VPP-ECMP-COUNTERS-BEFORE
+              Name               Idx    State  MTU (L3/IP4/IP6/MPLS)     Counter          Count     
+GigabitEthernet0/2/0              1      up          9000/0/0/0     
+GigabitEthernet0/3/0              2      up          9000/0/0/0     
+local0                            0     down          0/0/0/0       
+VPP-ECMP-NEIGHBORS
+     Age                       IP                    Flags      Ethernet              Interface       
+       .0982                10.10.0.2                  D    52:54:00:11:01:02 GigabitEthernet0/2/0
+       .0964                10.20.0.2                  D    52:54:00:12:01:02 GigabitEthernet0/3/0
+VPP-DPDK-PING-0 PASS
+VPP-DPDK-PING-1 PASS
+116 bytes from 10.10.0.2: icmp_seq=1 ttl=64 time=2.4417 ms
+116 bytes from 10.10.0.2: icmp_seq=2 ttl=64 time=.5336 ms
+116 bytes from 10.10.0.2: icmp_seq=3 ttl=64 time=.3885 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+116 bytes from 10.20.0.2: icmp_seq=1 ttl=64 time=.4858 ms
+116 bytes from 10.20.0.2: icmp_seq=2 ttl=64 time=.3881 ms
+116 bytes from 10.20.0.2: icmp_seq=3 ttl=64 time=.4214 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-ECMP-FIB PASS buckets=2
+VPP-ECMP-SOURCE PASS address=30.30.30.1 interface=loop0
+VPP-ECMP-FLOW target=30.30.30.2 tx=3 rx=3 loss=0
+116 bytes from 30.30.30.2: icmp_seq=1 ttl=64 time=.3445 ms
+116 bytes from 30.30.30.2: icmp_seq=2 ttl=64 time=.4087 ms
+116 bytes from 30.30.30.2: icmp_seq=3 ttl=64 time=.4333 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-ECMP-FLOW target=30.30.30.3 tx=3 rx=3 loss=0
+116 bytes from 30.30.30.3: icmp_seq=1 ttl=64 time=.3765 ms
+116 bytes from 30.30.30.3: icmp_seq=2 ttl=64 time=.4435 ms
+116 bytes from 30.30.30.3: icmp_seq=3 ttl=64 time=.4900 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-ECMP-FLOW target=30.30.30.4 tx=3 rx=3 loss=0
+116 bytes from 30.30.30.4: icmp_seq=1 ttl=64 time=.4298 ms
+116 bytes from 30.30.30.4: icmp_seq=2 ttl=64 time=.4733 ms
+116 bytes from 30.30.30.4: icmp_seq=3 ttl=64 time=.4846 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-ECMP-FLOW target=30.30.30.5 tx=3 rx=3 loss=0
+116 bytes from 30.30.30.5: icmp_seq=1 ttl=64 time=.4188 ms
+116 bytes from 30.30.30.5: icmp_seq=2 ttl=64 time=.5232 ms
+116 bytes from 30.30.30.5: icmp_seq=3 ttl=64 time=.4516 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-ECMP-BUCKETS bucket0_packets=12 bucket1_packets=3
+VPP-ECMP-MULTI-FLOW PASS
+VPP-ECMP-FAILOVER-WINDOW BEGIN flows=4 probes_per_flow=200 interval=0.1 max_loss_pct=15
+VPP-ECMP-FAILOVER-WINDOW-BASELINE bucket0_packets=60 bucket1_packets=21
+VPP-ECMP-PATH-DOWN BEGIN interface=GigabitEthernet0/3/0
+              Name               Idx    State  MTU (L3/IP4/IP6/MPLS)     Counter          Count     
+GigabitEthernet0/3/0              2     down         9000/0/0/0     rx packets                    36
+                                                                    rx bytes                    3704
+                                                                    tx packets                    27
+                                                                    tx bytes                    2970
+                                                                    drops                          7
+                                                                    ip4                           33
+                                                                    ip6                            3
+VPP-ECMP-NH-WITHDRAW PASS nexthop=10.20.0.2 interface=GigabitEthernet0/3/0
+VPP-ECMP-PATH-DOWN-BUCKETS buckets=1
+VPP-ECMP-PATH-DOWN-FIB
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+30.30.30.0/24 fib:0 index:21 locks:2
+  CLI refs:1 src-flags:added,contributing,active,
+    path-list:[23] locks:2 flags:shared, uPRF-list:26 len:1 itfs:[1, ]
+      path:[27] pl-index:23 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        10.10.0.2 GigabitEthernet0/2/0
+      [@0]: ipv4 via 10.10.0.2 GigabitEthernet0/2/0: mtu:9000 next:3 flags:[] 5254001101025254001001010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:22 buckets:1 uRPF:26 to:[177:16980] via:[3:252]]
+    [0] [@5]: ipv4 via 10.10.0.2 GigabitEthernet0/2/0: mtu:9000 next:3 flags:[] 5254001101025254001001010800
+VPP-ECMP-PATH-DOWN-NEIGHBORS
+     Age                       IP                    Flags      Ethernet              Interface       
+     26.3254                10.10.0.2                  D    52:54:00:11:01:02 GigabitEthernet0/2/0
+VPP-ECMP-PATH-DOWN-FLOW target=30.30.30.2 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.2: icmp_seq=1 ttl=64 time=.4366 ms
+116 bytes from 30.30.30.2: icmp_seq=2 ttl=64 time=.3514 ms
+116 bytes from 30.30.30.2: icmp_seq=3 ttl=64 time=.3902 ms
+116 bytes from 30.30.30.2: icmp_seq=4 ttl=64 time=.3669 ms
+116 bytes from 30.30.30.2: icmp_seq=5 ttl=64 time=.4274 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-DOWN-FLOW target=30.30.30.3 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.3: icmp_seq=1 ttl=64 time=.4395 ms
+116 bytes from 30.30.30.3: icmp_seq=2 ttl=64 time=.3610 ms
+116 bytes from 30.30.30.3: icmp_seq=3 ttl=64 time=.3463 ms
+116 bytes from 30.30.30.3: icmp_seq=4 ttl=64 time=.8633 ms
+116 bytes from 30.30.30.3: icmp_seq=5 ttl=64 time=.2979 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-DOWN-FLOW target=30.30.30.4 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.4: icmp_seq=1 ttl=64 time=.3982 ms
+116 bytes from 30.30.30.4: icmp_seq=2 ttl=64 time=.4703 ms
+116 bytes from 30.30.30.4: icmp_seq=3 ttl=64 time=.4619 ms
+116 bytes from 30.30.30.4: icmp_seq=4 ttl=64 time=.3712 ms
+116 bytes from 30.30.30.4: icmp_seq=5 ttl=64 time=.3940 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-DOWN-FLOW target=30.30.30.5 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.5: icmp_seq=1 ttl=64 time=.4896 ms
+116 bytes from 30.30.30.5: icmp_seq=2 ttl=64 time=.4685 ms
+116 bytes from 30.30.30.5: icmp_seq=3 ttl=64 time=.2767 ms
+116 bytes from 30.30.30.5: icmp_seq=4 ttl=64 time=.4655 ms
+116 bytes from 30.30.30.5: icmp_seq=5 ttl=64 time=.4662 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-NH-RESTORE PASS nexthop=10.20.0.2 interface=GigabitEthernet0/3/0
+              Name               Idx    State  MTU (L3/IP4/IP6/MPLS)     Counter          Count     
+GigabitEthernet0/3/0              2      up          9000/0/0/0     rx packets                    38
+                                                                    rx bytes                    3788
+                                                                    tx packets                    28
+                                                                    tx bytes                    3012
+                                                                    drops                          9
+                                                                    ip4                           33
+                                                                    ip6                            3
+VPP-ECMP-PATH-UP-FIB
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+30.30.30.0/24 fib:0 index:21 locks:2
+  CLI refs:1 src-flags:added,contributing,active,
+    path-list:[26] locks:2 flags:shared, uPRF-list:17 len:2 itfs:[1, 2, ]
+      path:[22] pl-index:26 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        10.10.0.2 GigabitEthernet0/2/0
+      [@0]: ipv4 via 10.10.0.2 GigabitEthernet0/2/0: mtu:9000 next:3 flags:[] 5254001101025254001001010800
+      path:[30] pl-index:26 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        10.20.0.2 GigabitEthernet0/3/0
+      [@0]: ipv4 via 10.20.0.2 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:22 buckets:2 uRPF:17 to:[565:54228] via:[3:252]]
+    [0] [@5]: ipv4 via 10.10.0.2 GigabitEthernet0/2/0: mtu:9000 next:3 flags:[] 5254001101025254001001010800
+    [1] [@5]: ipv4 via 10.20.0.2 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+VPP-ECMP-PATH-UP-FLOW target=30.30.30.2 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.2: icmp_seq=1 ttl=64 time=.4910 ms
+116 bytes from 30.30.30.2: icmp_seq=2 ttl=64 time=.4439 ms
+116 bytes from 30.30.30.2: icmp_seq=3 ttl=64 time=.2774 ms
+116 bytes from 30.30.30.2: icmp_seq=4 ttl=64 time=.5531 ms
+116 bytes from 30.30.30.2: icmp_seq=5 ttl=64 time=.4053 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-UP-FLOW target=30.30.30.3 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.3: icmp_seq=1 ttl=64 time=.3150 ms
+116 bytes from 30.30.30.3: icmp_seq=2 ttl=64 time=.2776 ms
+116 bytes from 30.30.30.3: icmp_seq=3 ttl=64 time=.2719 ms
+116 bytes from 30.30.30.3: icmp_seq=4 ttl=64 time=.2636 ms
+116 bytes from 30.30.30.3: icmp_seq=5 ttl=64 time=.2527 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-UP-FLOW target=30.30.30.4 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.4: icmp_seq=1 ttl=64 time=.3688 ms
+116 bytes from 30.30.30.4: icmp_seq=2 ttl=64 time=.3617 ms
+116 bytes from 30.30.30.4: icmp_seq=3 ttl=64 time=.3728 ms
+116 bytes from 30.30.30.4: icmp_seq=4 ttl=64 time=.2648 ms
+116 bytes from 30.30.30.4: icmp_seq=5 ttl=64 time=.4603 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-PATH-UP-FLOW target=30.30.30.5 tx=5 rx=5 loss=0
+116 bytes from 30.30.30.5: icmp_seq=1 ttl=64 time=.4591 ms
+116 bytes from 30.30.30.5: icmp_seq=2 ttl=64 time=.4836 ms
+116 bytes from 30.30.30.5: icmp_seq=3 ttl=64 time=.5309 ms
+116 bytes from 30.30.30.5: icmp_seq=4 ttl=64 time=.4463 ms
+116 bytes from 30.30.30.5: icmp_seq=5 ttl=64 time=.5338 ms
+
+Statistics: 5 sent, 5 received, 0% packet loss
+VPP-ECMP-FAILOVER-WINDOW-FLOW target=30.30.30.2 tx=200 rx=200 loss_pct=0
+VPP-ECMP-FAILOVER-WINDOW-FLOW target=30.30.30.3 tx=200 rx=200 loss_pct=0
+VPP-ECMP-FAILOVER-WINDOW-FLOW target=30.30.30.4 tx=200 rx=200 loss_pct=0
+VPP-ECMP-FAILOVER-WINDOW-FLOW target=30.30.30.5 tx=200 rx=199 loss_pct=1
+VPP-ECMP-FAILOVER-WINDOW PASS flows=4 probes_per_flow=200 total_tx=800 total_rx=799 loss_pct=0.12 duration_ms=20080 max_loss_pct=15 baseline_bucket0=60 baseline_bucket1=21
+VPP-ECMP-PATH-FAILOVER PASS interface=GigabitEthernet0/3/0 probes=20
+VPP-ECMP-PATH-RESTORE PASS interface=GigabitEthernet0/3/0 buckets=2 probes=20
+VPP-ECMP-COUNTERS-AFTER
+              Name               Idx    State  MTU (L3/IP4/IP6/MPLS)     Counter          Count     
+GigabitEthernet0/2/0              1      up          9000/0/0/0     rx packets                   762
+                                                                    rx bytes                   83716
+                                                                    tx packets                   762
+                                                                    tx bytes                   83772
+                                                                    drops                          5
+                                                                    ip4                          760
+                                                                    ip6                            2
+GigabitEthernet0/3/0              2      up          9000/0/0/0     rx packets                   118
+                                                                    rx bytes                   12388
+                                                                    tx packets                   102
+                                                                    tx bytes                   11152
+                                                                    drops                         15
+                                                                    ip4                          111
+                                                                    ip6                            5
+local0                            0     down          0/0/0/0       drops                          1
+loop0                             3      up          9000/0/0/0     drops                          1
+VPP-ECMP-DISTRIBUTION PARTIAL (per-interface packet deltas captured; remote high-rate generator required)
+FRR-ZAPI-ENDPOINT ready=10.0.3.2:2600
+zebra TCP connection established: endpoint=tcp://10.0.3.2:2600
+zapi tx command=19 afi=0 type=4 instance=0 length=18
+zapi tx command=16 afi=1 type=0 instance=0 length=12
+zapi tx command=0 afi=0 type=0 instance=0 length=10
+zapi tx command=12 fd=4 sent=14 errno=0
+zapi tx command=12 afi=1 type=4 instance=0 length=14
+zapi tx frame: 00 0e fe 06 00 00 00 00 00 0c 01 04 00 00
+zapi tx command=12 fd=4 sent=14 errno=0
+zapi tx command=12 afi=1 type=10 instance=0 length=14
+zapi tx frame: 00 0e fe 06 00 00 00 00 00 0c 01 0a 00 00
+zapi tx command=14 afi=1 type=0 instance=0 length=11
+zebra client registered: protocol=4 endpoint=tcp://10.0.3.2:2600
+zapi rx frame header length=22 command=20
+zapi command=20 vrf=0 payload=12 bytes: 00 00 00 00 00 00 00 01 00 00 00 00
+zapi rx frame header length=86 command=33
+zapi command=33 vrf=0 payload=76 bytes: fe 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=16 command=18
+zapi command=18 vrf=0 payload=6 bytes: 02 ac 1f 00 02 20
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 02 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 00 02 0a 0a 00 02 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 02 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 02 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 00 02 1e 1e 1e 02 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 03 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 04 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 05 18 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 03 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 03 00 02 ac 1f 00 02 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 03 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 03 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 04 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 04 00 02 0a 00 02 0f 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 04 08 0a fe c0 00 00 00 00 00 00 50 54 00 ff fe 11 01 00 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 04 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 00 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 05 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 05 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 05 00 02 0a 00 03 02 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 05 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 01 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=78 command=0
+zapi command=0 vrf=0 payload=68 bytes: 6c 6f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 05 00 00 00 00 00 01 00 49 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 01 00
+zapi rx frame header length=53 command=31
+zapi command=31 vrf=0 payload=43 bytes: 04 00 00 00 00 00 49 00 00 00 17 01 02 18 c6 33 64 00 01 00 00 00 00 06 04 01 00 00 00 00 00 00
+frr route event type=4 add=1
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 12 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+zapi rx frame header length=57 command=31
+zapi command=31 vrf=0 payload=47 bytes: 01 00 00 00 00 00 08 00 00 00 17 01 02 00 00 01 00 00 00 00 03 04 0a 00 02 02 00 00 00 04 00 00
+frr route event type=1 add=1
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+--- live system ready. shell:
+LIVE-SHELL-READY
+SERIAL-SHELL-READY ttyS0 115200 8N1 (physical-console root access)
+
+
+BusyBox v1.37.0 (Debian 1:1.37.0-6+b9) built-in shell (ash)
+Enter 'help' for a list of built-in commands.
+
+~ # [6nidle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+VPP-RESTART-TEST BEGIN
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: reconnecting
+VPP backend recovery: reconnecting
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+VPP-RESTART-PEER PASS address=10.10.0.2 packets=3 loss=0
+116 bytes from 10.10.0.2: icmp_seq=1 ttl=64 time=.5006 ms
+116 bytes from 10.10.0.2: icmp_seq=2 ttl=64 time=.4870 ms
+116 bytes from 10.10.0.2: icmp_seq=3 ttl=64 time=.4428 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+VPP-RESTART-PEER PASS address=10.20.0.2 packets=3 loss=0
+116 bytes from 10.20.0.2: icmp_seq=1 ttl=64 time=.4952 ms
+116 bytes from 10.20.0.2: icmp_seq=2 ttl=64 time=.4922 ms
+116 bytes from 10.20.0.2: icmp_seq=3 ttl=64 time=.5035 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+VPP-RESTART-TEST PASS
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+FRR-LEARNED-ADD-BEGIN
+116 bytes from 198.19.0.1: icmp_seq=1 ttl=64 time=.4517 ms
+116 bytes from 198.19.0.1: icmp_seq=2 ttl=64 time=.5770 ms
+116 bytes from 198.19.0.1: icmp_seq=3 ttl=64 time=.4601 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+198.19.0.0/24 fib:0 index:23 locks:2
+  API refs:1 src-flags:added,contributing,active,
+    path-list:[27] locks:4 flags:shared, uPRF-list:26 len:1 itfs:[2, ]
+      path:[31] pl-index:27 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        172.31.0.3 GigabitEthernet0/3/0
+      [@0]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:24 buckets:1 uRPF:26 to:[3:288]]
+    [0] [@5]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+FRR-LEARNED-ADD-END
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+zapi rx frame header length=60 command=32
+zapi command=32 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 12 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=0
+programming sweep: withdrawn=1 failed=0
+zapi rx frame header length=60 command=32
+zapi command=32 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=0
+programming sweep: withdrawn=1 failed=0
+zapi rx frame header length=53 command=32
+zapi command=32 vrf=0 payload=43 bytes: 04 00 00 00 00 00 49 00 00 00 17 01 02 18 c6 33 64 00 01 00 00 00 00 06 04 01 00 00 00 00 00 00
+frr route event type=4 add=0
+programming sweep: withdrawn=1 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=1 failed=0
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 12 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=3 failed=0
+zapi rx frame header length=53 command=31
+zapi command=31 vrf=0 payload=43 bytes: 04 00 00 00 00 00 49 00 00 00 17 01 02 18 c6 33 64 00 01 00 00 00 00 06 04 01 00 00 00 00 00 00
+frr route event type=4 add=1
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+zapi rx frame header length=60 command=32
+zapi command=32 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=0
+programming sweep: withdrawn=1 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+FRR-LEARNED-WITHDRAW-BEGIN
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+
+Statistics: 3 sent, 0 received, 100% packet loss
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+0.0.0.0/0 fib:0 index:0 locks:3
+  API refs:1 src-flags:added,contributing,active,
+    path-list:[28] locks:2 flags:shared, uPRF-list:30 len:1 itfs:[1, ]
+      path:[32] pl-index:28 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        10.0.2.2 GigabitEthernet0/2/0
+      [@0]: arp-ipv4: via 10.0.2.2 GigabitEthernet0/2/0
+
+  default-route refs:1 entry-flags:drop, src-flags:added,
+    path-list:[0] locks:1 flags:drop, uPRF-list:0 len:0 itfs:[]
+      path:[0] pl-index:0 ip4 weight=1 pref=0 special:  cfg-flags:drop,
+        [@0]: dpo-drop ip4
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:1 buckets:1 uRPF:30 to:[3:288]]
+    [0] [@3]: arp-ipv4: via 10.0.2.2 GigabitEthernet0/2/0
+FRR-LEARNED-WITHDRAW-END
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+VPP backend recovery: replay attempted=3 failed=0
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+FRR-LEARNED-RESTORE-BEGIN
+116 bytes from 198.19.0.1: icmp_seq=1 ttl=64 time=1.8345 ms
+116 bytes from 198.19.0.1: icmp_seq=2 ttl=64 time=.3340 ms
+116 bytes from 198.19.0.1: icmp_seq=3 ttl=64 time=.3373 ms
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+
+Statistics: 3 sent, 3 received, 0% packet loss
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+198.19.0.0/24 fib:0 index:21 locks:2
+  API refs:1 src-flags:added,contributing,active,
+    path-list:[27] locks:4 flags:shared, uPRF-list:26 len:1 itfs:[2, ]
+      path:[31] pl-index:27 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        172.31.0.3 GigabitEthernet0/3/0
+      [@0]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:22 buckets:1 uRPF:26 to:[3:288]]
+    [0] [@5]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+FRR-LEARNED-RESTORE-END
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+zapi peer EOF while reading header
+zapi disconnect fd=4
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+zebra session disconnected; reconnecting
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zebra reconnect attempt: endpoint=tcp://10.0.3.2:2600
+zapi tx command=19 afi=0 type=4 instance=0 length=18
+zapi tx command=16 afi=1 type=0 instance=0 length=12
+zapi tx command=0 afi=0 type=0 instance=0 length=10
+zapi tx command=12 fd=4 sent=14 errno=111
+zapi tx command=12 afi=1 type=4 instance=0 length=14
+zapi tx frame: 00 0e fe 06 00 00 00 00 00 0c 01 04 00 00
+zapi tx command=12 fd=4 sent=14 errno=111
+zapi tx command=12 afi=1 type=10 instance=0 length=14
+zapi tx frame: 00 0e fe 06 00 00 00 00 00 0c 01 0a 00 00
+zapi tx command=14 afi=1 type=0 instance=0 length=11
+zebra session reconnected
+zebra reconnect boundary: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+zapi rx frame header length=22 command=20
+zapi command=20 vrf=0 payload=12 bytes: 00 00 00 00 00 00 00 01 00 00 00 00
+zapi rx frame header length=86 command=33
+zapi command=33 vrf=0 payload=76 bytes: fe 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=16 command=18
+zapi command=18 vrf=0 payload=6 bytes: 02 ac 1f 00 02 20
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 02 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 00 02 0a 0a 00 02 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 00 02 1e 1e 1e 02 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 03 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 04 18 00 00 00 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 02 01 02 1e 1e 1e 05 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 02 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 02 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 03 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 03 00 02 ac 1f 00 02 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 03 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 03 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 04 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 04 00 02 0a 00 02 0f 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 04 08 0a fe c0 00 00 00 00 00 00 50 54 00 ff fe 11 01 00 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 04 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 00 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=84 command=0
+zapi command=0 vrf=0 payload=74 bytes: 65 6e 73 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 05 05 00 00 00 00 00 01 10 43 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 05 00
+zapi rx frame header length=25 command=2
+zapi command=2 vrf=0 payload=15 bytes: 00 00 00 05 00 02 0a 00 03 02 18 00 00 00 00
+zapi rx frame header length=49 command=2
+zapi command=2 vrf=0 payload=39 bytes: 00 00 00 05 00 0a fe 80 00 00 00 00 00 00 50 54 00 ff fe 11 01 01 40 00 00 00 00 00 00 00 00 00
+zapi rx frame header length=78 command=0
+zapi command=0 vrf=0 payload=68 bytes: 6c 6f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 05 00 00 00 00 00 01 00 49 00 02 00
+zapi rx frame header length=15 command=41
+zapi command=41 vrf=0 payload=5 bytes: 00 00 00 01 00
+zapi rx frame header length=53 command=31
+zapi command=31 vrf=0 payload=43 bytes: 04 00 00 00 00 00 49 00 00 00 17 01 02 18 c6 33 64 00 01 00 00 00 00 06 04 01 00 00 00 00 00 00
+frr route event type=4 add=1
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 12 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+zapi rx frame header length=60 command=31
+zapi command=31 vrf=0 payload=50 bytes: 0a 00 00 00 00 00 08 00 00 00 17 01 02 18 c6 13 00 00 01 00 00 00 00 03 04 ac 1f 00 03 00 00 00
+frr route event type=10 add=1
+zapi rx frame header length=57 command=31
+zapi command=31 vrf=0 payload=47 bytes: 01 00 00 00 00 00 08 00 00 00 17 01 02 00 00 01 00 00 00 00 03 04 0a 00 02 02 00 00 00 04 00 00
+frr route event type=1 add=1
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+FRR-LEARNED-POSTFRR-BEGIN
+116 bytes from 198.19.0.1: icmp_seq=1 ttl=64 time=.4190 ms
+116 bytes from 198.19.0.1: icmp_seq=2 ttl=64 time=10.9488 ms
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+116 bytes from 198.19.0.1: icmp_seq=3 ttl=64 time=.4444 ms
+
+Statistics: 3 sent, 3 received, 0% packet loss
+ipv4-VRF:0, fib_index:0, flow hash:[src dst sport dport proto flowlabel ] epoch:0 flags:none locks:[adjacency:1, default-route:1, ]
+198.19.0.0/24 fib:0 index:21 locks:2
+  API refs:1 src-flags:added,contributing,active,
+    path-list:[27] locks:4 flags:shared, uPRF-list:26 len:1 itfs:[2, ]
+      path:[31] pl-index:27 ip4 weight=1 pref=0 attached-nexthop:  oper-flags:resolved,
+        172.31.0.3 GigabitEthernet0/3/0
+      [@0]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+
+ forwarding:   unicast-ip4-chain
+  [@0]: dpo-load-balance: [proto:ip4 index:22 buckets:1 uRPF:26 to:[6:576]]
+    [0] [@5]: ipv4 via 172.31.0.3 GigabitEthernet0/3/0: mtu:9000 next:4 flags:[] 5254001201035254001002010800
+FRR-LEARNED-POSTFRR-END
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0
+idle health probe: refreshing VPP
+VPP backend recovery: reconnecting
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+vpp route add vrf=0 prefix-len=0 gw=10.0.2.2 if=1
+vpp route add vrf=0 prefix-len=24 gw=172.31.0.3 if=2
+VPP backend recovery: replay attempted=4 failed=0

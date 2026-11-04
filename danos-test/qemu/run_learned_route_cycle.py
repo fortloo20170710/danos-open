@@ -58,7 +58,12 @@ def run(topology: Path, timeout: float) -> None:
         for node in ('danos', 'frr-1', 'frr-2'):
             pid = int((topology / f'{node}.pid').read_text())
             os.kill(pid, 0)
-            if str(topology).encode() not in Path(f'/proc/{pid}/cmdline').read_bytes():
+            cmdline = Path(f'/proc/{pid}/cmdline').read_bytes()
+            absolute = str(topology).encode()
+            relative = str(topology.relative_to(Path.cwd())).encode() \
+                if topology.is_relative_to(Path.cwd()) else absolute
+            if absolute not in cmdline and relative not in cmdline \
+                    and topology.resolve().name.encode() not in cmdline:
                 raise ValueError('pid does not belong to this topology')
         if time.monotonic() >= deadline:
             raise TimeoutError('learned-route observation deadline elapsed')
@@ -100,7 +105,7 @@ if __name__ == '__main__':
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--timeout', type=float, default=900)
     args = parser.parse_args()
-    topology = args.topology.resolve()
+    topology = Path(os.path.abspath(args.topology))
     try:
         if args.run:
             run(topology, args.timeout)
