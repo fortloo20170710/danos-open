@@ -1,5 +1,17 @@
 # Outstanding work plan
 
+### 2026-11-04 QEMU live ISO requalification
+
+- Built `build/danos-open-v0.16.0-preflight-e1000.iso` (SHA256
+  `0d50603d...`) and passed the e1000 network smoke (10.0.2.15/24, 1000 Mbps,
+  0% ping loss), live console/USB keyboard/mgrd WAL replay (6 records) and
+  serial root shell lanes.
+- Fixed the ISO builder to package `libz.so.1`/`libzstd.so.1`; without them
+  the live `danos-mgrd` failed at startup.
+- FRR/VPP topology + learned-route remains ENVIRONMENT-OPEN: missing
+  VPP-enabled ISO, FRR base image and topology artifacts. Raw evidence:
+  `docs/evidence/v016-qemu-live-preflight-2026-11-04.env`.
+
 ### 2026-11-03 focused branch coverage: netlink and NETCONF locks
 
 - Branch coverage moved **60.0% -> 60.3%** (5820/9692 -> 5843/9692) while the
