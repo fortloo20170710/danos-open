@@ -1,5 +1,17 @@
 # Outstanding work plan
 
+### 2026-11-04 gate rerun on merged QEMU/FRR evidence
+
+- Reran `run_v016_release_gate.sh` on main `c0039e3` with
+  `QEMU_TOPOLOGY_DIR=build/qemu-shared-b3804e0-v4`. Overall `status=FAIL`,
+  `dpdk_open_waived=0`.
+- `qemu-learned-route-lifecycle` now **PASS** (ADD/WITHDRAW/RESTORE/POSTFRR).
+- `qemu-frr-vpp` still FAILs only the four-flow 1,000-packet ECMP soak;
+  I211 live console/serial and VMware inputs are absent, and PCI/DPDK remains
+  ENVIRONMENT-OPEN.
+- Archived result:
+  `docs/evidence/v016-release-gate-preflight-2026-11-04-main-c0039e3.env`.
+
 ### 2026-11-04 QEMU live ISO requalification
 
 - Built `build/danos-open-v0.16.0-preflight-e1000.iso` (SHA256
