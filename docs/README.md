@@ -13,6 +13,7 @@ contributor needs lives here; everything else is an archive.
 | [Threading contract](threading.md) | Threads, shared state, lock rules |
 | [Release notes](release/) | Per-tag notes (v0.6.0+) |
 | [Project status](project-status.md) | Current assessment, roadmap and acceptance policy |
+| [v0.16 release decision](v0.16-release-decision.md) | Per-row verdicts, evidence and closing preconditions for a final tag |
 | [Outstanding work plan](outstanding-work-plan.md) | Current release gates and engineering backlog; dated evidence is in the archive |
 | [Hardening pass 2026-10-04](security-and-correctness-hardening-2026-10-04.md) | Memory-safety, persistence and VPP wire-protocol fixes |
 | [v0.16 acceptance matrix](v0.16-acceptance-matrix.md) | Single current rc1 acceptance record; dated evidence is in the archive |
