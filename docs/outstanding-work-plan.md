@@ -12,9 +12,9 @@
   ISO was rebuilt with FIB bridge/restart test, a valid Debian 13 base image
   and pinned topology files were generated at `build/qemu-shared-b3804e0-v4`,
   and FRR was installed offline from the VPP runtime image (both guests expose
-  zserv). The VPP restart replay still fails the connected 10.10.0.0/24 route
-  (`replay attempted=4 failed=1`), so `VPP-RESTART-TEST FAIL` blocks the
-  learned-route runner. Raw evidence:
+  zserv). The replay fixes now make `VPP-RESTART-TEST PASS` and the learned-route runner
+  issues the ADD probe, but `198.19.0.1` returns 3 sent / 0 received, so the
+  ADD phase fails and no learned-route PASS is claimed. Raw evidence:
   `docs/evidence/v016-qemu-live-preflight-2026-11-04.env` and
   `docs/evidence/v016-vpp-topology-preflight-2026-11-04.env`.
 
