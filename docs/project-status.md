@@ -16,13 +16,13 @@
 已通过的工程验证：
 
 - x86_64 / aarch64 构建，`-Wall -Wextra -Wpedantic -Werror`
-- 全量 CTest **95/95**（Release；CI 的 ASan+UBSan 同套件通过）
+- 全量 CTest **96/96**（Release；CI 的 ASan+UBSan 同套件通过）
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
-- 生产 C 覆盖率 81.0%（函数 91.1%、分支 60.1%），Coverage 门禁 79%
+- 生产 C 覆盖率 80.8%（函数 91.3%、分支 59.8%），Coverage 门禁 79%
 - libFuzzer 目标：gNMI protobuf、HPACK、HTTP/2 帧头（CI 构建并冒烟运行）
-- 根 `Dockerfile` 源码镜像：构建阶段 CTest **95/95**，运行时 `/metrics` 冒烟通过
+- 根 `Dockerfile` 源码镜像：构建阶段 CTest **96/96**，运行时 `/metrics` 冒烟通过
 
 ## 2. 模块状态
 
@@ -33,7 +33,7 @@
 | danos-mgmt | 稳定 | gNMI gRPC/HTTP2、mTLS、Unix peercred、CLI、NETCONF over SSH（单一 `danos-netconfd` 托管 candidate/锁/跨会话 confirmed-commit；committed running 与 pending rollback 均持久化、重启后加载/回滚；损坏 running 快照 fail-closed 并可显式 override；角色按 peer uid 策略派生并失败关闭；hello 后 idle-session 默认 300s 超时） |
 | danos-fib | 可用 | FRR ZAPI v6 解析与映射 |
 | danos-vpp | 可用 | binary API、路由/接口编程、统计、interface/table/route dump OPER 读回 |
-| danos-netlink | 可用 | IPv4 路由/地址/接口；路由 metric 与 ECMP 成员 OPER 读回；IPv6 地址明确返回不支持 |
+| danos-netlink | 可用 | IPv4 路由/接口；IPv4/IPv6 地址编程与 OPER 读回（重复添加、幂等删除、非法前缀拒绝）；路由 metric 与 ECMP 成员 OPER 读回 |
 | danos-security | 可用 | RBAC、审计、CoPP；权限粒度仍为对象级 |
 | danos-observability | 可用 | Prometheus `/metrics`（默认回环监听）、结构化日志 |
 | danos-ha | 部分 | BFD/VRRP/supervisor 内存模型；bfdd 翻译未完成 |

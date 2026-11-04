@@ -50,6 +50,8 @@ static struct {
     /* Carrier state, independent of admin state (tests drive this). */
     bool iface_link[MOCK_MAX_IFACES];
     bool iface_link_known[MOCK_MAX_IFACES];
+    danos_ip_prefix_t iface_v4[MOCK_MAX_IFACES];
+    danos_ip_prefix_t iface_v6[MOCK_MAX_IFACES];
 } g_mock;
 
 static mock_route_t *mock_find(const uint8_t addr[4], uint8_t len,
@@ -645,10 +647,20 @@ static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
     return DANOS_ERR_NOT_FOUND;
 }
 
-static int nl_iface_addr_msg(const danos_iface_t *iface, int add)
+static bool prefix_is_valid(const danos_ip_prefix_t *p)
 {
-    const danos_ip_prefix_t *p = &iface->ipv4_address;
-    if (p->addr.af != DANOS_AF_IPV4) return -1;
+    if (!p) return false;
+    if (p->addr.af == DANOS_AF_IPV4) return p->prefix_len <= 32;
+    if (p->addr.af == DANOS_AF_IPV6) return p->prefix_len <= 128;
+    return false;
+}
+
+static int nl_iface_addr_msg(danos_ifindex_t ifindex,
+                             const danos_ip_prefix_t *p, int add)
+{
+    if (!p || !prefix_is_valid(p)) return -1;
+    bool v6 = p->addr.af == DANOS_AF_IPV6;
+    size_t alen = v6 ? 16 : 4;
     struct {
         struct nlmsghdr nh;
         struct ifaddrmsg ifa;
@@ -659,16 +671,103 @@ static int nl_iface_addr_msg(const danos_iface_t *iface, int add)
     msg.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
     if (add) msg.nh.nlmsg_flags |= NLM_F_CREATE | NLM_F_REPLACE;
     msg.nh.nlmsg_type = add ? RTM_NEWADDR : RTM_DELADDR;
-    msg.ifa.ifa_family = AF_INET;
+    msg.ifa.ifa_family = v6 ? AF_INET6 : AF_INET;
     msg.ifa.ifa_prefixlen = p->prefix_len;
-    msg.ifa.ifa_index = iface->ifindex;
+    msg.ifa.ifa_index = (int)ifindex;
     struct rtattr *rta = (struct rtattr *)msg.attrbuf;
-    rta->rta_type = IFA_LOCAL;
-    rta->rta_len = RTA_LENGTH(4);
-    memcpy(RTA_DATA(rta), p->addr.addr, 4);
-    msg.nh.nlmsg_len += RTA_LENGTH(4);
+    /* IPv4 uses IFA_LOCAL; IPv6 needs IFA_ADDRESS and also carries
+     * IFA_LOCAL so iproute2-style userspace remains consistent. */
+    if (!v6) {
+        rta->rta_type = IFA_LOCAL;
+        rta->rta_len = RTA_LENGTH(4);
+        memcpy(RTA_DATA(rta), p->addr.addr, 4);
+        msg.nh.nlmsg_len += RTA_LENGTH(4);
+    } else {
+        rta->rta_type = IFA_LOCAL;
+        rta->rta_len = (unsigned short)RTA_LENGTH(16);
+        memcpy(RTA_DATA(rta), p->addr.addr, 16);
+        msg.nh.nlmsg_len += RTA_LENGTH(16);
+        rta = (struct rtattr *)((char *)rta + RTA_LENGTH(16));
+        rta->rta_type = IFA_ADDRESS;
+        rta->rta_len = (unsigned short)RTA_LENGTH(16);
+        memcpy(RTA_DATA(rta), p->addr.addr, 16);
+        msg.nh.nlmsg_len += RTA_LENGTH(16);
+    }
+    (void)alen;
     if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
     return nl_read_ack();
+}
+
+/* Read the primary IPv4/IPv6 address currently assigned to an interface.
+ * The DPA interface model has one slot per family; prefer the first global
+ * address over link-local addresses. */
+static int nl_iface_addr_read(danos_ifindex_t ifindex, danos_iface_t *out)
+{
+    struct {
+        struct nlmsghdr nh;
+        struct ifaddrmsg ifa;
+    } req;
+    memset(&req, 0, sizeof(req));
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    req.nh.nlmsg_type = RTM_GETADDR;
+    req.nh.nlmsg_seq = 4;
+    req.ifa.ifa_family = AF_UNSPEC;
+    req.ifa.ifa_index = (int)ifindex;
+    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0) return -1;
+
+    int best_v4 = -1, best_v6 = -1;
+    for (;;) {
+        char resp[8192];
+        ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
+        if (n < (ssize_t)sizeof(struct nlmsghdr)) return -1;
+        int rem = (int)n;
+        for (struct nlmsghdr *nh = (struct nlmsghdr *)resp;
+             NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem)) {
+            if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
+            if (nh->nlmsg_type == NLMSG_DONE) return 0;
+            if (nh->nlmsg_type == NLMSG_ERROR) return -1;
+            if (nh->nlmsg_type != RTM_NEWADDR) continue;
+            if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct ifaddrmsg)))
+                continue;
+            struct ifaddrmsg *ifa = NLMSG_DATA(nh);
+            if ((int)ifa->ifa_index != (int)ifindex) continue;
+            if (ifa->ifa_flags & IFA_F_TENTATIVE) continue;
+            size_t alen = ifa->ifa_family == AF_INET6 ? 16 :
+                          ifa->ifa_family == AF_INET ? 4 : 0;
+            if (!alen) continue;
+            uint8_t addr[16] = {0};
+            bool found = false;
+            int attrlen = IFA_PAYLOAD(nh);
+            struct rtattr *rta = IFA_RTA(ifa);
+            for (; RTA_OK(rta, attrlen); rta = RTA_NEXT(rta, attrlen)) {
+                if ((rta->rta_type == IFA_LOCAL ||
+                     rta->rta_type == IFA_ADDRESS) &&
+                    RTA_PAYLOAD(rta) >= alen) {
+                    memcpy(addr, RTA_DATA(rta), alen);
+                    found = true;
+                    if (rta->rta_type == IFA_LOCAL) break;
+                }
+            }
+            if (!found) continue;
+            bool link_local = alen == 16 && addr[0] == 0xfe &&
+                              (addr[1] & 0xc0) == 0x80;
+            /* Prefer a globally scoped address over host/link-local ones:
+             * loopback carries ::1 (scope host) alongside configured global
+             * addresses. */
+            int score = link_local ? 1 : 2;
+            if (ifa->ifa_scope == RT_SCOPE_UNIVERSE) score = 3;
+            int *best = alen == 16 ? &best_v6 : &best_v4;
+            if (*best >= score) continue;
+            danos_ip_prefix_t *slot = alen == 16 ? &out->ipv6_address
+                                                : &out->ipv4_address;
+            memset(slot, 0, sizeof(*slot));
+            slot->addr.af = alen == 16 ? DANOS_AF_IPV6 : DANOS_AF_IPV4;
+            memcpy(slot->addr.addr, addr, alen);
+            slot->prefix_len = ifa->ifa_prefixlen;
+            *best = score;
+        }
+    }
 }
 
 /* =========================================================================
@@ -688,24 +787,65 @@ static danos_status_t ops_iface_up(danos_ifindex_t ifindex, bool up, void *user)
     return nl_iface_up(ifindex, up) == 0 ? DANOS_OK : DANOS_ERR_BACKEND_IO;
 }
 
+static danos_status_t iface_addr_apply(const danos_iface_t *iface, int add)
+{
+    if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
+    bool have_v4 = iface->ipv4_address.addr.af != DANOS_AF_UNSPEC;
+    bool have_v6 = iface->ipv6_address.addr.af != DANOS_AF_UNSPEC;
+    if (!have_v4 && !have_v6) return DANOS_ERR_INVALID_ARG;
+    if (have_v4 && iface->ipv4_address.addr.af != DANOS_AF_IPV4)
+        return DANOS_ERR_INVALID_ARG;
+    if (have_v6 && iface->ipv6_address.addr.af != DANOS_AF_IPV6)
+        return DANOS_ERR_INVALID_ARG;
+    if (have_v4 && !prefix_is_valid(&iface->ipv4_address))
+        return DANOS_ERR_INVALID_ARG;
+    if (have_v6 && !prefix_is_valid(&iface->ipv6_address))
+        return DANOS_ERR_INVALID_ARG;
+
+    if (!g_nl.real) {
+        if (iface->ifindex >= MOCK_MAX_IFACES)
+            return DANOS_ERR_INVALID_ARG;
+        g_mock.iface_known[iface->ifindex] = true;
+        if (!add) {
+            /* Removing an address that is not present is idempotent. */
+            if (have_v4) memset(&g_mock.iface_v4[iface->ifindex], 0,
+                                sizeof(g_mock.iface_v4[0]));
+            if (have_v6) memset(&g_mock.iface_v6[iface->ifindex], 0,
+                                sizeof(g_mock.iface_v6[0]));
+            return DANOS_OK;
+        }
+        if (have_v4) g_mock.iface_v4[iface->ifindex] = iface->ipv4_address;
+        if (have_v6) g_mock.iface_v6[iface->ifindex] = iface->ipv6_address;
+        return DANOS_OK;
+    }
+
+    if (have_v4 &&
+        nl_iface_addr_msg(iface->ifindex, &iface->ipv4_address, add) != 0) {
+        if (!add && (danos_netlink_last_kernel_error == -EADDRNOTAVAIL ||
+                     danos_netlink_last_kernel_error == -ENOENT))
+            return DANOS_OK;
+        return DANOS_ERR_BACKEND_IO;
+    }
+    if (have_v6 &&
+        nl_iface_addr_msg(iface->ifindex, &iface->ipv6_address, add) != 0) {
+        if (!add && (danos_netlink_last_kernel_error == -EADDRNOTAVAIL ||
+                     danos_netlink_last_kernel_error == -ENOENT))
+            return DANOS_OK;
+        return DANOS_ERR_BACKEND_IO;
+    }
+    return DANOS_OK;
+}
+
 static danos_status_t ops_iface_addr_set(const danos_iface_t *iface, void *user)
 {
     (void)user;
-    if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
-    if (iface->ipv4_address.addr.af != DANOS_AF_IPV4)
-        return DANOS_ERR_NOT_SUPPORTED;
-    if (!g_nl.real) return DANOS_OK;
-    return nl_iface_addr_msg(iface, 1) == 0 ? DANOS_OK : DANOS_ERR_BACKEND_IO;
+    return iface_addr_apply(iface, 1);
 }
 
 static danos_status_t ops_iface_addr_del(const danos_iface_t *iface, void *user)
 {
     (void)user;
-    if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
-    if (!g_nl.real) return DANOS_OK;
-    if (iface->ipv4_address.addr.af != DANOS_AF_IPV4)
-        return DANOS_ERR_NOT_SUPPORTED;
-    return nl_iface_addr_msg(iface, 0) == 0 ? DANOS_OK : DANOS_ERR_BACKEND_IO;
+    return iface_addr_apply(iface, 0);
 }
 
 static danos_status_t ops_route_add(const danos_resolved_route_t *res,
@@ -893,14 +1033,16 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
         o->parent_ifindex = d->parent_ifindex;
         o->outer_vlan = d->outer_vlan;
         o->inner_vlan = d->inner_vlan;
-        o->ipv4_address = d->ipv4_address;
-        o->ipv6_address = d->ipv6_address;
+        if (nl_iface_addr_read((danos_ifindex_t)id, o) != 0)
+            return DANOS_ERR_BACKEND_IO;
         return DANOS_OK;
     }
 
     if (id >= MOCK_MAX_IFACES) return DANOS_ERR_NOT_FOUND;
     if (!g_mock.iface_known[id]) return DANOS_ERR_NOT_FOUND;
     *o = *d;
+    o->ipv4_address = g_mock.iface_v4[id];
+    o->ipv6_address = g_mock.iface_v6[id];
     o->link_up = g_mock.iface_link_known[id] ? g_mock.iface_link[id]
                                              : g_mock.iface_up[id];
     return DANOS_OK;

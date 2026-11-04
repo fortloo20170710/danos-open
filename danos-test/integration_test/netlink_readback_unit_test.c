@@ -79,16 +79,56 @@ int main(void)
     assert(ops->readback(DANOS_OBJ_ACL, 5, &desired, sizeof(desired),
                          &oper, ops->user) == DANOS_ERR_NOT_SUPPORTED);
 
-    /* Address programming paths and their argument/unsupported branches. */
+    /* IPv4 address programming, duplicate add and readback. */
     assert(ops->iface_addr_set(&desired, ops->user) == DANOS_OK);
+    assert(ops->iface_addr_set(&desired, ops->user) == DANOS_OK);
+    assert(ops->readback(DANOS_OBJ_IFACE, 5, &desired, sizeof(desired),
+                         &oper, ops->user) == DANOS_OK);
+    assert(oper.ipv4_address.addr.af == DANOS_AF_IPV4);
+    assert(oper.ipv4_address.prefix_len == 24);
+    assert(memcmp(oper.ipv4_address.addr.addr, desired.ipv4_address.addr.addr,
+                  4) == 0);
+
+    /* IPv6 add/readback/duplicate/remove, including idempotent delete. */
     assert(ops->iface_addr_del(&desired, ops->user) == DANOS_OK);
-    danos_iface_t bad = desired;
+    danos_iface_t v6 = desired;
+    v6.ipv4_address.addr.af = DANOS_AF_UNSPEC;
+    v6.ipv6_address.addr.af = DANOS_AF_IPV6;
+    v6.ipv6_address.prefix_len = 64;
+    v6.ipv6_address.addr.addr[0] = 0x20;
+    v6.ipv6_address.addr.addr[1] = 0x01;
+    v6.ipv6_address.addr.addr[2] = 0x0d;
+    v6.ipv6_address.addr.addr[3] = 0xb8;
+    v6.ipv6_address.addr.addr[15] = 1;
+    assert(ops->iface_addr_set(&v6, ops->user) == DANOS_OK);
+    assert(ops->iface_addr_set(&v6, ops->user) == DANOS_OK);  /* duplicate */
+    assert(ops->readback(DANOS_OBJ_IFACE, 5, &v6, sizeof(v6),
+                         &oper, ops->user) == DANOS_OK);
+    assert(oper.ipv6_address.addr.af == DANOS_AF_IPV6);
+    assert(oper.ipv6_address.prefix_len == 64);
+    assert(memcmp(oper.ipv6_address.addr.addr, v6.ipv6_address.addr.addr,
+                  16) == 0);
+    assert(oper.ipv4_address.addr.af == DANOS_AF_UNSPEC);
+    assert(ops->iface_addr_del(&v6, ops->user) == DANOS_OK);
+    assert(ops->readback(DANOS_OBJ_IFACE, 5, &v6, sizeof(v6),
+                         &oper, ops->user) == DANOS_OK);
+    assert(oper.ipv6_address.addr.af == DANOS_AF_UNSPEC);
+    assert(ops->iface_addr_del(&v6, ops->user) == DANOS_OK);  /* idempotent */
+
+    /* Invalid prefix lengths and families are refused. */
+    danos_iface_t bad = v6;
+    bad.ipv6_address.prefix_len = 129;
+    assert(ops->iface_addr_set(&bad, ops->user) == DANOS_ERR_INVALID_ARG);
+    bad = desired;
+    bad.ipv4_address.prefix_len = 33;
+    assert(ops->iface_addr_set(&bad, ops->user) == DANOS_ERR_INVALID_ARG);
+    bad = desired;
     bad.ifindex = 0;
     assert(ops->iface_addr_set(&bad, ops->user) == DANOS_ERR_INVALID_ARG);
     bad = desired;
     bad.ipv4_address.addr.af = DANOS_AF_IPV6;
-    assert(ops->iface_addr_set(&bad, ops->user) == DANOS_ERR_NOT_SUPPORTED);
-    assert(ops->iface_addr_del(&bad, ops->user) == DANOS_OK);
+    assert(ops->iface_addr_set(&bad, ops->user) == DANOS_ERR_INVALID_ARG);
+    assert(ops->iface_addr_del(&bad, ops->user) == DANOS_ERR_INVALID_ARG);
     assert(ops->iface_addr_set(NULL, ops->user) == DANOS_ERR_INVALID_ARG);
 
     danos_vrf_t vrf;
