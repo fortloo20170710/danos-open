@@ -431,7 +431,7 @@ docker cp "$BUILD_CONTAINER:/tmp/b/danos-mgrd/danos-mgrd" "$WORK/initramfs/bin/m
 chmod +x "$WORK/initramfs/bin/mgrd"
 # mgrd's TLS dependency is present even in this laboratory h2c image.
 mkdir -p "$WORK/initramfs/lib/x86_64-linux-gnu"
-for lib in libssl.so.3 libcrypto.so.3; do
+for lib in libssl.so.3 libcrypto.so.3 libz.so.1 libzstd.so.1; do
   tls_lib_path=$(docker exec "$BUILD_CONTAINER" readlink -f "/lib/x86_64-linux-gnu/$lib")
   docker cp "$BUILD_CONTAINER:$tls_lib_path" "$WORK/initramfs/lib/x86_64-linux-gnu/$lib"
 done
