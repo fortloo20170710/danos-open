@@ -8,6 +8,7 @@ extern int test_evpn_crud(void);
 extern int test_mroute_crud(void);
 extern int test_state(void);
 extern int test_transaction(void);
+extern int test_transaction_committed_rollback(void);
 extern int test_event(void);
 extern int test_reconciler(void);
 
@@ -25,6 +26,7 @@ int main(void)
     if (test_mroute_crud()  != 0) failed++;
     if (test_state()        != 0) failed++;
     if (test_transaction()  != 0) failed++;
+    if (test_transaction_committed_rollback() != 0) failed++;
     if (test_event()        != 0) failed++;
     if (test_reconciler()   != 0) failed++;
     printf("=== core_test: %s ===\n", failed == 0 ? "ALL PASSED" : "FAILURES");

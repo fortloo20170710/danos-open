@@ -37,14 +37,14 @@ quality, correct behavior or adequate security coverage.
 ## 2026-11-03 current baseline
 
 Fresh run: build-coverage-current/reports, GCC/gcov 15.2.0, gcovr 8.4, commit
-`2a0d655` plus the gNMI subscription `use_models`, heterogeneous per-path and
-interop changes (dirty). CTest 96/96 passed.
+`d32141d` plus the committed-transaction rollback and gNMI subscription
+changes (dirty). CTest 96/96 passed.
 
 | Metric | Executed / total | Coverage |
 | --- | --- | --- |
-| Lines | 9702 / 12002 | 80.8% |
-| Functions | 803 / 879 | 91.4% |
-| Branches | 5785 / 9654 | 59.9% |
+| Lines | 9775 / 12068 | 81.0% |
+| Functions | 806 / 880 | 91.6% |
+| Branches | 5822 / 9692 | 60.1% |
 
 The 79% line gate passes. The totals differ from the 2026-10-20 run because
 the measured tree now includes the shared NETCONF session/daemon sources and
