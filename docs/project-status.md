@@ -5,6 +5,7 @@
 > 本页只保留**当前状态**。按日期追加的完整验证记录已归档到
 > [`docs/archive/project-status-log.md`](archive/project-status-log.md)。
 > 验收门槛见 [`v0.16-acceptance-matrix.md`](v0.16-acceptance-matrix.md)，
+> 发布判定逐行清单见 [`v0.16-release-decision.md`](v0.16-release-decision.md)，
 > 待办见 [`outstanding-work-plan.md`](outstanding-work-plan.md) 与
 > [`../TODO.md`](../TODO.md)。
 

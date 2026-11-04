@@ -36,8 +36,9 @@ independent receiver. R2/R4 physical rollout, uniform four-node qualification,
 and production PKI/mTLS deployment also remain open. BFD, VLAN, VXLAN and EVPN
 remain deferred until the v0.16 release decision.
 
-Authoritative status: [v0.16 acceptance matrix](docs/v0.16-acceptance-matrix.md)
-and [project status](docs/project-status.md). The release-candidate gate is
+Authoritative status: [v0.16 acceptance matrix](docs/v0.16-acceptance-matrix.md),
+[release decision record](docs/v0.16-release-decision.md) and
+[project status](docs/project-status.md). The release-candidate gate is
 `bash danos-test/integration/run_v016_release_gate.sh`.
 
 ## Quick Start (5 minutes)

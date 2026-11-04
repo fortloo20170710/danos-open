@@ -4,6 +4,7 @@
 
 ## v0.16 工程收敛
 - [x] 统一 README、TODO、project status 与 v0.16 acceptance matrix 的当前状态口径
+- [x] 编写 v0.16 release decision 文档：逐行 verdict/evidence/closing precondition 与 reviewer 决策清单
 - [ ] 将当前 gNMI 修复拆分提交并完成协议回归
 
 - [x] 增加 Interface IPv4/IPv6 地址模型及 northbound 测试（Linux/VPP 地址消息均已有类型化覆盖）
