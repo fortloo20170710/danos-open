@@ -10,6 +10,7 @@
  */
 
 #include "gnmi_proto.h"
+#include "model_paths.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -628,6 +629,101 @@ bool gnmi_encode_capabilities_response(gnmi_pb_t *w,
  * Subscribe (v0.4)
  * ========================================================================= */
 
+
+static bool pb_copy_text(gnmi_pb_reader_t *r, uint32_t wire, char *dst,
+                         size_t cap)
+{
+    const uint8_t *d;
+    size_t n;
+    if (wire != 2 || !gnmi_pbr_bytes(r, &d, &n) || n >= cap) return false;
+    memcpy(dst, d, n);
+    dst[n] = '\0';
+    return true;
+}
+
+static bool decode_model_filter(const uint8_t *data, size_t len,
+                                gnmi_model_filter_t *out)
+{
+    memset(out, 0, sizeof(*out));
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, data, len);
+    uint32_t field, wire;
+    while ((field = gnmi_pbr_tag(&r, &wire)) != 0) {
+        if (r.err) return false;
+        switch (field) {
+        case 1:
+            if (!pb_copy_text(&r, wire, out->name, sizeof(out->name)))
+                return false;
+            break;
+        case 2:
+            if (!pb_copy_text(&r, wire, out->organization,
+                              sizeof(out->organization)))
+                return false;
+            break;
+        case 3:
+            if (!pb_copy_text(&r, wire, out->version, sizeof(out->version)))
+                return false;
+            break;
+        default:
+            gnmi_pbr_skip(&r, wire);
+            break;
+        }
+    }
+    return !r.err;
+}
+
+/* Map a top-level subscription path to the advertised model that owns it. */
+static const char *path_model_name(const gnmi_path_t *p)
+{
+    if (!p || p->elem_count == 0) return NULL;
+    if (!strcmp(p->elems[0].name, "interfaces")) return "openconfig-interfaces";
+    if (!strcmp(p->elems[0].name, "dataplane")) return "danos-dpa";
+    if (!strcmp(p->elems[0].name, "network-instances") ||
+        !strcmp(p->elems[0].name, "network-instance"))
+        return "openconfig-network-instance";
+    return NULL;
+}
+
+/* A model filter with only a name set matches that model; optional org and
+ * version narrow the match. Empty strings are wildcards per gNMI. */
+static bool model_filter_matches(const gnmi_model_filter_t *f,
+                                 const gnmi_model_data_t *m)
+{
+    if (f->name[0] && strcmp(f->name, m->name)) return false;
+    if (f->organization[0] &&
+        strcmp(f->organization, m->organization)) return false;
+    if (f->version[0] && strcmp(f->version, m->version)) return false;
+    return true;
+}
+
+static void validate_use_models(gnmi_subscribe_list_t *sl)
+{
+    if (sl->model_count == 0) return;
+    const gnmi_model_data_t *supported = NULL;
+    uint32_t supported_count = 0;
+    gnmi_model_supported_models(&supported, &supported_count);
+    if (!supported) { sl->unsupported_options = true; return; }
+
+    for (uint32_t i = 0; i < sl->model_count; i++) {
+        bool known = false;
+        for (uint32_t m = 0; m < supported_count; m++)
+            if (model_filter_matches(&sl->models[i], &supported[m]))
+                known = true;
+        if (!known) { sl->unsupported_options = true; return; }
+    }
+    /* Every subscribed path must belong to at least one requested model. */
+    for (uint32_t i = 0; i < sl->sub_count; i++) {
+        const char *name = path_model_name(&sl->subs[i].path);
+        bool covered = false;
+        for (uint32_t f = 0; f < sl->model_count && name; f++)
+            for (uint32_t m = 0; m < supported_count; m++)
+                if (!strcmp(name, supported[m].name) &&
+                    model_filter_matches(&sl->models[f], &supported[m]))
+                    covered = true;
+        if (!covered) { sl->unsupported_options = true; return; }
+    }
+}
+
 bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                                    gnmi_subscribe_request_t *out)
 {
@@ -646,12 +742,6 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
             {
                 gnmi_pb_reader_t lr;
                 gnmi_pbr_init(&lr, d, n);
-                bool have_path_mode = false;
-                bool aggregate_sample_mode = false;
-                bool aggregate_on_change_mode = false;
-                uint64_t aggregate_sample_interval = 0;
-                bool aggregate_suppress_redundant = false;
-                uint64_t aggregate_heartbeat_interval = 0;
                 uint32_t lf, lw;
                 while ((lf = gnmi_pbr_tag(&lr, &lw)) != 0) {
                     if (lr.err) return false;
@@ -706,41 +796,29 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                             sub->mode = path_mode;
                             if (sample_mode && sample_interval == 0)
                                 sample_interval = 1000000000ULL;
-                            if (!sample_mode && sample_interval != 0)
-                                out->subscribe.unsupported_options = true;
-                            if ((!sample_mode &&
+                            sub->sample_interval_ns = sample_interval;
+                            sub->suppress_redundant = suppress_redundant;
+                            sub->heartbeat_interval_ns = heartbeat_interval;
+                            /* SAMPLE-only options are invalid elsewhere; a
+                             * heartbeat only makes sense with suppression. */
+                            if ((!sample_mode && sample_interval != 0) ||
+                                (path_mode == 0 &&
                                  (suppress_redundant || heartbeat_interval)) ||
-                                (heartbeat_interval && !suppress_redundant) ||
+                                (path_mode == 1 && suppress_redundant) ||
+                                (heartbeat_interval &&
+                                 path_mode != 1 && path_mode != 2) ||
+                                sample_interval > 86400000000000ULL ||
                                 heartbeat_interval > 86400000000000ULL)
                                 out->subscribe.unsupported_options = true;
-                            if (!have_path_mode) {
-                                aggregate_sample_mode = sample_mode;
-                                aggregate_on_change_mode = on_change_mode;
-                                aggregate_sample_interval = sample_interval;
-                                aggregate_suppress_redundant = suppress_redundant;
-                                aggregate_heartbeat_interval = heartbeat_interval;
-                                have_path_mode = true;
-                            } else if (aggregate_sample_mode != sample_mode ||
-                                       aggregate_on_change_mode != on_change_mode ||
-                                       (sample_mode &&
-                                        (aggregate_sample_interval != sample_interval ||
-                                         aggregate_suppress_redundant != suppress_redundant ||
-                                         aggregate_heartbeat_interval != heartbeat_interval))) {
-                                /* Keep one list's delivery contract uniform. */
-                                out->subscribe.unsupported_options = true;
+                            /* Per-path contracts may differ within one list;
+                             * only the aggregate summary is maintained. */
+                            out->subscribe.sample_mode |= sample_mode;
+                            out->subscribe.on_change_mode |= on_change_mode;
+                            if (sample_mode) {
+                                out->subscribe.sample_interval_ns = sample_interval;
+                                out->subscribe.suppress_redundant = suppress_redundant;
+                                out->subscribe.heartbeat_interval_ns = heartbeat_interval;
                             }
-                            if (sample_mode && sample_interval >
-                                86400000000000ULL)
-                                out->subscribe.unsupported_options = true;
-                            out->subscribe.sample_mode = aggregate_sample_mode;
-                            out->subscribe.on_change_mode =
-                                aggregate_on_change_mode;
-                            out->subscribe.sample_interval_ns =
-                                aggregate_sample_interval;
-                            out->subscribe.suppress_redundant =
-                                aggregate_suppress_redundant;
-                            out->subscribe.heartbeat_interval_ns =
-                                aggregate_heartbeat_interval;
                         }
                         break;
                     case 5:
@@ -752,9 +830,17 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
                     case 9:
                         out->subscribe.updates_only = gnmi_pbr_varint(&lr) != 0;
                         break;
-                    case 7: /* use_models: not implemented */
-                        out->subscribe.unsupported_options = true;
-                        gnmi_pbr_skip(&lr, lw);
+                    case 7: /* use_models: repeated ModelData */
+                        if (lw != 2 || !gnmi_pbr_bytes(&lr, &ld, &ln) ||
+                            out->subscribe.model_count >= GNMI_MAX_ELEMS ||
+                            !decode_model_filter(ld, ln,
+                                &out->subscribe.models[
+                                    out->subscribe.model_count])) {
+                            out->subscribe.unsupported_options = true;
+                            gnmi_pbr_skip(&lr, lw);
+                            break;
+                        }
+                        out->subscribe.model_count++;
                         break;
                     default:
                         gnmi_pbr_skip(&lr, lw);
@@ -772,6 +858,7 @@ bool gnmi_decode_subscribe_request(const uint8_t *data, size_t len,
             break;
         }
     }
+    if (!r.err) validate_use_models(&out->subscribe);
     return !r.err;
 }
 

@@ -104,6 +104,54 @@ else
     cat "$OUT"
 fi
 
+# --- I5a: use_models filter on a subscription ----------------------------
+if timeout 8 "$GNMIC" $T subscribe --path /interfaces --mode once \
+        --model openconfig-interfaces > "$OUT" 2>&1 &&
+   grep -q '"name": "eth0"' "$OUT"; then
+    pass "I5a: gnmic subscribe use_models -> filtered subscription accepted"
+else
+    fail "I5a: gnmic subscribe use_models"
+    cat "$OUT" 2>/dev/null || true
+fi
+
+# --- I5b: heterogeneous per-path contracts in one request ----------------
+# gnmic's file-based stream-subscriptions emit one SubscriptionList with an
+# ON_CHANGE path and a SAMPLE path (different interval/suppress options).
+GNMIC_CFG=$(mktemp --suffix=.yaml)
+cat > "$GNMIC_CFG" <<'YAML'
+subscriptions:
+  mixed:
+    models:
+      - openconfig-interfaces
+    stream-subscriptions:
+      - paths:
+          - /interfaces
+        stream-mode: on-change
+      - paths:
+          - /interfaces
+        stream-mode: sample
+        sample-interval: 1s
+        suppress-redundant: true
+YAML
+timeout 12 "$GNMIC" $T subscribe --config "$GNMIC_CFG" --name mixed \
+    > "$OUT" 2>&1 &
+MIXED_SUB=$!
+sleep 2
+MIXED_SET_OUT="$("$GNMIC" $T set \
+    --update '/interfaces/interface[name=ethi6]/config/mtu:::uint:::6666' 2>&1)"
+sleep 3
+if kill -0 $MIXED_SUB 2>/dev/null; then kill $MIXED_SUB 2>/dev/null; fi
+wait $MIXED_SUB 2>/dev/null
+rm -f "$GNMIC_CFG"
+if grep -q '"name": "ethi6"' "$OUT" &&
+   grep -q '"name": "eth0"' "$OUT"; then
+    pass "I5b: gnmic mixed ON_CHANGE + SAMPLE per-path contracts accepted"
+else
+    fail "I5b: gnmic heterogeneous per-path subscription"
+    echo "I5b Set response: $MIXED_SET_OUT"
+    cat "$OUT" 2>/dev/null || true
+fi
+
 # --- I9: TLS front-end (socat OPENSSL terminates TLS, server stays h2c) ---
 if command -v socat >/dev/null && command -v openssl >/dev/null; then
     TLSDIR=$(mktemp -d)

@@ -20,7 +20,7 @@
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线
-- 生产 C 覆盖率 80.8%（函数 91.3%、分支 59.8%），Coverage 门禁 79%
+- 生产 C 覆盖率 80.8%（函数 91.4%、分支 59.9%），Coverage 门禁 79%
 - libFuzzer 目标：gNMI protobuf、HPACK、HTTP/2 帧头（CI 构建并冒烟运行）
 - 根 `Dockerfile` 源码镜像：构建阶段 CTest **96/96**，运行时 `/metrics` 冒烟通过
 

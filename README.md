@@ -11,7 +11,7 @@
 release has not been qualified. The current tree passes Release CTest
 **96/96**, the deterministic backend contract gate, and GitHub CI (including
 ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 80.8%
-(functions 91.3%, branches 59.8%). The full unified QEMU/VMware release gate
+(functions 91.4%, branches 59.9%). The full unified QEMU/VMware release gate
 was not rerun on this checkpoint.
 
 Recent merged control-plane work:

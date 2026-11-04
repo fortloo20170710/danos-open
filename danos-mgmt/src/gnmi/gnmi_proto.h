@@ -222,8 +222,17 @@ typedef enum { GNMI_SUB_MODE_STREAM = 0, GNMI_SUB_MODE_ONCE = 1,
                GNMI_SUB_MODE_POLL = 2 } gnmi_sub_mode_t;
 
 typedef struct {
+    char name[64];
+    char organization[64];
+    char version[32];
+} gnmi_model_filter_t;
+
+typedef struct {
     gnmi_path_t path;
     uint32_t    mode;  /* 0 target-defined, 1 ON_CHANGE, 2 SAMPLE */
+    uint64_t    sample_interval_ns;
+    bool        suppress_redundant;
+    uint64_t    heartbeat_interval_ns;
 } gnmi_subscription_t;
 
 typedef struct {
@@ -233,11 +242,15 @@ typedef struct {
     gnmi_sub_mode_t      mode;
     gnmi_encoding_t      encoding;
     bool                 updates_only;
+    /* Aggregate flags kept for callers that need a quick mode summary. */
     bool                 sample_mode;
     bool                 on_change_mode;
     uint64_t             sample_interval_ns;
     bool                 suppress_redundant;
     uint64_t             heartbeat_interval_ns;
+    /* SubscriptionList.use_models filters (field 7). */
+    uint32_t             model_count;
+    gnmi_model_filter_t  models[GNMI_MAX_ELEMS];
     bool                 unsupported_options;
 } gnmi_subscribe_list_t;
 

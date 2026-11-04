@@ -387,16 +387,12 @@ static int test_unknown_method(void)
 
 static int test_subscribe_unsupported_options_rejected(void)
 {
-    for (uint32_t option = 0; option < 6; option++) {
+    for (uint32_t option = 1; option < 6; option++) {
         uint8_t req[128];
         gnmi_pb_t w;
         gnmi_pb_init(&w, req, sizeof(req));
         size_t list = gnmi_pb_begin_nested(&w, 1);
-        if (option == 0) {
-            size_t model = gnmi_pb_begin_nested(&w, 7); /* use_models */
-            gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
-            gnmi_pb_end_nested(&w, model);
-        } else if (option == 5) {
+        if (option == 5) {
             gnmi_pb_put_enum(&w, 5, GNMI_SUB_MODE_ONCE); /* ON_CHANGE needs STREAM */
         }
         size_t sub = gnmi_pb_begin_nested(&w, 2);
