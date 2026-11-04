@@ -10,8 +10,8 @@
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
 release has not been qualified. The current tree passes Release CTest
 **96/96**, the deterministic backend contract gate, and GitHub CI (including
-ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.0%
-(functions 91.6%, branches 60.1%). The full unified QEMU/VMware release gate
+ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.1%
+(functions 91.6%, branches 60.3%). The full unified QEMU/VMware release gate
 was not rerun on this checkpoint.
 
 Recent merged control-plane work:

@@ -160,6 +160,18 @@ int main(void)
            == DANOS_ERR_VERIFY_FAIL);
     rr = make_route(0, 2);
 
+    /* Single gateway supplied through the resolved fields (nh_count=0). */
+    danos_resolved_route_t single = make_route(9, 0);
+    single.has_gw = true;
+    single.gw[0] = 10; single.gw[1] = 9; single.gw[2] = 9; single.gw[3] = 1;
+    single.oif = 5;
+    assert(ops->route_add(&single, ops->user) == DANOS_OK);
+    assert(ops->route_readback(&single, &oper_route, ops->user) == DANOS_OK);
+    single.gw[3] = 2;
+    assert(ops->route_readback(&single, &oper_route, ops->user)
+           == DANOS_ERR_VERIFY_FAIL);
+    (void)ops->route_del(&single, ops->user);
+
     /* Interface-only next hop (no gateway) is a valid path. */
     danos_resolved_route_t ifonly = make_route(1, 1);
     memset(ifonly.nh_gw[0], 0, sizeof(ifonly.nh_gw[0]));
@@ -180,6 +192,56 @@ int main(void)
            == DANOS_ERR_NOT_SUPPORTED);
     bad_route = make_route(3, 65);
     assert(ops->route_add(&bad_route, ops->user) == DANOS_ERR_INVALID_ARG);
+
+    /* Route readback argument/type/length branches. */
+    assert(ops->readback(DANOS_OBJ_ROUTE, 1, NULL, sizeof(rr.route),
+                         &oper_route, ops->user) == DANOS_ERR_INVALID_ARG);
+    assert(ops->readback(DANOS_OBJ_ROUTE, 1, &rr.route, 1,
+                         &oper_route, ops->user) == DANOS_ERR_INVALID_ARG);
+    danos_route_t v6_route = rr.route;
+    v6_route.prefix.addr.af = DANOS_AF_IPV6;
+    assert(ops->readback(DANOS_OBJ_ROUTE, 1, &v6_route, sizeof(v6_route),
+                         &oper_route, ops->user) == DANOS_ERR_NOT_SUPPORTED);
+    danos_route_t default_route = rr.route;
+    default_route.prefix.prefix_len = 0;
+    assert(ops->readback(DANOS_OBJ_ROUTE, 1, &default_route,
+                         sizeof(default_route), &oper_route, ops->user)
+           == DANOS_ERR_NOT_FOUND);
+    danos_resolved_route_t long_prefix = rr;
+    long_prefix.route.prefix.prefix_len = 33;
+    assert(ops->route_readback(&long_prefix, &oper_route, ops->user)
+           == DANOS_ERR_NOT_SUPPORTED);
+    long_prefix.route.prefix.addr.af = DANOS_AF_IPV6;
+    assert(ops->route_readback(&long_prefix, &oper_route, ops->user)
+           == DANOS_ERR_NOT_SUPPORTED);
+
+    /* A desired blackhole that is actually programmed as unicast (and vice
+     * versa) is a verification failure, not absence. */
+    danos_resolved_route_t bh_missing = make_route(5, 0);
+    bh_missing.route.flags = DANOS_ROUTE_FLAG_BLACKHOLE;
+    assert(ops->route_readback(&bh_missing, &oper_route, ops->user)
+           == DANOS_ERR_NOT_FOUND);
+    danos_resolved_route_t unicast = make_route(6, 0);
+    assert(ops->route_add(&unicast, ops->user) == DANOS_OK);
+    danos_resolved_route_t want_bh = unicast;
+    want_bh.route.flags = DANOS_ROUTE_FLAG_BLACKHOLE;
+    assert(ops->route_readback(&want_bh, &oper_route, ops->user)
+           == DANOS_ERR_VERIFY_FAIL);
+    danos_resolved_route_t want_unicast = unicast;
+    want_unicast.route.flags = DANOS_ROUTE_FLAG_BLACKHOLE;
+    (void)ops->route_del(&want_unicast, ops->user);
+    danos_resolved_route_t bh2 = make_route(7, 0);
+    bh2.route.flags = DANOS_ROUTE_FLAG_BLACKHOLE;
+    assert(ops->route_add(&bh2, ops->user) == DANOS_OK);
+    danos_resolved_route_t as_unicast = bh2;
+    as_unicast.route.flags = 0;
+    assert(ops->route_readback(&as_unicast, &oper_route, ops->user)
+           == DANOS_ERR_VERIFY_FAIL);
+    (void)ops->route_del(&bh2, ops->user);
+
+    /* Deleting a prefix that was never installed is NOT_FOUND. */
+    danos_resolved_route_t absent = make_route(8, 1);
+    assert(ops->route_del(&absent, ops->user) == DANOS_ERR_NOT_FOUND);
 
     /* Withdrawal removes presence and the specific readback. */
     assert(ops->route_del(&rr, ops->user) == DANOS_OK);
