@@ -117,14 +117,16 @@ typedef struct {
 typedef struct {
     bool used;
     uint32_t stream;
-    uint64_t sample_interval_ns;
-    uint64_t next_sample_ns;
-    bool suppress_redundant;
-    uint64_t heartbeat_interval_ns;
-    uint64_t next_heartbeat_ns;
-    uint64_t last_sample_hash;
     gnmi_subscribe_list_t list;
+    /* Change-driven paths are serviced as one delta stream. */
+    gnmi_subscribe_list_t change_list;
     sub_snapshot_t snapshot;
+    uint64_t change_heartbeat_ns;
+    uint64_t next_change_heartbeat_ns;
+    /* SAMPLE paths keep independent clocks/contracts within one request. */
+    uint64_t next_sample_ns[GNMI_MAX_ELEMS];
+    uint64_t next_heartbeat_ns[GNMI_MAX_ELEMS];
+    uint64_t last_sample_hash[GNMI_MAX_ELEMS];
 } h2_active_subscription_t;
 
 typedef struct {
@@ -1255,25 +1257,6 @@ static h2_active_subscription_t *active_subscription_find(h2_conn_t *c,
     return NULL;
 }
 
-static int subscription_send_update(h2_conn_t *c,
-                                    h2_active_subscription_t *sub)
-{
-    gnmi_path_t paths[GNMI_MAX_ELEMS];
-    uint32_t path_count = 0;
-    for (uint32_t i = 0; i < sub->list.sub_count &&
-                         path_count < GNMI_MAX_ELEMS; i++)
-        paths[path_count++] = sub->list.subs[i].path;
-
-    uint8_t notification[8192], response[16384];
-    int length = build_notification_for_paths(&sub->list, paths, path_count,
-                                              notification,
-                                              sizeof(notification));
-    if (length < 0) return -1;
-    gnmi_pb_t w;
-    gnmi_pb_init(&w, response, sizeof(response));
-    gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
-    return send_stream_message(c, sub->stream, response, w.len);
-}
 
 /* Hash only the serialized update content, excluding Notification.timestamp,
  * so a fresh timestamp alone does not defeat suppress_redundant. */
@@ -1308,74 +1291,146 @@ uint64_t subscription_data_hash_for_test(const gnmi_subscribe_list_t *list)
     return subscription_data_hash(list);
 }
 
+static int send_subscription_notification(h2_conn_t *c, uint32_t stream,
+                                          const uint8_t *notification,
+                                          int length)
+{
+    if (length <= 0) return 0;
+    uint8_t response[16384];
+    gnmi_pb_t w;
+    gnmi_pb_init(&w, response, sizeof(response));
+    gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
+    return send_stream_message(c, stream, response, w.len);
+}
+
+/* Hash one path's serialized update for per-path suppress_redundant. */
+static uint64_t path_data_hash(const gnmi_subscribe_list_t *list,
+                               const gnmi_path_t *path)
+{
+    uint8_t notification[8192];
+    int len = build_notification_for_paths(list, path, 1, notification,
+                                           sizeof(notification));
+    if (len < 0) return UINT64_MAX;
+    gnmi_pb_reader_t r;
+    gnmi_pbr_init(&r, notification, (size_t)len);
+    uint32_t wire;
+    if (gnmi_pbr_tag(&r, &wire) != 1 || wire != 0) return UINT64_MAX;
+    (void)gnmi_pbr_varint(&r);
+    if (r.err) return UINT64_MAX;
+    uint64_t hash = 14695981039346656037ULL;
+    for (size_t i = r.pos; i < r.len; i++) {
+        hash ^= r.p[i];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
 static void subscriptions_service(h2_conn_t *c)
 {
     uint64_t now = monotonic_time_ns();
     for (size_t i = 0; i < H2_MAX_ACTIVE_SUBSCRIPTIONS; i++) {
         h2_active_subscription_t *sub = &c->subscriptions[i];
         if (!sub->used) continue;
-        if (sub->sample_interval_ns) {
-            bool sample_due = now >= sub->next_sample_ns;
-            bool heartbeat_due = sub->heartbeat_interval_ns &&
-                                 now >= sub->next_heartbeat_ns;
-            if (!sample_due && !heartbeat_due) continue;
-            uint64_t data_hash = subscription_data_hash(&sub->list);
-            bool changed = data_hash == UINT64_MAX ||
-                           data_hash != sub->last_sample_hash;
-            if (!sub->suppress_redundant || (sample_due && changed) ||
-                heartbeat_due) {
-                if (subscription_send_update(c, sub) < 0) {
-                    stream_forget(c, sub->stream);
-                    sub_snapshot_free(&sub->snapshot);
-                    memset(sub, 0, sizeof(*sub));
-                    continue;
-                }
-                sub->last_sample_hash = data_hash;
+        bool failed = false;
+
+        /* Change-driven paths: one delta notification for the subset. */
+        if (sub->change_list.sub_count) {
+            uint8_t notification[8192];
+            int length = build_delta_notification(&sub->change_list,
+                                                  &sub->snapshot,
+                                                  notification,
+                                                  sizeof(notification));
+            bool heartbeat_due = sub->change_heartbeat_ns &&
+                                 now >= sub->next_change_heartbeat_ns;
+            if (length < 0) {
+                failed = true;
+            } else if (length > 0 &&
+                       send_subscription_notification(c, sub->stream,
+                                                      notification,
+                                                      length) < 0) {
+                failed = true;
+            } else if (!failed && heartbeat_due) {
+                /* ON_CHANGE heartbeat re-sends current values even when the
+                 * delta is empty. */
+                gnmi_path_t paths[GNMI_MAX_ELEMS];
+                uint32_t pc = 0;
+                for (uint32_t p = 0; p < sub->change_list.sub_count; p++)
+                    paths[pc++] = sub->change_list.subs[p].path;
+                length = build_notification_for_paths(&sub->change_list,
+                                                      paths, pc,
+                                                      notification,
+                                                      sizeof(notification));
+                if (length < 0 ||
+                    send_subscription_notification(c, sub->stream,
+                                                   notification,
+                                                   length) < 0)
+                    failed = true;
+                else
+                    sub->next_change_heartbeat_ns =
+                        now + sub->change_heartbeat_ns;
             }
-            if (sample_due)
-                sub->next_sample_ns = now + sub->sample_interval_ns;
-            if (heartbeat_due)
-                sub->next_heartbeat_ns = now + sub->heartbeat_interval_ns;
-            continue;
         }
-        /* Target-defined and ON_CHANGE subscriptions share this path: both
-         * notify when the value of a subscribed object changes, and the
-         * notification carries only objects that appeared, changed or were
-         * removed since the last one. The connection services them once per
-         * poll cycle, so detection latency is bounded by that cadence. A
-         * stream is interested only in its requested paths: a mutation to an
-         * unrelated object must not cause a redundant notification on every
-         * other stream sharing this HTTP/2 connection. */
-        uint8_t notification[8192], response[16384];
-        int length = build_delta_notification(&sub->list, &sub->snapshot,
-                                              notification,
-                                              sizeof(notification));
-        if (length < 0) {
+        if (failed) {
             stream_forget(c, sub->stream);
             sub_snapshot_free(&sub->snapshot);
             memset(sub, 0, sizeof(*sub));
             continue;
         }
-        if (length == 0) continue;
-        gnmi_pb_t w;
-        gnmi_pb_init(&w, response, sizeof(response));
-        gnmi_pb_put_len_delim(&w, 1, notification, (size_t)length);
-        if (send_stream_message(c, sub->stream, response, w.len) < 0) {
+
+        /* SAMPLE paths each have their own interval/heartbeat contract. */
+        for (uint32_t p = 0; p < sub->list.sub_count; p++) {
+            gnmi_subscription_t *sp = &sub->list.subs[p];
+            if (sp->mode != 2) continue;
+            bool sample_due = sub->next_sample_ns[p] != 0 &&
+                              now >= sub->next_sample_ns[p];
+            bool heartbeat_due = sub->next_heartbeat_ns[p] != 0 &&
+                                 now >= sub->next_heartbeat_ns[p];
+            if (!sample_due && !heartbeat_due) continue;
+
+            uint8_t notification[8192];
+            int length = build_notification_for_paths(&sub->list, &sp->path, 1,
+                                                      notification,
+                                                      sizeof(notification));
+            if (length < 0) { failed = true; break; }
+            uint64_t hash = path_data_hash(&sub->list, &sp->path);
+            bool changed = hash == UINT64_MAX ||
+                           hash != sub->last_sample_hash[p];
+            if (!sp->suppress_redundant || (sample_due && changed) ||
+                heartbeat_due) {
+                if (send_subscription_notification(c, sub->stream,
+                                                   notification, length) < 0) {
+                    failed = true;
+                    break;
+                }
+                sub->last_sample_hash[p] = hash;
+            }
+            if (sample_due)
+                sub->next_sample_ns[p] = now + sp->sample_interval_ns;
+            if (heartbeat_due)
+                sub->next_heartbeat_ns[p] = now + sp->heartbeat_interval_ns;
+        }
+        if (failed) {
             stream_forget(c, sub->stream);
             sub_snapshot_free(&sub->snapshot);
             memset(sub, 0, sizeof(*sub));
         }
     }
 }
-
 static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
                                   const gnmi_subscribe_list_t *sl)
 {
     /* Capture before sending the initial snapshot so mutations that race
      * with snapshot delivery are still observed by the newly active stream. */
-    uint64_t initial_data_hash = subscription_data_hash(sl);
+    gnmi_subscribe_list_t change_list = *sl;
+    change_list.sub_count = 0;
+    for (uint32_t i = 0; i < sl->sub_count; i++)
+        if (sl->subs[i].mode != 2)
+            change_list.subs[change_list.sub_count++] = sl->subs[i];
+    change_list.sample_mode = false;
+    change_list.on_change_mode = true;
     sub_snapshot_t baseline = {0};
-    if (!sl->sample_mode && sub_snapshot_capture(sl, &baseline) != 0)
+    if (change_list.sub_count &&
+        sub_snapshot_capture(&change_list, &baseline) != 0)
         return -1;
     gnmi_path_t paths[GNMI_MAX_ELEMS];
     uint32_t path_count = 0;
@@ -1417,26 +1472,32 @@ static int subscribe_stream_start(h2_conn_t *c, uint32_t stream,
         if (sub->used) continue;
         sub->used = true;
         sub->stream = stream;
-        sub->sample_interval_ns = sl->sample_mode
-                                ? sl->sample_interval_ns : 0;
-        if (sub->sample_interval_ns &&
-            sub->sample_interval_ns < GNMI_SAMPLE_MIN_NS)
-            sub->sample_interval_ns = GNMI_SAMPLE_MIN_NS;
-        sub->suppress_redundant = sl->suppress_redundant;
-        sub->heartbeat_interval_ns = sl->heartbeat_interval_ns;
-        if (sub->heartbeat_interval_ns &&
-            sub->heartbeat_interval_ns < GNMI_SAMPLE_MIN_NS)
-            sub->heartbeat_interval_ns = GNMI_SAMPLE_MIN_NS;
-        sub->next_sample_ns = sub->sample_interval_ns
-                            ? monotonic_time_ns() + sub->sample_interval_ns
-                            : 0;
         sub->list = *sl;
+        sub->change_list = change_list;
         sub->snapshot = baseline;
-        if (sub->heartbeat_interval_ns)
-            sub->next_heartbeat_ns = monotonic_time_ns() +
-                                     sub->heartbeat_interval_ns;
-        if (sub->sample_interval_ns && sub->suppress_redundant)
-            sub->last_sample_hash = initial_data_hash;
+        uint64_t now = monotonic_time_ns();
+        for (uint32_t i = 0; i < change_list.sub_count; i++) {
+            uint64_t hb = change_list.subs[i].heartbeat_interval_ns;
+            if (!hb) continue;
+            if (hb < GNMI_SAMPLE_MIN_NS) hb = GNMI_SAMPLE_MIN_NS;
+            if (!sub->change_heartbeat_ns || hb < sub->change_heartbeat_ns)
+                sub->change_heartbeat_ns = hb;
+        }
+        if (sub->change_heartbeat_ns)
+            sub->next_change_heartbeat_ns = now + sub->change_heartbeat_ns;
+        for (uint32_t p = 0; p < sl->sub_count; p++) {
+            if (sl->subs[p].mode != 2) continue;
+            uint64_t interval = sl->subs[p].sample_interval_ns;
+            if (interval && interval < GNMI_SAMPLE_MIN_NS)
+                interval = GNMI_SAMPLE_MIN_NS;
+            sub->list.subs[p].sample_interval_ns = interval;
+            sub->next_sample_ns[p] = now + interval;
+            sub->last_sample_hash[p] = path_data_hash(sl, &sl->subs[p].path);
+            uint64_t hb = sl->subs[p].heartbeat_interval_ns;
+            if (hb && hb < GNMI_SAMPLE_MIN_NS) hb = GNMI_SAMPLE_MIN_NS;
+            sub->list.subs[p].heartbeat_interval_ns = hb;
+            if (hb) sub->next_heartbeat_ns[p] = now + hb;
+        }
         return 0;
     }
     sub_snapshot_free(&baseline);
@@ -1503,9 +1564,17 @@ int gnmi_handle_subscribe(void *opaque, uint32_t stream,
          sl->encoding != GNMI_ENC_JSON_IETF) ||
         (sl->updates_only && sl->mode != GNMI_SUB_MODE_STREAM) ||
         (sl->on_change_mode && sl->mode != GNMI_SUB_MODE_STREAM) ||
-        (sl->sample_mode && (sl->mode != GNMI_SUB_MODE_STREAM ||
-         sl->sample_interval_ns > GNMI_SAMPLE_MAX_NS)))
+        (sl->sample_mode && sl->mode != GNMI_SUB_MODE_STREAM))
         return -(int)DANOS_ERR_INVALID_ARG;
+    for (uint32_t i = 0; i < sl->sub_count; i++) {
+        if (sl->subs[i].mode == 2 &&
+            (sl->subs[i].sample_interval_ns > GNMI_SAMPLE_MAX_NS ||
+             sl->subs[i].heartbeat_interval_ns > GNMI_SAMPLE_MAX_NS))
+            return -(int)DANOS_ERR_INVALID_ARG;
+        if (sl->subs[i].mode == 1 &&
+            sl->subs[i].heartbeat_interval_ns > GNMI_SAMPLE_MAX_NS)
+            return -(int)DANOS_ERR_INVALID_ARG;
+    }
 
     if (sl->mode == GNMI_SUB_MODE_ONCE) {
         poll_stream_drop(stream);

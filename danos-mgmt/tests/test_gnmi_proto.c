@@ -163,28 +163,88 @@ static int test_subscribe_on_change_decode(void)
     return 0;
 }
 
-static int test_subscribe_unsupported_options_decode(void)
+static int test_subscribe_use_models_and_heterogeneous_decode(void)
 {
-    uint8_t req[128];
+    gnmi_path_t iface_path;
+    assert(gnmi_path_from_str(&iface_path, "interfaces"));
+
+    uint8_t req[512];
     gnmi_pb_t w;
     gnmi_pb_init(&w, req, sizeof(req));
     size_t list = gnmi_pb_begin_nested(&w, 1);
-    size_t model = gnmi_pb_begin_nested(&w, 7); /* use_models */
+
+    /* use_models with an optional organization/version filter. */
+    size_t model = gnmi_pb_begin_nested(&w, 7);
     gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
+    gnmi_pb_put_string(&w, 2, "OpenConfig");
+    gnmi_pb_put_string(&w, 3, "2.4.1");
     gnmi_pb_end_nested(&w, model);
+
+    /* ON_CHANGE path. */
     size_t sub = gnmi_pb_begin_nested(&w, 2);
-    gnmi_pb_put_uint64(&w, 3, 1000000000); /* sample_interval */
+    gnmi_encode_path(&w, 1, &iface_path);
+    gnmi_pb_put_enum(&w, 2, 1);
+    gnmi_pb_end_nested(&w, sub);
+
+    /* A second path with a different SAMPLE contract in the same list. */
+    sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_encode_path(&w, 1, &iface_path);
+    gnmi_pb_put_enum(&w, 2, 2);
+    gnmi_pb_put_uint64(&w, 3, 2000000000ULL);
+    gnmi_pb_put_bool(&w, 4, true);
+    gnmi_pb_put_uint64(&w, 5, 4000000000ULL);
     gnmi_pb_end_nested(&w, sub);
     gnmi_pb_end_nested(&w, list);
 
     gnmi_subscribe_request_t decoded;
     assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+    assert(!decoded.subscribe.unsupported_options);
+    assert(decoded.subscribe.model_count == 1);
+    assert(strcmp(decoded.subscribe.models[0].name,
+                  "openconfig-interfaces") == 0);
+    assert(strcmp(decoded.subscribe.models[0].organization,
+                  "OpenConfig") == 0);
+    assert(decoded.subscribe.sub_count == 2);
+    assert(decoded.subscribe.subs[0].mode == 1);
+    assert(decoded.subscribe.subs[0].sample_interval_ns == 0);
+    assert(decoded.subscribe.subs[1].mode == 2);
+    assert(decoded.subscribe.subs[1].sample_interval_ns == 2000000000ULL);
+    assert(decoded.subscribe.subs[1].suppress_redundant);
+    assert(decoded.subscribe.subs[1].heartbeat_interval_ns == 4000000000ULL);
+    assert(decoded.subscribe.sample_mode);
+    assert(decoded.subscribe.on_change_mode);
+
+    /* Unknown model filter. */
+    gnmi_pb_init(&w, req, sizeof(req));
+    list = gnmi_pb_begin_nested(&w, 1);
+    model = gnmi_pb_begin_nested(&w, 7);
+    gnmi_pb_put_string(&w, 1, "no-such-model");
+    gnmi_pb_end_nested(&w, model);
+    sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_encode_path(&w, 1, &iface_path);
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+    assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
     assert(decoded.subscribe.unsupported_options);
-    assert(decoded.subscribe.sub_count == 1);
-    printf("[PASS] test_subscribe_unsupported_options_decode\n");
+
+    /* Model filter excludes the requested path's model. */
+    gnmi_path_t dp;
+    assert(gnmi_path_from_str(&dp, "dataplane/object[type=1][id=1]/state"));
+    gnmi_pb_init(&w, req, sizeof(req));
+    list = gnmi_pb_begin_nested(&w, 1);
+    model = gnmi_pb_begin_nested(&w, 7);
+    gnmi_pb_put_string(&w, 1, "openconfig-interfaces");
+    gnmi_pb_end_nested(&w, model);
+    sub = gnmi_pb_begin_nested(&w, 2);
+    gnmi_encode_path(&w, 1, &dp);
+    gnmi_pb_end_nested(&w, sub);
+    gnmi_pb_end_nested(&w, list);
+    assert(gnmi_decode_subscribe_request(req, w.len, &decoded));
+    assert(decoded.subscribe.unsupported_options);
+
+    printf("[PASS] test_subscribe_use_models_and_heterogeneous_decode\n");
     return 0;
 }
-
 static int test_get_response_roundtrip(void)
 {
     gnmi_notification_t n;
@@ -372,7 +432,7 @@ int main(void)
     if (test_get_request_decode() != 0) failed++;
     if (test_subscribe_request_decode() != 0) failed++;
     if (test_subscribe_on_change_decode() != 0) failed++;
-    if (test_subscribe_unsupported_options_decode() != 0) failed++;
+    if (test_subscribe_use_models_and_heterogeneous_decode() != 0) failed++;
     if (test_get_response_roundtrip() != 0) failed++;
     if (test_set_request_decode() != 0) failed++;
     if (test_capabilities_encoding() != 0) failed++;

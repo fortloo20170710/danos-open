@@ -68,9 +68,17 @@ rejected.
   explicitly bound desired store is rejected; Get uses its bound store.
 - Existing flat route JSON reports its existing summary representation, not a
   lossless full ECMP/YANG round-trip. Non-static routes are not writable here.
-- Subscribe notifications, updates_only, use_models, encoding selection and
-  event-driven STREAM remain separate outstanding work. This is not a claim
-  of complete gNMI conformance.
+- Subscribe notifications, `updates_only`, encoding selection and
+  event-driven STREAM are implemented. `use_models` filters are validated
+  against the advertised model set; every subscribed path must be covered by
+  one of the requested models.
+- A single STREAM SubscribeRequest may mix per-path contracts: each path
+  carries its own ON_CHANGE/SAMPLE/TARGET_DEFINED mode, sample interval,
+  suppress-redundant and heartbeat. SAMPLE-only options on a non-SAMPLE path,
+  suppress-redundant on ON_CHANGE, a heartbeat on TARGET_DEFINED, unknown
+  models, or a path outside the requested models are rejected with
+  InvalidArgument. Heartbeats on ON_CHANGE are accepted.
+- This is not a claim of complete gNMI conformance.
 
 ## Regression evidence
 
