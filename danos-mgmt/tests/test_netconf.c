@@ -517,6 +517,57 @@ int test_netconf_locks(void)
     return 0;
 }
 
+/* Exercise the lock table across every datastore and session combination,
+ * including locks taken/released directly through the datastore API. */
+int test_netconf_lock_matrix(void)
+{
+    const uint64_t s1 = 8101, s2 = 8102;
+    assert(netconf_ds_lock(NETCONF_DS_RUNNING, s1, "s1") == NETCONF_DS_OK);
+    assert(netconf_ds_lock(NETCONF_DS_RUNNING, s1, "s1")
+           == NETCONF_DS_LOCKED);       /* same-session relock is refused */
+    assert(netconf_ds_lock(NETCONF_DS_RUNNING, s2, "s2")
+           == NETCONF_DS_LOCKED);
+    assert(netconf_ds_locked_by_other(NETCONF_DS_RUNNING, s2));
+    assert(!netconf_ds_locked_by_other(NETCONF_DS_RUNNING, s1));
+    assert(netconf_ds_unlock(NETCONF_DS_RUNNING, s2) == NETCONF_DS_LOCKED);
+    assert(netconf_ds_unlock(NETCONF_DS_RUNNING, 0) == NETCONF_DS_LOCKED);
+    assert(netconf_ds_unlock((netconf_datastore_t)0, s1)
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_lock((netconf_datastore_t)0, s1, "x")
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_lock(NETCONF_DS_RUNNING, 0, "x")
+           == NETCONF_DS_INVALID);
+    assert(netconf_ds_unlock(NETCONF_DS_RUNNING, s1) == NETCONF_DS_OK);
+    assert(netconf_ds_unlock(NETCONF_DS_RUNNING, s1) == NETCONF_DS_LOCKED);
+    assert(netconf_ds_lock(NETCONF_DS_CANDIDATE, s2, "s2") == NETCONF_DS_OK);
+    assert(netconf_ds_locked_by_other(NETCONF_DS_CANDIDATE, s1));
+    assert(netconf_ds_copy(NETCONF_DS_RUNNING, NETCONF_DS_CANDIDATE, s1)
+           == NETCONF_DS_LOCKED);
+    assert(netconf_ds_lock(NETCONF_DS_RUNNING, s1, "s1") == NETCONF_DS_OK);
+    assert(netconf_ds_copy(NETCONF_DS_CANDIDATE, NETCONF_DS_RUNNING, s2)
+           == NETCONF_DS_LOCKED);
+    assert(netconf_ds_commit(s2, NULL) == NETCONF_DS_LOCKED);
+    assert(netconf_ds_discard(s1) == NETCONF_DS_LOCKED);
+    assert(netconf_ds_lock(NETCONF_DS_STARTUP, s1, "s1") == NETCONF_DS_OK);
+    assert(netconf_ds_delete_config(NETCONF_DS_STARTUP, s2)
+           == NETCONF_DS_LOCKED);
+    assert(netconf_ds_delete_config(NETCONF_DS_STARTUP, s1) == NETCONF_DS_OK);
+    assert(netconf_ds_unlock(NETCONF_DS_STARTUP, s1) == NETCONF_DS_OK);
+    assert(netconf_ds_unlock(NETCONF_DS_STARTUP, s1) == NETCONF_DS_LOCKED);
+
+    /* Session release drops every lock owned by that session. */
+    netconf_ds_release_session(s1);
+    assert(!netconf_ds_locked_by_other(NETCONF_DS_RUNNING, s2));
+    assert(!netconf_ds_locked_by_other(NETCONF_DS_CANDIDATE, s2));
+    netconf_ds_release_session(s2);
+    assert(!netconf_ds_locked_by_other(NETCONF_DS_CANDIDATE, s1));
+    netconf_ds_release_session(0);       /* no-op */
+
+    printf("[PASS] test_netconf_lock_matrix: every datastore/session lock "
+           "transition and release\n");
+    return 0;
+}
+
 /* ---- copy-config and startup persistence -------------------------------- */
 
 int test_netconf_copy_and_startup(const char *path)
@@ -1121,6 +1172,7 @@ int main(int argc, char **argv)
     if (test_netconf_candidate() != 0) failed++;
     if (test_netconf_startup_readonly() != 0) failed++;
     if (test_netconf_locks() != 0) failed++;
+    if (test_netconf_lock_matrix() != 0) failed++;
     if (test_netconf_copy_and_startup(path) != 0) failed++;
     if (test_netconf_corrupt_startup(path) != 0) failed++;
     if (test_netconf_validate() != 0) failed++;

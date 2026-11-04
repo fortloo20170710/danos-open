@@ -1,5 +1,23 @@
 # Outstanding work plan
 
+### 2026-11-03 focused branch coverage: netlink and NETCONF locks
+
+- Branch coverage moved **60.0% -> 60.3%** (5820/9692 -> 5843/9692) while the
+  line gate remains at 81.1% (9787/12068); CTest stays 96/96.
+- Privileged netlink area (mock fixtures keep it CI-runnable):
+  `danos-netlink/src/danos_netlink.c` **41.5% -> 43.4%**
+  (269/648 -> 281/648). Added route readback argument/type/length branches,
+  blackhole-vs-unicast mismatch, missing readback/withdraw, and the
+  resolved single-gateway (`nh_count=0`, `has_gw`) add/readback/withdraw path.
+  The real-`lo` IPv6 test remains the privileged check and skips without
+  CAP_NET_ADMIN.
+- NETCONF datastore lock-state area:
+  `netconf_datastore.c` **63.5% -> 65.3%** (391/616 -> 402/616). Added a
+  lock matrix across running/candidate/startup, same-session relock, wrong
+  owner release, lock-blocked copy/commit/discard/delete-config, invalid
+  datastore/session arguments and session-release cleanup, plus invalid
+  startup lock while the startup snapshot is unreadable.
+
 ### 2026-11-03 Linux netlink IPv6 address programming
 
 - `danos-netlink` now sends `RTM_NEWADDR`/`RTM_DELADDR` with 16-byte IPv6
