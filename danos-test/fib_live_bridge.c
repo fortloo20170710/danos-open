@@ -53,12 +53,16 @@ static int recover_vpp_backend(bool enabled)
              * api.sock becomes connectable.  Replay a bounded number of
              * times so interface appearance is not mistaken for a complete
              * dataplane recovery. */
-            for (int replay = 0; replay < 5; replay++) {
+            /* The restarted VPP can take seconds to restore its interface
+             * addresses and neighbours.  Replaying the ledger before those
+             * fixtures exist fails connected routes with gateway 0.0.0.0.
+             * Keep retrying long enough for the live init fixtures to land. */
+            for (int replay = 0; replay < 30; replay++) {
                 (void)danos_programming_forget_programmed();
                 attempted = failed = 0;
                 (void)danos_programming_run(&attempted, &failed);
                 if (failed == 0) break;
-                struct timespec pause = { .tv_sec = 0, .tv_nsec = 200000000L };
+                struct timespec pause = { .tv_sec = 0, .tv_nsec = 500000000L };
                 nanosleep(&pause, NULL);
             }
             if (debug)
