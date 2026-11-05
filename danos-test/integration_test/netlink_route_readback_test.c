@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <net/if.h>
 
 int main(void)
 {
@@ -36,6 +37,9 @@ int main(void)
     char line[256];
     assert(fgets(line, sizeof(line), routes) != NULL);   /* header */
     bool have_route = false;
+    char route_iface[64] = {0};
+    unsigned route_gw = 0;
+    unsigned route_ifindex = 0;
     while (!have_route && fgets(line, sizeof(line), routes)) {
         char iface[64];
         unsigned dest, gw, flags, metric, mask;
@@ -43,7 +47,10 @@ int main(void)
                    iface, &dest, &gw, &flags, &metric, &mask) != 6)
             continue;
         if (dest == 0 || mask == 0) continue;   /* skip default */
-        (void)gw;
+        route_ifindex = if_nametoindex(iface);
+        if (route_ifindex == 0) continue;
+        route_gw = gw;
+        snprintf(route_iface, sizeof(route_iface), "%s", iface);
         unsigned prefix_len = 0;
         for (unsigned bit = 0; bit < 32; bit++)
             if (mask & (1u << bit)) prefix_len++;
@@ -70,9 +77,20 @@ int main(void)
                        &oper, ops->user);
     assert(st == DANOS_OK);
 
+    /* route_readback compares the complete resolved next-hop set.  A bare
+     * danos_route_t (nh_count=0) cannot match a kernel route that carries an
+     * RTA_GATEWAY or RTA_OIF, so resolve the path we just read from
+     * /proc/net/route and pass it in. */
     danos_resolved_route_t resolved;
     memset(&resolved, 0, sizeof(resolved));
     resolved.route = route;
+    resolved.has_gw = route_gw != 0;
+    memcpy(resolved.gw, &route_gw, 4);
+    resolved.oif = route_ifindex;
+    resolved.nh_count = 1;
+    memcpy(resolved.nh_gw[0], &route_gw, 4);
+    resolved.nh_oif[0] = route_ifindex;
+    (void)route_iface;
     st = ops->route_readback(&resolved, &oper, ops->user);
     assert(st == DANOS_OK);
 
