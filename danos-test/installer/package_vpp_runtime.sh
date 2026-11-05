@@ -87,7 +87,7 @@ Description: VPP 26.10 runtime for the DANOS-Open generic DPDK hardware runner
  and boot-time PCI Ethernet discovery, management-route exclusion, and automatic VFIO/UIO binding.
 CONTROL
 
-chmod 0755 "$WORK/root/usr/bin/vpp" "$WORK/root/usr/bin/vppctl"
+chmod 0755 "$WORK/root/DEBIAN" "$WORK/root/usr/bin/vpp" "$WORK/root/usr/bin/vppctl"
 dpkg-deb --root-owner-group --build "$WORK/root" "$OUT" >/dev/null
 dpkg-deb --field "$OUT" Package Version Architecture Depends Provides
 echo "VPP_RUNTIME_DEB=$OUT"
