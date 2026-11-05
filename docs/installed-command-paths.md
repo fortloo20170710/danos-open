@@ -29,7 +29,11 @@ danos-test/installer/verify_command_paths.sh /tmp/stage
 ```
 
 It uses `PATH=/usr/bin:/bin` and requires `command -v` to resolve all three
-commands. A freshly installed guest must additionally be checked after login and
-reboot; the Debian cloud image used for the local attempt did not consume the
-NoCloud seed (`cloud-init` ran only the local stage), so the guest-level evidence
-is still outstanding. The staged package layout and `/usr/bin` resolution pass.
+commands. The installed disk image was booted in QEMU and checked as root and as the
+normal `danos` user before and after a reboot. All three commands resolved to
+`/usr/bin` in both cases; evidence is in
+`docs/evidence/v016-installed-command-paths-2026-11-05.env`. The earlier
+separate Debian cloud-guest attempt failed because that guest did not consume its
+NoCloud seed; the installed image bakes its provisioning data and is unaffected.
+The installable ISO reaches the serial installer, but its ISO media mount did not
+complete on this runner; the direct installed image was used for the path check.
