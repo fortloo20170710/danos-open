@@ -313,6 +313,16 @@ if test -e /vpp-dpdk.enabled; then
                 say_live "VPP-TRAFFIC-SETTLE delay=${VPP_TRAFFIC_TEST_DELAY}s"
                 sleep "$VPP_TRAFFIC_TEST_DELAY"
             fi
+            # Re-resolve the ECMP DPO after the peers have finished
+            # configuring their dataplane addresses. A route installed
+            # before a peer interface is up can keep a drop bucket.
+            if test "${VPP_STATIC_NEIGHBORS:-1}" = 1; then
+                /usr/bin/vppctl -s /run/vpp/cli.sock set ip neighbor "$vpp_if1" "${VPP_PEER_IP1:-10.10.0.2}" "${VPP_PEER_MAC1:-52:54:00:11:01:02}" > /dev/console 2>&1 || true
+                /usr/bin/vppctl -s /run/vpp/cli.sock set ip neighbor "$vpp_if2" "${VPP_PEER_IP2:-10.20.0.2}" "${VPP_PEER_MAC2:-52:54:00:12:01:02}" > /dev/console 2>&1 || true
+            fi
+            /usr/bin/vppctl -s /run/vpp/cli.sock ip route del 30.30.30.0/24 > /dev/console 2>&1 || true
+            /usr/bin/vppctl -s /run/vpp/cli.sock ip route add 30.30.30.0/24 via "${VPP_PEER_IP1:-10.10.0.2}" "$vpp_if1" via "${VPP_PEER_IP2:-10.20.0.2}" "$vpp_if2" > /dev/console 2>&1 || true
+            say_live "VPP-ECMP-ROUTE-REFRESH"
             say_live "VPP-ECMP-COUNTERS-BEFORE"
             /usr/bin/vppctl -s /run/vpp/cli.sock show interface > /tmp/vpp-if-before.log 2>&1 || true
             say_live_file /tmp/vpp-if-before.log
