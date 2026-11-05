@@ -1,5 +1,17 @@
 # Outstanding work plan
 
+### 2026-11-05 QEMU ECMP soak closure
+
+- Rebuilt the VPP ISO with `VPP_ECMP_SOAK_COUNT=1000` and ran the merged
+  topology. `VPP-ECMP-SOAK PASS flows=4 packets_per_flow=1000 total_tx=4000
+  total_rx=4000 loss=0 elapsed_ms=48720 pps=82.10 bucket0_packets=3000
+  bucket1_packets=1000`; every per-flow marker is 1000/1000, loss 0.
+- Gate rerun on `ca2260b`: `qemu-frr-vpp` still FAILs only the FRR OSPF
+  adjacency check (`Full` absent); soak passes. `qemu-learned-route-lifecycle`
+  passes.
+- Evidence: `docs/evidence/v016-qemu-ecmp-soak-2026-11-05.env` and
+  `docs/evidence/v016-release-gate-preflight-2026-11-05-main-ca2260b.env`.
+
 ### 2026-11-04 gate rerun on merged QEMU/FRR evidence
 
 - Reran `run_v016_release_gate.sh` on main `c0039e3` with
