@@ -1,0 +1,35 @@
+Console: /dev/ttyUSB0 CH340, 115200 8N1
+Shell: root@danos-dpdk-runner
+uname: Linux danos-dpdk-runner 6.12.107+deb13-amd64
+
+$ lspci -nn | grep -i ethernet
+01:00.0 Ethernet controller [0200]: Intel Corporation I211 Gigabit Network Connection [8086:1539] (rev 03)
+02:00.0 Ethernet controller [0200]: Intel Corporation I211 Gigabit Network Connection [8086:1539] (rev 03)
+03:00.0 Ethernet controller [0200]: Intel Corporation I211 Gigabit Network Connection [8086:1539] (rev 03)
+04:00.0 Ethernet controller [0200]: Intel Corporation I211 Gigabit Network Connection [8086:1539] (rev 03)
+
+$ grep HugePages_ /proc/meminfo
+HugePages_Total:      28
+HugePages_Free:       28
+
+$ systemctl is-active vpp
+active
+$ vppctl show plugins | grep -E 'dpdk|ping'
+  1. dpdk_plugin.so   26.10-rc0~545-gad99177fe  Data Plane Development Kit (DPDK)
+  2. ping_plugin.so   26.10-rc0~545-gad99177fe  Ping (ping)
+
+$ vppctl show interface
+GigabitEthernet1/0/0 ... up
+GigabitEthernet2/0/0 ... down
+GigabitEthernet3/0/0 ... down
+GigabitEthernet4/0/0 ... down
+loop0 ... up
+
+VFIO attempt on 0000:03:00.0:
+$ echo vfio-pci > .../driver_override; echo 0000:03:00.0 > /sys/bus/pci/drivers/vfio-pci/bind
+[  783.934019] vfio-pci 0000:03:00.0: probe with driver vfio-pci failed with error -22
+write error: Invalid argument
+$ ls /sys/kernel/iommu_groups | wc -l
+0
+
+Only one I211 carrier was observed up. No independent receiver/testpmd peer is attached.
