@@ -119,9 +119,36 @@ run_gate vmware-vmxnet3 env VMWARE_MIN_PPS="$VMWARE_MIN_PPS" \
 
 echo '=== pci-dpdk-preflight ==='
 set +e
-DPDK_RESULT_FILE="$DPDK_RESULT_FILE" \
-    bash "$ROOT/danos-test/integration/run_vpp_dpdk_lane.sh"
-dpdk_rc=$?
+if test -n "${DPDK_PREFLIGHT_RESULT_FILE:-}"; then
+    # Physical-runner mode: the lane already ran on the machine that owns the
+    # NIC; validate its structured result rather than probing this host.
+    test -s "$DPDK_PREFLIGHT_RESULT_FILE" || {
+        echo '[FAIL] DPDK_PREFLIGHT_RESULT_FILE is empty or missing'
+        exit 1
+    }
+    cp "$DPDK_PREFLIGHT_RESULT_FILE" "$DPDK_RESULT_FILE"
+    preflight_status=$(sed -n 's/^preflight_status=//p' "$DPDK_RESULT_FILE" | head -1)
+    external_status=$(sed -n 's/^status=//p' "$DPDK_RESULT_FILE" | head -1)
+    target_bdf=$(sed -n 's/^target_bdf=//p' "$DPDK_RESULT_FILE" | head -1)
+    test "$preflight_status" = PASS || {
+        echo "[FAIL] external DPDK preflight status is ${preflight_status:-missing}"
+        exit 1
+    }
+    test -n "$target_bdf" || {
+        echo '[FAIL] external DPDK preflight has no target_bdf'
+        exit 1
+    }
+    test "$external_status" = ENVIRONMENT-OPEN || {
+        echo "[FAIL] external DPDK preflight status is ${external_status:-missing}, expected ENVIRONMENT-OPEN"
+        exit 1
+    }
+    echo "[INFO] using physical runner preflight for $target_bdf"
+    dpdk_rc=2
+else
+    DPDK_RESULT_FILE="$DPDK_RESULT_FILE" \
+        bash "$ROOT/danos-test/integration/run_vpp_dpdk_lane.sh"
+    dpdk_rc=$?
+fi
 set -e
 if test "$dpdk_rc" -eq 0; then
     dpdk_status=PASS
