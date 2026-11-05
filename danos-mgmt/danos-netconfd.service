@@ -8,7 +8,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=-/etc/danos/netconfd.env
-ExecStart=/usr/sbin/danos-netconfd --socket /run/danos/netconf.sock --startup /var/lib/danos/netconf-startup.db
+ExecStart=/usr/bin/danos-netconfd --socket /run/danos/netconf.sock --startup /var/lib/danos/netconf-startup.db
 Restart=on-failure
 RestartSec=1
 # The socket directory is the local trust boundary.  The default root-only
