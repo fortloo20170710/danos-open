@@ -1,0 +1,48 @@
+116 bytes from 30.30.30.2: icmp_seq=1 ttl=64 time=.4672 ms
+116 bytes from 30.30.30.2: icmp_seq=2 ttl=64 time=.4689 ms
+116 bytes from 30.30.30.2: icmp_seq=3 ttl=64 time=.4808 ms
+116 bytes from 30.30.30.2: icmp_seq=4 ttl=64 time=.4555 ms
+116 bytes from 30.30.30.2: icmp_seq=5 ttl=64 time=.4465 ms
+116 bytes from 30.30.30.2: icmp_seq=6 ttl=64 time=.4434 ms
+116 bytes from 30.30.30.2: icmp_seq=7 ttl=64 time=.4541 ms
+116 bytes from 30.30.30.2: icmp_seq=8 ttl=64 time=.4976 ms
+116 bytes from 30.30.30.2: icmp_seq=9 ttl=64 time=.4625 ms
+116 bytes from 30.30.30.2: icmp_seq=10 ttl=64 time=.4649 ms
+
+Statistics: 10 sent, 10 received, 0% packet loss
+116 bytes from 30.30.30.3: icmp_seq=1 ttl=64 time=.4820 ms
+116 bytes from 30.30.30.3: icmp_seq=2 ttl=64 time=.4644 ms
+116 bytes from 30.30.30.3: icmp_seq=3 ttl=64 time=.4801 ms
+116 bytes from 30.30.30.3: icmp_seq=4 ttl=64 time=.4716 ms
+116 bytes from 30.30.30.3: icmp_seq=5 ttl=64 time=.4627 ms
+116 bytes from 30.30.30.3: icmp_seq=6 ttl=64 time=.4865 ms
+116 bytes from 30.30.30.3: icmp_seq=7 ttl=64 time=.4564 ms
+116 bytes from 30.30.30.3: icmp_seq=8 ttl=64 time=.4501 ms
+116 bytes from 30.30.30.3: icmp_seq=9 ttl=64 time=.4693 ms
+116 bytes from 30.30.30.3: icmp_seq=10 ttl=64 time=.4775 ms
+
+Statistics: 10 sent, 10 received, 0% packet loss
+116 bytes from 30.30.30.4: icmp_seq=1 ttl=64 time=.4512 ms
+116 bytes from 30.30.30.4: icmp_seq=2 ttl=64 time=.4427 ms
+116 bytes from 30.30.30.4: icmp_seq=3 ttl=64 time=.5205 ms
+116 bytes from 30.30.30.4: icmp_seq=4 ttl=64 time=.4922 ms
+116 bytes from 30.30.30.4: icmp_seq=5 ttl=64 time=.4779 ms
+116 bytes from 30.30.30.4: icmp_seq=6 ttl=64 time=.4708 ms
+116 bytes from 30.30.30.4: icmp_seq=7 ttl=64 time=.4687 ms
+116 bytes from 30.30.30.4: icmp_seq=8 ttl=64 time=.4642 ms
+116 bytes from 30.30.30.4: icmp_seq=9 ttl=64 time=.4627 ms
+116 bytes from 30.30.30.4: icmp_seq=10 ttl=64 time=.4658 ms
+
+Statistics: 10 sent, 10 received, 0% packet loss
+116 bytes from 30.30.30.5: icmp_seq=1 ttl=64 time=.4828 ms
+116 bytes from 30.30.30.5: icmp_seq=2 ttl=64 time=.4714 ms
+116 bytes from 30.30.30.5: icmp_seq=3 ttl=64 time=.4804 ms
+116 bytes from 30.30.30.5: icmp_seq=4 ttl=64 time=.5278 ms
+116 bytes from 30.30.30.5: icmp_seq=5 ttl=64 time=.4803 ms
+116 bytes from 30.30.30.5: icmp_seq=6 ttl=64 time=.4642 ms
+116 bytes from 30.30.30.5: icmp_seq=7 ttl=64 time=.4435 ms
+116 bytes from 30.30.30.5: icmp_seq=8 ttl=64 time=.4591 ms
+116 bytes from 30.30.30.5: icmp_seq=9 ttl=64 time=.4675 ms
+116 bytes from 30.30.30.5: icmp_seq=10 ttl=64 time=.4652 ms
+
+Statistics: 10 sent, 10 received, 0% packet loss
