@@ -1,10 +1,11 @@
 # Changelog
 
-## v0.16.0 — Unreleased
+## v0.16.0 — release preparation 2026-11-06 (tag pending human approval)
 
-The final tag is withheld until the acceptance matrix and release preconditions
-are satisfied. These entries summarize the planned release, not a declaration
-of hardware qualification. See [draft release notes](docs/release/RELEASE_NOTES_v0.16.0.md)
+Candidate commit `5332720c20d88be0cc10290c0eba4dfbb1e82b3f`. The unified gate
+reports `status=PASS` as an approved-with-open-lanes result; the VMware
+VMXNET3 validator lane is waived (VPP cannot drive VMware vmxnet3 on
+Workstation). No tag or publication has been created. See [prepared release notes](docs/release/RELEASE_NOTES_v0.16.0.md)
 and [release preconditions](docs/release/v0.16.0-preconditions.md).
 
 ### Added
@@ -98,6 +99,18 @@ and [release preconditions](docs/release/v0.16.0-preconditions.md).
   rather than reporting ALL PASS after skipped interop and state-readback checks.
   Build-local client discovery preserves explicit selection and exports it to
   the interop subprocess; required TLS interop tools may not silently skip.
+
+### Recent acceptance additions (2026-11-05/06)
+
+- Physical I211 64-byte testpmd: 777,589 pps / 398.1 Mbps with zero observed
+  loss; I211 runner/traffic ISOs rebuilt at pinned commits with manifests.
+- Physical dual-path VPP ECMP over R1/R4 p1+p2: FIB `buckets:2`, 40/40 probes
+  0% loss, TX split 31/10.
+- Installed current-main `danos-open 0.16.0~rc1-1` on R1–R4 with matching
+  mgrd/netconfd/subsystem hashes; gNMI apply/rollback drill passed on all four.
+- Installed command paths verified on the installed image (`/usr/bin`).
+- VMware VMXNET3 boot/link and bounded kernel 64B 1000/1000 zero-loss plus
+  reboot recovery; VPP dual-path is **waived**, not passed.
 
 ### Qualification limits
 

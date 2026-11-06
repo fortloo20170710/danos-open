@@ -1,71 +1,75 @@
-# DANOS-Open v0.16.0 — DRAFT, NOT RELEASED
+# DANOS-Open v0.16.0 — RELEASE PREPARATION, NOT TAGGED
 
-Release preparation checkpoint: `affb5e134367877b10141fac6a7bf79cde764b38`
-(2026-10-19). No final tag, GitHub release, package publication, or final
-artifact qualification has been performed. Parallel untracked testpmd and
-performance-tool drafts remain outside this checkpoint and are not release
-evidence.
+Prepared: 2026-11-06. Accepted candidate commit:
+`5332720c20d88be0cc10290c0eba4dfbb1e82b3f` (merged main).
+No `v0.16.0` tag, GitHub release or package publication has been created. A
+human release manager must approve the items in
+[v0.16.0-final-checklist.md](v0.16.0-final-checklist.md) first.
 
-## Planned scope
+## Release result
 
-The minimal L3 NOS loop connects management APIs, transactional DPA state,
-FRR/ZAPI and VPP route programming. Functional evidence includes route
-add/withdraw/restore, scoped restart/replay, QEMU e1000 ECMP, and VMware
-VMXNET3 polling-mode packet forwarding.
+The unified gate reports **`status=PASS`** as an **approved-with-open-lanes**
+result: `vmware_waived=1`, `dpdk_status=PASS`, `qemu_gate_status=PASS`.
+Archive: `docs/evidence/v016-release-gate-preflight-2026-11-05-waived.env`.
 
-The candidate includes native gNMI mTLS, explicit certificate-role mapping,
-Unix peer credentials, identity-aware RBAC/audit, transaction staging/WAL
-recovery, and connection-owned gNMI STREAM subscriptions with incremental
-frame assembly and per-stream dispatch. Unsupported subscription contracts
-fail explicitly. These features are covered by the local/hosted tests listed
-below; this document does not claim production PKI or physical HA qualification.
+This is not a clean qualification. The VMware `vmware-vmxnet3` validator lane
+is waived: VPP cannot drive VMware vmxnet3 on Workstation. Native and
+DPDK/uio vmxnet3 both bind the virtual NICs but expose no usable VPP dataplane
+interface. Waiver approved by `miwide20190328`; bounded kernel-vmxnet3
+evidence is two VMs, 64B 1000/1000 zero loss, and 1000/1000 after reboot.
 
-## Verified at this checkpoint
+## Highlights
 
-- `bash danos-test/integration/release_check.sh`: ALL PASS on the exact
-  `affb5e1` source. This ran CTest, external gnmic I1–I5/I9 including the
-  socat/OpenSSL TLS path, seeded gNMI readback, 131 Prometheus metrics, forced
-  mgrd crash, and recovery of 3 WAL records with gNMI state readback.
-  The selected `build/gnmic` binary SHA256 is
-  `0a40f8d856fe64116a586e791080d349f8d60319581711b51d9aa9095d3e52b8`.
-- Most recent completed remote checks before this checkpoint: CI, Coverage,
-  and Interop Gate passed on `affb5e1` (runs `39250438281`, `39250438228`,
-  `39250438748`).
-- QEMU archived functional evidence: 4,000/4,000 packets at 81.97 pps,
-  RTT p50/p99 414.90/3566.20 us, ECMP bucket counts 3,000/1,000, and
-  restart/replay PASS. Packet size/Mbps and CPU are unmeasured, so this is not
-  PCI performance qualification.
-- The newer QEMU lifecycle run separately passed BGP add/withdraw, OSPF,
-  next-hop withdrawal/restore, VPP and FRR/zserv restart recovery; its
-  failover window delivered 785/800 packets (1.88% loss under its configured
-  15% budget). It is not the 1,000-packets-per-flow soak run.
-- Archived VMware evidence is historical, tied to its original ISO/commit;
-  it is not a fresh runtime qualification for this checkpoint. A clean ISO
-  pair exists, but this host currently has no loaded `vmmon`/`vmnet` modules
-  or running VMware guests.
-- Read-only physical management checks reached all four P3 addresses from
-  the development host. The host test route to `30.30.30.0/24` is absent,
-  the serial console is occupied by another process, and no physical transit,
-  dynamic FRR recovery, or PCI performance run was performed in this check.
+- Management plane: native gNMI mTLS, Unix peer credentials, RBAC/audit,
+  connection-owned STREAM subscriptions, NETCONF over SSH with candidate,
+  startup, validate, locks, copy/delete-config and durable confirmed-commit
+  rollback state.
+- Data plane: netlink/OPER readback, missing-route repair, transactional WAL
+  recovery, FRR/ZAPI and VPP route programming, restart/replay and ECMP
+  failover/restore.
+- Physical I211: 64-byte testpmd **777,589 pps / 398.1 Mbps** with zero
+  observed loss; dual-path VPP ECMP FIB `buckets:2`, 40/40 probes 0% loss,
+  per-interface TX split **31/10**.
+- Four-node deployment: R1 `.241`, R2 `.242`, R3 `.245`, R4 `.244`, persistent
+  SSH and static LAN addressing; current-main `danos-open 0.16.0~rc1-1`
+  installed on all four with matching mgrd/netconfd/subsystem hashes.
+- R1–R4 gNMI apply/rollback drill: route appears in the kernel FIB, inverse
+  delete removes it, services stay active, management ping 0% loss.
+- VMXNET3: clean VMware ISO builds and boots (guest sees `15ad:07b0`, 10 Gbps
+  link); packet validation remains waived as above.
+- Physical I211 runner/traffic ISOs were built at their pinned commits and
+  pass the QEMU console, serial, VPP-plugin and profile validators.
 
-## Blocking release conditions
+## Artifacts
 
-The [precondition checklist](v0.16.0-preconditions.md) is authoritative.
-Physical PCI performance, R2↔R3 route/neighbor recovery and dynamic FRR/DPA/VPP
-replay, fresh VMware runtime evidence, current-checkpoint remote CI completion,
-and final artifact qualification remain open. No open-lane waiver is approved.
+| Artifact | SHA256 |
+|---|---|
+| QEMU e1000 traffic ISO | `a7265767a75c70c4b1f2e42dc3955b03ceca4e684b3a9251b9b97b88d2f3f07e` |
+| I211 runner ISO (`88f4bed`) | `b5236912ba73415e905ea54434b3bf37c234b574850b7fee1d836395e34261af` |
+| I211 traffic ISO (`2bcb087`) | `12210311d576d6c318744ba3614deab5873b17a8bb9d16c0b7bb9027cb2db036` |
+| VMware VMXNET3 ISO | `d815aa50ce857b1193bf116f99496b50670846344ca4b1c3ecd6afe6d5b99a9a` |
+| Debian package (`0.16.0~rc1-1`) | `d48b073337412703988e664b8286743245f9fff617b30e5d79d367463f0ac508` |
 
-Keep `v0.16.0` untagged. Before publishing, update this document with the
-exact accepted commit and artifact hashes, completed evidence, release date,
-and any explicitly approved limitations. CMake's numeric `0.16.0` is not
-proof of final-release acceptance; Debian packaging remains
-`0.16.0~rc1-1` until a separate version promotion is approved.
+Per-ISO manifests are in `build/*.iso.manifest`.
 
-## Deployment and boundaries
+## Versions and packaging
 
-Configure mTLS as described in [management deployment](../management-mtls.md).
-Do not enable plaintext lab mode for production management. Provision and
-qualify PKI on the intended machines separately. Certificate trust/role
-changes require daemon restart; automatic CRL/OCSP and online rotation are not
-provided. Physical P3 management reachability is not evidence of physical
-data-plane or release qualification.
+- CMake project version: `0.16.0`.
+- Debian package version: `0.16.0~rc1-1`.
+- Git tag: absent. Packaging promotion to `0.16.0-1` is a human release
+  decision and was not performed.
+
+## Limitations and non-claims
+
+- The VMware dual-path VPP/peer-traffic baseline is waived, not passed.
+- VFIO remains blocked on the physical runner (firmware exposes zero IOMMU
+  groups); UIO was used.
+- L3-02 is a bounded 64B/ECMP pass; line-rate latency, per-core CPU and
+  sustained performance are not claimed.
+- L3-03 (physical R2/R3/R4 rollback relay drills), L3-04 (physical dynamic FRR
+  BGP/OSPF recovery) and L3-06 (uniform four-node qualification) remain
+  `ENVIRONMENT-OPEN` in the release decision and are not covered by the gate's
+  VMware waiver. The release manager must explicitly accept or close them.
+- Production PKI/mTLS deployment (REL-01) still requires security-owner
+  sign-off; test certificates are not production qualification.
+- No tag or publication has been performed.
