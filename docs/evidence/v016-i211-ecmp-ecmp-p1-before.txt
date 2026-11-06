@@ -1,0 +1,8 @@
+              Name               Idx    State  MTU (L3/IP4/IP6/MPLS)     Counter          Count     
+GigabitEthernet1/0/0              1      up          9000/0/0/0     rx packets                    20
+                                                                    rx bytes                    1582
+                                                                    tx packets                     4
+                                                                    tx bytes                     390
+                                                                    drops                         16
+                                                                    ip4                            8
+                                                                    ip6                           11
