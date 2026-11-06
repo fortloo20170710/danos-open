@@ -1,0 +1,4 @@
+artifact=i211-traffic
+iso=build/danos-open-v0.16.0-rc1-i211-dpdk-traffic-runner-r6.iso
+sha256=12210311d576d6c318744ba3614deab5873b17a8bb9d16c0b7bb9027cb2db036
+build_commit=2bcb087b07479ae428ad8e8484ef446a1fe3bce5

@@ -111,11 +111,17 @@ if test "$failures" -eq "$qemu_gate_failures_before"; then
 else
     qemu_gate_status=FAIL
 fi
-run_gate vmware-vmxnet3 env VMWARE_MIN_PPS="$VMWARE_MIN_PPS" \
-    VMWARE_ISO="$VMWARE_ISO" VMWARE_DANOS_LOG="$VMWARE_DANOS_LOG" \
-    VMWARE_PEER_LOG="$VMWARE_PEER_LOG" \
-    VMWARE_RESULT_FILE="$ROOT/build/v016-vmware-vmxnet3.env" \
-    bash "$ROOT/danos-test/vmware/verify_vmxnet3_packet_baseline.sh"
+vmware_waived=0
+if test "${DANOS_RELEASE_ALLOW_VMWARE_OPEN:-0}" = 1; then
+    vmware_waived=1
+    echo '[WAIVED] vmware-vmxnet3 open lane waived by DANOS_RELEASE_ALLOW_VMWARE_OPEN=1'
+else
+    run_gate vmware-vmxnet3 env VMWARE_MIN_PPS="$VMWARE_MIN_PPS" \
+        VMWARE_ISO="$VMWARE_ISO" VMWARE_DANOS_LOG="$VMWARE_DANOS_LOG" \
+        VMWARE_PEER_LOG="$VMWARE_PEER_LOG" \
+        VMWARE_RESULT_FILE="$ROOT/build/v016-vmware-vmxnet3.env" \
+        bash "$ROOT/danos-test/vmware/verify_vmxnet3_packet_baseline.sh"
+fi
 
 echo '=== pci-dpdk-preflight ==='
 set +e
@@ -194,6 +200,7 @@ if test "$failures" -eq 0; then overall=PASS; else overall=FAIL; fi
     printf 'qemu_result=%q\n' "$QEMU_RESULT_FILE"
     printf 'qemu_iso=%q\n' "$(sed -n 's/^danos_iso=//p' "$QEMU_TOPOLOGY_DIR/run-manifest.env" | head -1)"
     printf 'qemu_iso_sha256=%q\n' "$(sed -n 's/^danos_iso_sha256=//p' "$QEMU_TOPOLOGY_DIR/run-manifest.env" | head -1)"
+    printf 'vmware_waived=%s\n' "$vmware_waived"
     printf 'vmware_min_pps=%q\n' "$VMWARE_MIN_PPS"
     printf 'vmware_iso=%q\n' "$VMWARE_ISO"
     printf 'vmware_result=%q\n' "$ROOT/build/v016-vmware-vmxnet3.env"

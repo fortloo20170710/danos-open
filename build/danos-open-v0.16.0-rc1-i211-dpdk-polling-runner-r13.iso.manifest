@@ -1,0 +1,4 @@
+artifact=i211-runner
+iso=build/danos-open-v0.16.0-rc1-i211-dpdk-polling-runner-r13.iso
+sha256=b5236912ba73415e905ea54434b3bf37c234b574850b7fee1d836395e34261af
+build_commit=88f4bed22f2490e8aaeb081d015243636f538cb6

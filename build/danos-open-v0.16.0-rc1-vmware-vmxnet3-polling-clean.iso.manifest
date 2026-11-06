@@ -1,0 +1,4 @@
+artifact=vmware
+iso=build/danos-open-v0.16.0-rc1-vmware-vmxnet3-polling-clean.iso
+sha256=d815aa50ce857b1193bf116f99496b50670846344ca4b1c3ecd6afe6d5b99a9a
+build_commit=2cf3eee66703ccc1455852699d659ad146324d7e
