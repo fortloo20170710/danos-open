@@ -1,0 +1,23 @@
+=== R3 192.168.1.245 gNMI apply
+      "path": "routes/route[prefix=198.51.100.0/24]"
+    }
+  ]
+}
+198.51.100.0/24 via 192.168.1.1 dev enp3s0 proto static 
+=== R3 rollback delete
+      "path": "routes/route[prefix=198.51.100.0/24]"
+    }
+  ]
+}
+route-absent-rc=0
+active
+2 packets transmitted, 2 received, 0% packet loss, time 1000ms
+rtt min/avg/max/mdev = 1.140/1.159/1.179/0.019 ms
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: WARNING explicit laboratory plaintext mode
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: authorization active (default role admin, audit default)
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: WARNING no credential source configured - the management interface accepts unauthenticated requests
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: VPP not reachable (/run/vpp/api.sock) — running without dataplane backend
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: persistence /var/lib/danos/mgrd.wal (0 records recovered)
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: programming pipeline active (netlink real kernel)
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: gNMI (laboratory h2c) on :59200
+Nov 06 00:10:24 R3 danos-mgrd[1467]: mgrd: prometheus /metrics on :59201
