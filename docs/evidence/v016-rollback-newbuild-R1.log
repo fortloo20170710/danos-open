@@ -1,0 +1,17 @@
+=== R1 192.168.1.241 new build apply
+    }
+  ]
+}
+198.51.100.0/24 via 192.168.1.1 dev enp3s0 proto static 
+a2b8fce040b86236f742f41af53a7fcc7640377364311556d2eb8e4e6c7baa09  /usr/bin/danos-mgrd
+active
+active
+=== rollback
+    }
+  ]
+}
+absent-rc=0
+active
+active
+2 packets transmitted, 2 received, 0% packet loss, time 1002ms
+rtt min/avg/max/mdev = 0.876/1.067/1.259/0.191 ms

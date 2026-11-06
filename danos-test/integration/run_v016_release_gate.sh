@@ -138,12 +138,18 @@ if test -n "${DPDK_PREFLIGHT_RESULT_FILE:-}"; then
         echo '[FAIL] external DPDK preflight has no target_bdf'
         exit 1
     }
-    test "$external_status" = ENVIRONMENT-OPEN || {
-        echo "[FAIL] external DPDK preflight status is ${external_status:-missing}, expected ENVIRONMENT-OPEN"
+    packets_tx=$(sed -n 's/^packets_tx=//p' "$DPDK_RESULT_FILE" | head -1)
+    pps=$(sed -n 's/^pps=//p' "$DPDK_RESULT_FILE" | head -1)
+    if test "$external_status" = PASS && test -n "$packets_tx" && test -n "$pps"; then
+        echo "[INFO] using physical runner traffic result for $target_bdf"
+        dpdk_rc=0
+    elif test "$external_status" = ENVIRONMENT-OPEN; then
+        echo "[INFO] using physical runner preflight for $target_bdf"
+        dpdk_rc=2
+    else
+        echo "[FAIL] external DPDK result status is ${external_status:-missing}, no traffic fields"
         exit 1
-    }
-    echo "[INFO] using physical runner preflight for $target_bdf"
-    dpdk_rc=2
+    fi
 else
     DPDK_RESULT_FILE="$DPDK_RESULT_FILE" \
         bash "$ROOT/danos-test/integration/run_vpp_dpdk_lane.sh"
