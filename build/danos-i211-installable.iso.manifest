@@ -1,0 +1,9 @@
+DANOS_INSTALLER_ISO=build/danos-i211-installable.iso
+DANOS_INSTALLER_ISO_BYTES=530579456
+DANOS_INSTALLER_ISO_SHA256=f09be7833f008c094573ce0fcb65a5e9fa520b25655f538e3326d53ffca0707e
+DANOS_INSTALLER_PAYLOAD=/home/aikon/.dsh/state/superagent/work/advance-v016-tracks-34e6fd0a7534/build/dpdk-installable/danos-open-v0.16.0-rc1-dpdk-installed-20261105T055624Z.raw.gz
+DANOS_INSTALLER_DISK_MANIFEST=/home/aikon/.dsh/state/superagent/work/advance-v016-tracks-34e6fd0a7534/build/dpdk-installable/danos-open-v0.16.0-rc1-dpdk-installed-20261105T055624Z.manifest
+DANOS_INSTALLER_BOOT_MODE=legacy-bios
+DANOS_INSTALLER_TARGET_MIN_BYTES=3221225472
+DANOS_SOURCE_COMMIT=75635d4550b069e6cf493b3ddc208ea3865c712a
+DANOS_SOURCE_DIRTY=1
