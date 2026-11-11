@@ -57,7 +57,7 @@ the daemon otherwise refuses plaintext startup.
 ### Build
 
 ```bash
-git clone https://github.com/danos-open/danos-open.git
+git clone https://github.com/fortloo20170710/danos-open.git
 cd danos-open
 cmake -B build
 cmake --build build -j$(nproc)
