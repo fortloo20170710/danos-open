@@ -1731,9 +1731,15 @@ static bool get_bool_leaf(const char *path_str, bool *out)
 
 static int test_state_leaf_from_oper(void)
 {
-    bool up = true;
-    assert(get_bool_leaf("/interfaces/interface[name=eth0]/state/link-up", &up));
-    assert(!up);                    /* no readback yet: desired copy */
+    uint8_t missing_req[128], missing_resp[4096];
+    gnmi_pb_t missing_writer;
+    gnmi_pb_init(&missing_writer, missing_req, sizeof(missing_req));
+    gnmi_path_t missing_path;
+    assert(gnmi_path_from_str(&missing_path, "/interfaces/interface[name=eth0]/state/link-up"));
+    gnmi_encode_path(&missing_writer, 2, &missing_path);
+    assert(gnmi_handle_get(NULL, missing_req, missing_writer.len, missing_resp, sizeof(missing_resp))
+           == -(int)DANOS_ERR_NOT_FOUND);
+    bool up = false;
 
     danos_backend_ops_t ops;
     memset(&ops, 0, sizeof(ops));
@@ -1769,12 +1775,11 @@ static int test_state_leaf_from_oper(void)
         if (memcmp(resp + i, "\"link_up\":true", 14) == 0) saw_link = true;
     assert(saw_link);
 
-    /* Reset returns reads to the desired copy instead of a stale value. */
+    /* Reset exposes absent observation, never stale or desired state. */
     danos_oper_reset();
     danos_backend_ops_set(NULL);
-    up = true;
-    assert(get_bool_leaf("/interfaces/interface[name=eth0]/state/link-up", &up));
-    assert(!up);
+    assert(gnmi_handle_get(NULL, missing_req, missing_writer.len, missing_resp, sizeof(missing_resp))
+           == -(int)DANOS_ERR_NOT_FOUND);
 
     printf("[PASS] test_state_leaf_from_oper (link-up from readback, "
            "desired fallback)\n");
@@ -1921,12 +1926,12 @@ static int test_get_not_found_status(void)
     assert(n == -(int)DANOS_ERR_NOT_FOUND ||
            n == -(int)DANOS_ERR_INVALID_ARG);
 
-    /* Control: an existing interface with the same leaf shape succeeds. */
+    /* Control: config is readable even without an operational observation. */
     gnmi_pb_t gw2;
     uint8_t greq2[128];
     gnmi_pb_init(&gw2, greq2, sizeof(greq2));
     assert(gnmi_path_from_str(&gp,
-              "interfaces/interface[name=eth0]/state/mtu"));
+              "interfaces/interface[name=eth0]/config/mtu"));
     gnmi_encode_path(&gw2, 2, &gp);
     int n2 = gnmi_handle_get(NULL, greq2, gw2.len, resp, sizeof(resp));
     assert(n2 > 0);
