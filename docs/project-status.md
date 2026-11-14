@@ -1,12 +1,36 @@
 # DANOS-Open 项目状态
 
-> 版本：v0.16.0-rc1 ｜ 更新：2026-10-21
+> 版本：v0.16.0-rc1 ｜ 更新：2026-11-14
 >
 > 本页只保留**当前状态**。按日期追加的完整验证记录已归档到
 > [`docs/archive/project-status-log.md`](archive/project-status-log.md)。
 > 验收门槛见 [`v0.16-acceptance-matrix.md`](v0.16-acceptance-matrix.md)，
 > 待办见 [`outstanding-work-plan.md`](outstanding-work-plan.md) 与
 > [`../TODO.md`](../TODO.md)。
+
+## 分支范围说明（2026-11-14）
+
+本轮本地评估与验证以 `d771a5a` 为基线。提交前联网核对发现远程 main 已推进至
+`916491a`，包含本基线之后的126个提交及重叠的后端/管理面实现。
+因此本轮分组提交保留在 `dev/backend-readback-20261114`，未与该远程主线做集成验证。
+下述局部能力与缺口描述针对本分支，不替代远程最新 main 的状态记录。
+
+## 开发基线与推进顺序（2026-11-14 用户授权）
+
+权威开发目录为 `/home/aikon/src/danos-open`。`/home/aikon/danos-open`
+保留为独立历史 checkout，不自动同步、不引用其产物作为当前提交的验收证据。
+本轮起点为 `d771a5a`；下面历史验证数字不自动升级为新改动的验证结果。
+首批工作区完成 Release 构建、CTest 86/86、软件 release_check 与 OCI 冒烟，
+证据在 `/home/aikon/src/danos-open-evidence/20261114-convergence/`。
+后续真实读回增量见 [后端读回](backend-readback.md)：当前 CTest 89 项，
+新增严格 VPP map、CRC 校验读回、有界 IO、下一跳/ECMP 漂移修复和状态未知语义。
+隔离 VPP 26.10 与 Linux 表257真实读回/修复脚本通过；这不是物理转发或性能资格。
+新证据目录：`/home/aikon/src/danos-open-evidence/20261114-backend-readback/`。
+上述证据采集于未提交工作区；后续分组提交不改变证据身份。源码与远程 CI 状态以 Git/GitHub 为准，未做正式发布。
+
+按顺序推进：发布链与基线 → 后端正确性及实际读回 → 限定 L3 场景的恢复与
+升级回滚 → 性能资格 → 场景驱动的功能扩展。执行与验收见
+[开发收敛计划](development-convergence.md)。这不改变既有正式发布门槛。
 
 ## 1. 发布判定
 

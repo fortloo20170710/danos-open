@@ -1,6 +1,20 @@
-# DANOS-Open 待办清单(v0.15 收敛基线)
+# DANOS-Open 待办清单
 
-> 当前状态、版本路线和验收口径见 `docs/project-status.md`。本清单只保留尚未完成的可执行事项。
+> 当前执行顺序以 [开发收敛计划](docs/development-convergence.md) 为准。
+> 权威开发目录：`/home/aikon/src/danos-open`。
+> 下列历史 v0.15/v0.16 条目保留原有证据边界，不作为当前提交已通过的证明。
+
+## 当前收敛进度（2026-11-14）
+
+- [x] 修复发布 gnmic/TLS 依赖及 OCI context，共用本地/CI staging
+- [x] 手动打包演练与正式 tag 资格门禁分离，记录产物身份
+- [x] Linux 大表编号和 ECMP 编码，真实 VRF 空实现明确拒绝
+- [x] 接口撤销失败保留 ledger 重试
+- [x] VPP 映射严格校验和受支持 API schema 的实际状态读回
+- [x] 有界 IO、IPv4 下一跳/ECMP 漂移检测及隔离真实后端回归
+- [ ] 默认 Netlink 模式显式化（当前仍默认 mock）
+- [ ] 真实内核/主后端转发与故障恢复重新验收
+- [ ] 安装、升级、回滚及持续性能资格
 
 ## v0.15 工程收敛
 - [ ] 统一 README、TODO、release notes、tag 与构建产物版本口径

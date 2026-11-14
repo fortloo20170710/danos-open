@@ -8,10 +8,11 @@
 ## Current v0.16 status
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
-release has not been qualified. Source checkpoint `515e581` was locally
-verified with CTest 81/81 and the deterministic backend contract gate; its
-docs-only descendant `a4638c7` passed GitHub CI, Coverage and Interop Gate.
-The full unified QEMU/VMware release gate was not rerun on that checkpoint.
+release has not been qualified. The authoritative development checkout is
+`/home/aikon/src/danos-open`; `/home/aikon/danos-open` is retained as a separate
+historical checkout and must not supply implicit build artifacts or evidence.
+The reviewed source baseline is `d771a5a`; its status page records 85 ordinary
+CTest cases. Historical results remain tied to their original commits.
 QEMU, VMware and physical I211 evidence demonstrates scoped functional
 forwarding and recovery, but does not qualify sustained PCI throughput,
 latency, CPU cost or line rate. Measured PCI performance remains
@@ -23,7 +24,10 @@ remain deferred until the v0.16 release decision.
 
 Authoritative status: [v0.16 acceptance matrix](docs/v0.16-acceptance-matrix.md)
 and [project status](docs/project-status.md). The release-candidate gate is
-`bash danos-test/integration/run_v016_release_gate.sh`.
+`bash danos-test/integration/run_v016_release_gate.sh`. Current
+backend readback, mapping and drift-repair behavior is documented in
+[backend readback](docs/backend-readback.md), including isolated live regression
+and its limitations.
 
 ## Quick Start (5 minutes)
 
@@ -61,7 +65,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current local source checkpoint reports 81/81.
+by build configuration; consult the commit-bound result rather than a fixed count here.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
