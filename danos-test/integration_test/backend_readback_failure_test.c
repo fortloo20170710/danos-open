@@ -52,6 +52,9 @@ int main(void)
         .readback = fake_readback,
     };
     danos_backend_ops_set(&ops);
+    /* This case checks status transitions, not elapsed-time backoff. The
+     * pipeline suite separately proves timed observation retry/recovery. */
+    danos_programming_set_policy(5, 0, 0, 5000, 0);
 
     uint64_t attempted = 0, failed = 0;
     g_readback_rc = DANOS_OK;

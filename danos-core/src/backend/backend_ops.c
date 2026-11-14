@@ -81,14 +81,12 @@ static danos_object_store_t *oper_store(void)
     return g_oper;
 }
 
+static danos_status_t resolve_route_nh(const danos_route_t *, danos_resolved_route_t *);
+
 /* ---- OPER snapshot (v0.16) ----------------------------------------------
  * Caller holds g_prog_lock. A backend that cannot read an object back
- * contributes no OPER entry: the management plane then falls back to the
- * desired copy and never serves a stale operational value.
- *
- * Routes use route_readback with their resolved ECMP set so a mismatch in
- * next-hop membership or route attributes becomes DANOS_ERR_VERIFY_FAIL
- * instead of being silently reported as present. */
+ * contributes no OPER entry: management must report absent/unknown state,
+ * never substitute the desired copy for an observation. */
 static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
                                    const void *desired, size_t size,
                                    const danos_resolved_route_t *resolved)
@@ -98,7 +96,6 @@ static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
         return DANOS_ERR_NOT_SUPPORTED;
     if (!g_ops->readback && !(g_ops->route_readback && resolved))
         return DANOS_ERR_NOT_SUPPORTED;
-
     _Alignas(danos_route_t) uint8_t oper[DANOS_MAX_OBJECT_BYTES];
     memset(oper, 0, size);
     danos_status_t st;
@@ -106,6 +103,9 @@ static danos_status_t oper_refresh(danos_obj_type_t type, danos_obj_id_t id,
         st = g_ops->route_readback(resolved, oper, g_ops->user);
     else
         st = g_ops->readback(type, id, desired, size, oper, g_ops->user);
+    if (st == DANOS_OK && type == DANOS_OBJ_IFACE && size == sizeof(danos_iface_t) &&
+        ((const danos_iface_t *)oper)->admin_up != ((const danos_iface_t *)desired)->admin_up)
+        st = DANOS_ERR_VERIFY_FAIL;
     if (st != DANOS_OK) {
         if (g_oper) (void)danos_object_delete(g_oper, type, id);
         return st;
@@ -289,6 +289,7 @@ typedef struct {
     danos_obj_type_t type;
     danos_obj_id_t   id;
     uint32_t        attempts;
+    bool            observation_only;
     uint64_t        next_attempt_ns;
     uint64_t        last_success_ns;
     uint32_t        flap_count;
@@ -394,7 +395,7 @@ static bool retry_defer(danos_obj_type_t type, danos_obj_id_t id, uint64_t now)
         s->next_attempt_ns = now;
         return false;
     }
-    if (g_max_retries && s->attempts >= g_max_retries) return true;
+    if (!s->observation_only && g_max_retries && s->attempts >= g_max_retries) return true;
     return now < s->next_attempt_ns;
 }
 
@@ -405,7 +406,7 @@ static void retry_clear(danos_obj_type_t type, danos_obj_id_t id,
     retry_slot_t *s = retry_find(type, id);
     if (success && s) {
         /* Count a flap if the object recovered inside the window. */
-        if (g_antiflap_max_count && s->attempts > 0) {
+        if (!s->observation_only && g_antiflap_max_count && s->attempts > 0) {
             if (now - s->last_success_ns <= g_antiflap_window_ms * 1000000ULL)
                 s->flap_count++;
             else
@@ -424,16 +425,17 @@ static void retry_clear(danos_obj_type_t type, danos_obj_id_t id,
 
 static void retry_record_failure(danos_obj_type_t type, danos_obj_id_t id,
                                  uint64_t now, uint64_t desired, uint64_t dependency,
-                                 danos_status_t error)
+                                 danos_status_t error, bool observation_only)
 {
     pthread_mutex_lock(&g_retry_lock);
     retry_slot_t *s = retry_slot_for(type, id);
     s->desired_digest = desired;
     s->dependency_digest = dependency;
     s->last_error = error;
-    s->attempts++;
+    s->observation_only = observation_only;
+    if (s->attempts != UINT32_MAX) s->attempts++;
     uint64_t delay = (uint64_t)g_backoff_initial_ms * 1000000ULL;
-    for (uint32_t i = 1; i < s->attempts && delay < g_backoff_max_ms; i++)
+    for (uint32_t i = 1; i < s->attempts && delay > 0 && delay < (uint64_t)g_backoff_max_ms * 1000000ULL; i++)
         delay *= 2;
     if (delay > (uint64_t)g_backoff_max_ms * 1000000ULL)
         delay = (uint64_t)g_backoff_max_ms * 1000000ULL;
@@ -452,7 +454,7 @@ void danos_programming_get_retry_stats(uint64_t *deferred, uint64_t *flapping,
     for (unsigned i = 0; i < RETRY_SLOTS; i++) {
         if (!g_retry[i].used) continue;
         if (g_retry[i].flapping) f++;
-        else if (g_max_retries && g_retry[i].attempts >= g_max_retries) e++;
+        else if (!g_retry[i].observation_only && g_max_retries && g_retry[i].attempts >= g_max_retries) e++;
         else d++;
     }
     pthread_mutex_unlock(&g_retry_lock);
@@ -494,35 +496,37 @@ static void program_entry(danos_object_entry_t *e, void *user)
         memcpy(&last_dep, last, 8);
         if (last_dep == dep &&
             memcmp(last + LEDGER_HEADER_SIZE, e->data, e->data_size) == 0) {
-            /* Healthy: drop any accumulated backoff so a later failure
-             * starts from a clean slate. */
-            retry_clear(e->type, e->id, mono_ns(), true);
+            /* A failed observation has its own backoff. Do not reset it
+             * merely because desired still matches the programming ledger. */
+            pthread_mutex_lock(&g_retry_lock);
+            bool probe_deferred = retry_defer(e->type, e->id, mono_ns());
+            pthread_mutex_unlock(&g_retry_lock);
+            if (probe_deferred) return;
             danos_resolved_route_t rr;
-            bool have_rr = route_probe_context(e->type, e->data,
-                                              e->data_size, &rr);
+            bool have_rr = route_probe_context(e->type, e->data, e->data_size, &rr);
             danos_status_t readback = oper_refresh(e->type, e->id, e->data,
-                                                   e->data_size,
-                                                   have_rr ? &rr : NULL);
-            if (readback == DANOS_OK || readback == DANOS_ERR_NOT_SUPPORTED)
-                return;   /* in sync; no readback capability is not drift */
-            if (readback == DANOS_ERR_NOT_FOUND ||
-                readback == DANOS_ERR_VERIFY_FAIL) {
-                /* The backend confirms the object disappeared or is present
-                 * but differs from the resolved desired state.  Drop this
-                 * ledger record and fall through to an idempotent REPLACE in
-                 * this pass.  If the rewrite still does not verify, the
-                 * post-program check below records a bounded failure instead
-                 * of claiming success. */
+                                                   e->data_size, have_rr ? &rr : NULL);
+            if (readback == DANOS_OK || readback == DANOS_ERR_NOT_SUPPORTED) {
+                retry_clear(e->type, e->id, mono_ns(), true);
+                return; /* absent capability is not drift and produces no OPER */
+            }
+            if (readback == DANOS_ERR_NOT_FOUND || readback == DANOS_ERR_VERIFY_FAIL) {
+                /* The backend confirms absence or a configured-path mismatch.
+                 * Drop only this ledger record and fall through to reprogram
+                 * the desired object in this pass. */
                 (void)danos_object_delete(ledger(), e->type, e->id);
                 oper_forget(e->type, e->id);
                 have_last = false;
                 lsz = 0;
+                retry_clear(e->type, e->id, mono_ns(), false);
             } else {
                 /* A probe I/O failure is not evidence of drift, so preserve
                  * the ledger and avoid an unsafe duplicate programming
                  * attempt. */
                 c->attempted++;
                 c->failed++;
+                retry_record_failure(e->type, e->id, mono_ns(),
+                                     hash_bytes(e->data, e->data_size), dep, readback, true);
                 return;
             }
         }
@@ -562,7 +566,7 @@ static void program_entry(danos_object_entry_t *e, void *user)
     danos_status_t st = program_one(e->type, e->id, e->data, e->data_size);
     if (st != DANOS_OK) {
         c->failed++;
-        retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep, st);
+        retry_record_failure(e->type, e->id, mono_ns(), desired_digest, dep, st, false);
         oper_forget(e->type, e->id);
         /* v0.11: a previously-programmed route whose next hop became
          * unusable must be WITHDRAWN, not left forwarding via a stale
@@ -581,7 +585,6 @@ static void program_entry(danos_object_entry_t *e, void *user)
         return;
     }
     c->ok++;
-    retry_clear(e->type, e->id, mono_ns(), true);
 
     uint8_t rec[LEDGER_REC_MAX] = {0};
     memcpy(rec, &dep, 8);
@@ -605,11 +608,13 @@ static void program_entry(danos_object_entry_t *e, void *user)
          * the ledger so the next allowed pass retries, and count this pass as
          * a failure rather than a success. */
         retry_record_failure(e->type, e->id, mono_ns(),
-                             hash_bytes(e->data, e->data_size), dep, verify);
+                             hash_bytes(e->data, e->data_size), dep, verify, false);
         (void)danos_object_delete(ledger(), e->type, e->id);
         if (c->ok) c->ok--;
         c->failed++;
     }
+    else if (verify == DANOS_OK || verify == DANOS_ERR_NOT_SUPPORTED)
+        retry_clear(e->type, e->id, mono_ns(), true);
 }
 
 uint64_t danos_programming_run(uint64_t *attempted, uint64_t *failed)
@@ -700,7 +705,7 @@ danos_status_t danos_programming_object_status(danos_obj_type_t type,
         out->attempts = retry->attempts;
         out->last_error = retry->last_error;
         out->flapping = retry->flapping;
-        out->exhausted = g_max_retries && retry->attempts >= g_max_retries;
+        out->exhausted = !retry->observation_only && g_max_retries && retry->attempts >= g_max_retries;
         out->backoff = now < retry->next_attempt_ns;
         out->retry_after_ms = out->backoff ?
             (retry->next_attempt_ns - now) / 1000000ULL : 0;
@@ -837,7 +842,11 @@ uint64_t danos_programming_sweep(uint64_t *failed)
              * did not create) */
             danos_iface_t ifc;
             memcpy(&ifc, last + LEDGER_HEADER_SIZE, sizeof(ifc));
-            (void)g_ops->iface_up(ifc.ifindex, false, g_ops->user);
+            danos_status_t st = g_ops->iface_up(ifc.ifindex, false, g_ops->user);
+            if (st != DANOS_OK) {
+                c.failed++;
+                continue;   /* retain ledger and OPER until withdraw succeeds */
+            }
         }
         /* VRF: registration-only backend ops — ledger drop suffices */
         danos_object_delete(ledger(), type, id);

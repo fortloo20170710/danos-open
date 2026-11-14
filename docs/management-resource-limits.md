@@ -75,10 +75,29 @@ The programming pipeline keeps one process-wide OPER store, refreshed from the
 active backend's readback hook on each pass and cleared on failure,
 withdrawal, backend restart or explicit reset. It stores one object copy (at
 most 1 KiB) per programmed object whose backend supports readback. Netlink
-readback currently covers interfaces only, so the snapshot is bounded by the
-interface count in practice; VPP and route/VRF readback contribute nothing
-until their query bindings exist. Reads are locked per call and fall back to
-the desired object when no OPER copy exists.
+and supported VPP schemas report actual interface admin/carrier state and
+verify IPv4 prefixes, tables and complete equal-cost next-hop sets. Route
+OPER copies carry DPA identity only after resolved-path verification; they
+are not independent next-hop object enumeration. VPP VRF table readback is also retained from mainline; Linux VRF device lifecycle remains unsupported.
+
+Interface `/state` leaves return NOT_FOUND when there is no observation;
+state subtree reads omit such interfaces, and CLI OPER displays `unknown`.
+Config paths remain readable. A missing observation does not mean link-down.
+This is an intentional change from the former desired-state fallback.
+
+Netlink IO is bounded by 1s send/receive budgets; VPP connection/registration,
+transactions and dump+ping barriers use a 5s absolute deadline, including
+partial frames and blocked sends. The internal VPP timeout setter permits
+1..60000ms. TCP relay endpoints must use numeric IP/service addresses to
+avoid unbounded DNS under the shared API lock. Read-only failed probes use
+capped backoff and continue after the programming retry limit; they do not
+cause blind route re-application or retain stale OPER data.
+
+Linux route probes currently dump the selected table for each route. They
+are bounded but not a batched large-FIB optimization. Validate capacity before
+using this implementation for large route tables; a timeout is unknown state,
+not an empty-table result. These are per-operation bounds, not a bound on an
+entire reconciliation pass with many objects.
 
 ## Operational guidance
 

@@ -130,6 +130,15 @@ there is no silent netlink fallback. Unknown backend names and combining
 `--backend vpp` with `--no-vpp` are rejected. `--backend netlink` preserves
 the existing behaviour; MGRD_NETLINK_REAL controls only that backend.
 
+Real VPP programming now also requires a complete, valid
+`DANOS_VPP_IFINDEX_MAP=linux_index:vpp_index,...` in the protected environment
+file. The entire map is parsed at startup; an unmapped index is rejected,
+never used as a VPP index or changed to interface 1. Multiple Linux aliases
+may explicitly map to one VPP interface. Do not copy laboratory indices into
+a deployment: discover and verify that deployment's interfaces first.
+Supported CRC-checked VPP interface/IPv4 route readback and failure semantics
+are described in [backend-readback](backend-readback.md).
+
 This option is in the new source candidate, **not in the delivered r13 ISO**.
 Do not enable an old physical binary with these arguments. A later image must
 be rebuilt and separately installation-qualified. After provisioning PKI on

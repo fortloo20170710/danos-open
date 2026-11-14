@@ -17,8 +17,8 @@
  * src/vlibmemory/socket.c (see also vpp_wire.h).
  */
 
-#include "vpp_api.h"
 #include "vpp_wire.h"
+#include "vpp_api.h"
 #include <danos/dpa.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +33,8 @@
 #include <netdb.h>
 #include <errno.h>
 #include <pthread.h>
+#include <fcntl.h>
+#include <poll.h>
 
 #define VPP_API_SOCK_PATH "/run/vpp/api.sock"
 #define VPP_STAT_SOCK_PATH "/run/vpp/stats.sock"
@@ -63,6 +65,7 @@ typedef struct {
     uint32_t context;        /* monotonically increasing request context */
     uint32_t client_index;   /* assigned by VPP in sockclnt_create_reply */
     vpp_msg_table_t msg_table;
+    vpp_msg_table_t schema_table;
     /* Mock mode: record last message */
     uint16_t last_msg_id;
     uint32_t last_msg_size;
@@ -78,7 +81,6 @@ typedef struct {
 
 static vpp_api_ctx_impl_t g_ctx;
 static vpp_mock_stat_t    g_mock_stats[VPP_MOCK_STAT_MAX];
-
 #define VPP_MOCK_DUMP_MAX 16
 typedef struct {
     char     detail_name[64];
@@ -89,6 +91,7 @@ static vpp_mock_dump_t g_mock_dumps[VPP_MOCK_DUMP_MAX];
 static uint32_t g_mock_dump_count;
 
 static bool g_initialized = false;
+static uint32_t g_io_timeout_ms = VPP_RECV_TIMEOUT_MS;
 
 /* The binary API is one shared socket with one request context counter, and
  * the daemon queries it from several threads (backend worker, health and CLI
@@ -134,11 +137,13 @@ static uint64_t now_ns(void)
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-/* Set a receive timeout so a dead VPP cannot hang the caller */
-static void fd_set_timeout(int fd, int ms)
+int danos_vpp_api_set_io_timeout_ms(uint32_t timeout_ms)
 {
-    struct timeval tv = { .tv_sec = ms / 1000, .tv_usec = (ms % 1000) * 1000 };
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    if (timeout_ms == 0 || timeout_ms > 60000) return -1;
+    vpp_ctx_lock();
+    g_io_timeout_ms = timeout_ms;
+    vpp_ctx_unlock();
+    return 0;
 }
 
 /* =========================================================================
@@ -148,6 +153,8 @@ static void fd_set_timeout(int fd, int ms)
 int danos_vpp_api_init(void)
 {
     vpp_ctx_lock();
+    if (g_initialized) danos_vpp_api_disconnect();
+    g_io_timeout_ms = VPP_RECV_TIMEOUT_MS;
     memset(&g_ctx, 0, sizeof(g_ctx));
     g_ctx.msg_fd = -1;
     g_ctx.stat_fd = -1;
@@ -162,6 +169,7 @@ int danos_vpp_api_init(void)
         snprintf(g_ctx.stat_sock_path, sizeof(g_ctx.stat_sock_path), "%s", stat_env);
     g_ctx.reconnect_delay_ms = VPP_RECONNECT_INITIAL_MS;
     vpp_msg_table_init(&g_ctx.msg_table);
+    vpp_msg_table_init(&g_ctx.schema_table);
     danos_vpp_api_mock_dump_clear();
     g_initialized = true;
     vpp_ctx_unlock();
@@ -218,7 +226,7 @@ uint32_t danos_vpp_api_mock_dump_total(void)
     return n;
 }
 
-static int connect_unix_stream(const char *path)
+static int connect_unix_stream(const char *path, uint64_t deadline_ms)
 {
     if (strncmp(path, "tcp://", 6) == 0) {
         const char *host = path + 6, *colon = strrchr(host, ':');
@@ -228,19 +236,21 @@ static int connect_unix_stream(const char *path)
         if (n >= sizeof(name) || strlen(colon + 1) >= sizeof(service)) return -1;
         memcpy(name, host, n); name[n] = 0;
         snprintf(service, sizeof(service), "%s", colon + 1);
-        struct addrinfo hints = { .ai_socktype = SOCK_STREAM }, *res = NULL;
+        /* Numeric relay endpoints avoid unbounded resolver calls under the
+         * API mutex. Configure a Unix socket or tcp://IP:port. */
+        struct addrinfo hints = { .ai_socktype = SOCK_STREAM,
+                                  .ai_flags = AI_NUMERICHOST | AI_NUMERICSERV }, *res = NULL;
         if (getaddrinfo(name, service, &hints, &res) != 0) return -1;
         int fd = -1;
         for (struct addrinfo *it = res; it; it = it->ai_next) {
-            fd = socket(it->ai_family, it->ai_socktype, it->ai_protocol);
-            if (fd >= 0 && connect(fd, it->ai_addr, it->ai_addrlen) == 0) break;
+            fd = socket(it->ai_family, it->ai_socktype | SOCK_CLOEXEC, it->ai_protocol);
+            if (fd >= 0 && vpp_wire_connect_until(fd, it->ai_addr, it->ai_addrlen, deadline_ms) == 0) break;
             if (fd >= 0) { close(fd); fd = -1; }
         }
         freeaddrinfo(res);
-        if (fd >= 0) fd_set_timeout(fd, VPP_RECV_TIMEOUT_MS);
         return fd;
     }
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
     if (fd < 0) return -1;
 
     struct sockaddr_un addr;
@@ -252,18 +262,17 @@ static int connect_unix_stream(const char *path)
     }
     memcpy(addr.sun_path, path, strlen(path) + 1);
 
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (vpp_wire_connect_until(fd, (struct sockaddr *)&addr, sizeof(addr), deadline_ms) < 0) {
         close(fd);
         return -1;
     }
-    fd_set_timeout(fd, VPP_RECV_TIMEOUT_MS);
     return fd;
 }
 
 /* Perform the legacy socket handshake:
  * send sockclnt_create, parse sockclnt_create_reply, build the
  * name->msg_id table. Returns 0 on success. */
-static int vpp_handshake(void)
+static int vpp_handshake(uint64_t deadline_ms)
 {
     vpp_buf_t body;
     vpp_buf_init(&body, 96);
@@ -282,14 +291,14 @@ static int vpp_handshake(void)
     memcpy(client_name, VPP_CLIENT_NAME, client_name_len);
     vpp_buf_put_bytes(&body, client_name, sizeof(client_name));
 
-    int rc = vpp_wire_send_fd(g_ctx.msg_fd, VPP_MSG_ID_SOCKCLNT_CREATE,
-                              body.data, body.len);
+    int rc = vpp_wire_send_until(g_ctx.msg_fd, VPP_MSG_ID_SOCKCLNT_CREATE,
+                                 body.data, body.len, deadline_ms);
     vpp_buf_free(&body);
     if (rc != 0) return -1;
 
     /* VPP 26.10 advertises ~2000 messages; the table is >128 KiB. */
     uint8_t rbuf[512 * 1024];
-    int n = vpp_wire_recv_fd(g_ctx.msg_fd, rbuf, sizeof(rbuf));
+    int n = vpp_wire_recv_until(g_ctx.msg_fd, rbuf, sizeof(rbuf), deadline_ms);
     if (n <= 2) return -1;
 
     /* rbuf[0..1] is the 16-bit frame length prefix; the reader must stop
@@ -313,13 +322,15 @@ static int vpp_handshake(void)
     if (!vpp_reader_ok(&r) || response != 0) return -1;
 
     vpp_msg_table_init(&g_ctx.msg_table);
+    vpp_msg_table_init(&g_ctx.schema_table);
     for (uint16_t i = 0; i < count; i++) {
         uint16_t msg_id = vpp_rd_u16(&r);
         /* sockclnt_create_reply's message_table_entry is { u16 index;
          * u8 name[64]; }. It is fixed-width, unlike ordinary API strings. */
         char name[65] = {0};
-        if (!vpp_rd_bytes(&r, name, 64) || !vpp_reader_ok(&r)) break;
+        if (!vpp_rd_bytes(&r, name, 64) || !vpp_reader_ok(&r)) return -1;
         name[64] = '\0';
+        if (name[0] && !vpp_msg_table_add(&g_ctx.schema_table, name, msg_id)) return -1;
         vpp_strip_crc_suffix(name);
         if (name[0] != '\0') vpp_msg_table_add(&g_ctx.msg_table, name, msg_id);
     }
@@ -337,14 +348,16 @@ int danos_vpp_api_connect(void)
         return 0;
     }
 
-    g_ctx.msg_fd = connect_unix_stream(g_ctx.api_sock_path);
+    if (g_ctx.msg_fd >= 0) danos_vpp_api_disconnect();
+    uint64_t deadline_ms = vpp_wire_now_ms() + g_io_timeout_ms;
+    g_ctx.msg_fd = connect_unix_stream(g_ctx.api_sock_path, deadline_ms);
     if (g_ctx.msg_fd < 0) {
         g_ctx.state = VPP_API_DISCONNECTED;
         vpp_ctx_unlock();
         return -1;
     }
 
-    if (vpp_handshake() != 0) {
+    if (vpp_handshake(deadline_ms) != 0) {
         close(g_ctx.msg_fd);
         g_ctx.msg_fd = -1;
         g_ctx.state = VPP_API_DISCONNECTED;
@@ -409,7 +422,8 @@ int danos_vpp_api_reconnect(void)
  * Message send/receive and transactions
  * ========================================================================= */
 
-int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t payload_size)
+static int api_send_until(uint16_t msg_id, const void *payload, uint32_t payload_size,
+                           uint64_t deadline_ms)
 {
     vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
@@ -436,9 +450,10 @@ int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t payload_si
     vpp_buf_put_u32(&body, g_ctx.context);
     vpp_buf_put_bytes(&body, payload, payload_size);
 
-    int rc = vpp_wire_send_fd(g_ctx.msg_fd, msg_id, body.data, body.len);
+    int rc = vpp_wire_send_until(g_ctx.msg_fd, msg_id, body.data, body.len, deadline_ms);
     vpp_buf_free(&body);
     if (rc != 0) {
+        danos_vpp_api_disconnect();
         vpp_ctx_unlock();
         return -1;
     }
@@ -447,7 +462,7 @@ int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t payload_si
     return 0;
 }
 
-int danos_vpp_api_recv(uint8_t *buf, uint32_t buf_size)
+static int api_recv_until(uint8_t *buf, uint32_t buf_size, uint64_t deadline_ms)
 {
     vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
@@ -467,7 +482,7 @@ int danos_vpp_api_recv(uint8_t *buf, uint32_t buf_size)
     }
 
     /* Return the API payload (msg_id + struct); the msgbuf header is consumed. */
-    int n = vpp_wire_recv_fd(g_ctx.msg_fd, buf, buf_size);
+    int n = vpp_wire_recv_until(g_ctx.msg_fd, buf, buf_size, deadline_ms);
     if (n <= 2) {
         danos_vpp_api_disconnect();
         vpp_ctx_unlock();
@@ -502,143 +517,152 @@ int danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
         vpp_ctx_unlock();
         return 0;
     }
-    if (danos_vpp_api_send(msg_id, payload, payload_size) != 0) {
+    uint64_t deadline_ms = vpp_wire_now_ms() + g_io_timeout_ms;
+    if (api_send_until(msg_id, payload, payload_size, deadline_ms) != 0) {
         vpp_ctx_unlock();
         return -1;
     }
-
-    /* Bound the entire transaction, not each recv independently. VPP may
-     * interleave notifications or stale replies; resetting a 5s socket timeout
-     * for each one could otherwise multiply the wait by the retry count. */
-    const uint64_t deadline_ns = now_ns() +
-        (uint64_t)VPP_RECV_TIMEOUT_MS * 1000000ULL;
-
-    /* Wait for the reply whose context matches our request. Replies:
-     * [u32 context][i32 retval][message-specific...]. */
     uint8_t rbuf[64 * 1024];
     for (int attempt = 0; attempt < 64; attempt++) {
-        uint64_t now = now_ns();
-        if (now >= deadline_ns || g_ctx.msg_fd < 0) {
-            danos_vpp_api_disconnect();
-            vpp_ctx_unlock();
-            return -1;
-        }
-        uint64_t remaining_ns = deadline_ns - now;
-        int remaining_ms = (int)((remaining_ns + 999999ULL) / 1000000ULL);
-        if (remaining_ms < 1) remaining_ms = 1;
-        fd_set_timeout(g_ctx.msg_fd, remaining_ms);
-
-        int n = danos_vpp_api_recv(rbuf, sizeof(rbuf));
-        if (n < 8) {
-            vpp_ctx_unlock();
-            return -1;
-        }
-        uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
+        int n = api_recv_until(rbuf, sizeof(rbuf), deadline_ms);
+        if (n < 6) break;
         vpp_reader_t r;
         vpp_reader_init(&r, rbuf + 2, (uint32_t)n - 2);
-        vpp_reader_t cr;
-        vpp_reader_init(&cr, rbuf + 2, (uint32_t)n - 2);
-        uint32_t ctx = vpp_rd_u32(&cr);  /* replies start with context */
-        if (ctx == g_ctx.context) {
-            if (reply) {
-                uint32_t copy = (uint32_t)n;
-                if (copy > reply_size) copy = reply_size;
-                memcpy(reply, rbuf, copy);
-            }
-            (void)reply_id;
-            fd_set_timeout(g_ctx.msg_fd, VPP_RECV_TIMEOUT_MS);
-            vpp_ctx_unlock();
-            return n;
-        }
-        /* Not ours (e.g. an async event): keep reading. */
+        if (vpp_rd_u32(&r) != g_ctx.context) continue;
+        if (reply && (uint32_t)n > reply_size) break; /* never return a truncated frame */
+        if (reply) memcpy(reply, rbuf, (size_t)n);
+        vpp_ctx_unlock();
+        return n;
     }
+    danos_vpp_api_disconnect();
     vpp_ctx_unlock();
     return -1;
 }
 
-/* Multipart dump: send the dump request followed by control_ping, collect
- * every detail reply carrying the dump context, and stop on the ping reply.
- * The callback receives the detail struct starting at its context field. */
+int danos_vpp_api_send(uint16_t msg_id, const void *payload, uint32_t size)
+{
+    vpp_ctx_lock();
+    int rc = api_send_until(msg_id, payload, size, vpp_wire_now_ms() + g_io_timeout_ms);
+    vpp_ctx_unlock();
+    return rc;
+}
+
+int danos_vpp_api_recv(uint8_t *buf, uint32_t size)
+{
+    vpp_ctx_lock();
+    int rc = api_recv_until(buf, size, vpp_wire_now_ms() + g_io_timeout_ms);
+    vpp_ctx_unlock();
+    return rc;
+}
+
+static int api_dump_ids(uint16_t msg_id, const uint8_t *payload, uint32_t size,
+                       uint16_t details_id, danos_vpp_dump_cb cb, void *user)
+{
+    vpp_ctx_lock();
+    uint16_t ping, ping_reply;
+    if (g_ctx.state == VPP_API_MOCK || !cb ||
+        !danos_vpp_api_lookup_msg_id("control_ping", &ping) ||
+        !danos_vpp_api_lookup_msg_id("control_ping_reply", &ping_reply)) {
+        vpp_ctx_unlock();
+        return -1;
+    }
+    uint64_t deadline = vpp_wire_now_ms() + g_io_timeout_ms;
+    if (api_send_until(msg_id, payload, size, deadline) != 0) goto fail;
+    uint32_t dump_ctx = g_ctx.context;
+    if (api_send_until(ping, NULL, 0, deadline) != 0) goto fail;
+    uint32_t ping_ctx = g_ctx.context;
+    uint8_t buf[64 * 1024];
+    for (unsigned i = 0; i < 4096; i++) {
+        int n = api_recv_until(buf, sizeof(buf), deadline);
+        if (n < 6) goto fail;
+        uint16_t id = ((uint16_t)buf[0] << 8) | buf[1];
+        vpp_reader_t r;
+        vpp_reader_init(&r, buf + 2, (uint32_t)n - 2);
+        uint32_t ctx = vpp_rd_u32(&r);
+        if (ctx == ping_ctx && id == ping_reply) {
+            if (n < 10 || (int32_t)vpp_rd_u32(&r) != 0) goto fail;
+            vpp_ctx_unlock();
+            return 0;
+        }
+        if (ctx == dump_ctx && id == details_id && cb(buf, (uint32_t)n, user) != 0)
+            goto fail;
+    }
+fail:
+    danos_vpp_api_disconnect();
+    vpp_ctx_unlock();
+    return -1;
+}
+
+/* Keep the mainline body-callback API while sharing the bounded transport. */
+struct body_dump_bridge { danos_vpp_dump_cb cb; void *user; int entries; };
+static int body_dump_frame(const uint8_t *frame, uint32_t size, void *user)
+{
+    struct body_dump_bridge *bridge = user;
+    if (size < 6 || bridge->cb(frame + 2, size - 2, bridge->user) != 0) return -1;
+    bridge->entries++;
+    return 0;
+}
 int danos_vpp_api_dump(const char *request_name, const char *detail_name,
-                       const uint8_t *payload, uint32_t payload_size,
+                       const uint8_t *payload, uint32_t size,
                        danos_vpp_dump_cb cb, void *user)
 {
     if (!request_name || !detail_name || !cb) return -1;
-    uint16_t request_id = 0, detail_id = 0, ping_id = 0, ping_reply_id = 0;
-    if (!danos_vpp_api_lookup_msg_id(request_name, &request_id) ||
-        !danos_vpp_api_lookup_msg_id(detail_name, &detail_id) ||
-        !danos_vpp_api_lookup_msg_id("control_ping", &ping_id) ||
-        !danos_vpp_api_lookup_msg_id("control_ping_reply", &ping_reply_id))
-        return -1;
-
     vpp_ctx_lock();
     if (g_ctx.state == VPP_API_MOCK) {
         int entries = 0;
         for (uint32_t i = 0; i < g_mock_dump_count; i++) {
-            if (strcmp(g_mock_dumps[i].detail_name, detail_name) != 0)
-                continue;
+            if (strcmp(g_mock_dumps[i].detail_name, detail_name)) continue;
             if (cb(g_mock_dumps[i].body, g_mock_dumps[i].len, user) != 0) {
-                vpp_ctx_unlock();
-                return -1;
+                vpp_ctx_unlock(); return -1;
             }
             entries++;
         }
-        vpp_ctx_unlock();
-        return entries;
+        vpp_ctx_unlock(); return entries;
     }
-    if (g_ctx.state != VPP_API_CONNECTED || g_ctx.msg_fd < 0) {
-        vpp_ctx_unlock();
-        return -1;
+    uint16_t request, detail;
+    if (!danos_vpp_api_lookup_msg_id(request_name, &request) ||
+        !danos_vpp_api_lookup_msg_id(detail_name, &detail)) {
+        vpp_ctx_unlock(); return -1;
     }
+    struct body_dump_bridge bridge = { .cb = cb, .user = user };
+    int rc = api_dump_ids(request, payload, size, detail, body_dump_frame, &bridge);
+    vpp_ctx_unlock();
+    return rc == 0 ? bridge.entries : -1;
+}
 
-    if (danos_vpp_api_send(request_id, payload, payload_size) != 0) {
-        vpp_ctx_unlock();
-        return -1;
-    }
-    uint32_t dump_ctx = g_ctx.context;
-    if (danos_vpp_api_send(ping_id, NULL, 0) != 0) {
-        vpp_ctx_unlock();
-        return -1;
-    }
-    uint32_t ping_ctx = g_ctx.context;
-
-    const uint64_t deadline_ns = now_ns() +
-        (uint64_t)VPP_RECV_TIMEOUT_MS * 1000000ULL;
-    uint8_t rbuf[64 * 1024];
-    int entries = 0;
-    for (int attempt = 0; attempt < 4096; attempt++) {
-        uint64_t now = now_ns();
-        if (now >= deadline_ns || g_ctx.msg_fd < 0) {
+int danos_vpp_api_query(const char *request_schema, const char *reply_schema,
+                        const uint8_t *payload, uint32_t size,
+                        uint8_t *reply, uint32_t capacity)
+{
+    vpp_ctx_lock();
+    uint16_t request, expected;
+    int n;
+    if (g_ctx.state != VPP_API_CONNECTED) n = -1;
+    else if (!danos_vpp_api_lookup_schema(request_schema, &request) ||
+             !danos_vpp_api_lookup_schema(reply_schema, &expected)) n = -2;
+    else {
+        n = danos_vpp_api_transact(request, payload, size, reply, capacity);
+        if (n < 2 || !reply || (((uint16_t)reply[0] << 8) | reply[1]) != expected) {
             danos_vpp_api_disconnect();
-            vpp_ctx_unlock();
-            return -1;
-        }
-        int remaining_ms = (int)((deadline_ns - now + 999999ULL) / 1000000ULL);
-        if (remaining_ms < 1) remaining_ms = 1;
-        fd_set_timeout(g_ctx.msg_fd, remaining_ms);
-
-        int n = danos_vpp_api_recv(rbuf, sizeof(rbuf));
-        if (n < 6) {
-            vpp_ctx_unlock();
-            return -1;
-        }
-        uint16_t reply_id = ((uint16_t)rbuf[0] << 8) | rbuf[1];
-        uint32_t ctx = ((uint32_t)rbuf[2] << 24) | ((uint32_t)rbuf[3] << 16) |
-                       ((uint32_t)rbuf[4] << 8) | (uint32_t)rbuf[5];
-        if (reply_id == detail_id && ctx == dump_ctx) {
-            if (cb(rbuf + 2, (uint32_t)n - 2, user) != 0) {
-                vpp_ctx_unlock();
-                return -1;
-            }
-            entries++;
-        } else if (reply_id == ping_reply_id && ctx == ping_ctx) {
-            fd_set_timeout(g_ctx.msg_fd, VPP_RECV_TIMEOUT_MS);
-            vpp_ctx_unlock();
-            return entries;
+            n = -1;
         }
     }
     vpp_ctx_unlock();
-    return -1;
+    return n;
+}
+int danos_vpp_api_dump_query(const char *request_schema, const char *detail_schema,
+                             const uint8_t *payload, uint32_t size,
+                             danos_vpp_dump_cb cb, void *user)
+{
+    vpp_ctx_lock();
+    uint16_t request, detail;
+    int rc;
+    if (g_ctx.state != VPP_API_CONNECTED) rc = -1;
+    else if (!danos_vpp_api_lookup_schema(request_schema, &request) ||
+             !danos_vpp_api_lookup_schema(detail_schema, &detail)) rc = -2;
+    else rc = api_dump_ids(request, payload, size, detail, cb, user);
+    vpp_ctx_unlock();
+    return rc;
 }
 
 /* Resolve a message name to its dynamically assigned msg_id using the
@@ -653,6 +677,15 @@ bool danos_vpp_api_lookup_msg_id(const char *name, uint16_t *msg_id)
     } else {
         found = vpp_msg_table_lookup(&g_ctx.msg_table, name, msg_id);
     }
+    vpp_ctx_unlock();
+    return found;
+}
+
+bool danos_vpp_api_lookup_schema(const char *name_crc, uint16_t *msg_id)
+{
+    vpp_ctx_lock();
+    bool found = g_ctx.state == VPP_API_CONNECTED &&
+                 vpp_msg_table_lookup(&g_ctx.schema_table, name_crc, msg_id);
     vpp_ctx_unlock();
     return found;
 }

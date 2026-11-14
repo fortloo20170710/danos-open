@@ -22,6 +22,8 @@
  * packets summed).
  */
 
+#include "vpp_wire.h"
+#include <poll.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -124,7 +126,8 @@ int danos_vpp_stat_connect(void)
     }
     memcpy(addr.sun_path, path, strlen(path) + 1);
 
-    if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    uint64_t deadline = vpp_wire_now_ms() + 5000;
+    if (vpp_wire_connect_until(s, (struct sockaddr *)&addr, sizeof(addr), deadline) < 0) {
         close(s);
         return -1;
     }
@@ -142,10 +145,12 @@ int danos_vpp_stat_connect(void)
     msg.msg_control = cmsg_buf;
     msg.msg_controllen = sizeof(cmsg_buf);
 
-    struct timeval tv = { .tv_sec = 5 };
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
-    ssize_t n = recvmsg(s, &msg, 0);
+    ssize_t n = -1;
+    while (vpp_wire_wait(s, POLLIN, deadline) == 0) {
+        n = recvmsg(s, &msg, MSG_DONTWAIT | MSG_CMSG_CLOEXEC);
+        if (n < 0 && (errno == EAGAIN || errno == EINTR)) continue;
+        break;
+    }
     if (n < 0) {
         close(s);
         g_stat.fd = -1;

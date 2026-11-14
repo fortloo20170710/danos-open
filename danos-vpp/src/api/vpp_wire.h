@@ -21,6 +21,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/socket.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,6 +75,16 @@ int vpp_wire_send_fd(int fd, uint16_t msg_id, const uint8_t *body, uint32_t body
 
 /* Receive one framed message. buf must be large enough for the payload. */
 int vpp_wire_recv_fd(int fd, uint8_t *buf, uint32_t buf_size);
+
+/* Absolute monotonic deadline shared by header/body and all partial IO. */
+uint64_t vpp_wire_now_ms(void);
+int vpp_wire_send_until(int fd, uint16_t msg_id, const uint8_t *body,
+                        uint32_t body_len, uint64_t deadline_ms);
+int vpp_wire_recv_until(int fd, uint8_t *buf, uint32_t buf_size,
+                        uint64_t deadline_ms);
+int vpp_wire_wait(int fd, short events, uint64_t deadline_ms);
+int vpp_wire_connect_until(int fd, const struct sockaddr *addr, socklen_t len,
+                            uint64_t deadline_ms);
 
 /* name -> msg_id table (built from sockclnt_create_reply) */
 #define VPP_MSG_TABLE_SIZE 4096  /* power of two */

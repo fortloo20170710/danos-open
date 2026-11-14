@@ -269,3 +269,20 @@ set_tests_properties(performance_baseline_report virtual_baseline_missing_artifa
 add_test(NAME virtual_cpu_capture
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/perf/test_capture_vm_cpu.py)
 set_tests_properties(virtual_cpu_capture PROPERTIES TIMEOUT 30)
+
+# Serialize real rtnetlink requests into a fake transport; never touch host routes.
+add_executable(netlink_encoding_test integration_test/netlink_encoding_test.c)
+target_link_libraries(netlink_encoding_test PRIVATE danos-netlink danos-core pthread)
+target_compile_options(netlink_encoding_test PRIVATE -UNDEBUG)
+target_link_options(netlink_encoding_test PRIVATE
+  -Wl,--wrap=socket -Wl,--wrap=send -Wl,--wrap=recv -Wl,--wrap=close
+  -Wl,--wrap=setsockopt -Wl,--wrap=poll)
+add_test(NAME netlink_encoding COMMAND netlink_encoding_test)
+
+# Manual isolated real VPP fixture; never part of an environment-free CTest run.
+add_executable(backend_readback_live_test integration_test/backend_readback_live_test.c)
+target_link_libraries(backend_readback_live_test PRIVATE danos-vpp danos-core danos-dpa pthread)
+target_compile_options(backend_readback_live_test PRIVATE -UNDEBUG)
+add_executable(netlink_readback_live_test integration_test/netlink_readback_live_test.c)
+target_link_libraries(netlink_readback_live_test PRIVATE danos-netlink danos-core danos-dpa pthread)
+target_compile_options(netlink_readback_live_test PRIVATE -UNDEBUG)

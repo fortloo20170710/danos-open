@@ -99,6 +99,42 @@ static int test_transaction_uses_one_deadline(void)
     return 0;
 }
 
+static int test_truncated_reply_disconnects(void)
+{
+    assert(mock_vpp_start(API_SOCK) == 0);
+    danos_vpp_api_init();
+    danos_vpp_api_set_sock_path(API_SOCK);
+    assert(danos_vpp_api_connect() == 0);
+    uint16_t id;
+    assert(danos_vpp_api_lookup_msg_id("control_ping", &id));
+    uint8_t too_small[8];
+    assert(danos_vpp_api_transact(id, NULL, 0, too_small, sizeof(too_small)) < 0);
+    assert(!danos_vpp_api_is_connected());
+    mock_vpp_stop();
+    puts("[PASS] oversized reply is rejected without truncated-buffer parsing");
+    return 0;
+}
+
+static int test_query_checks_reply_type(void)
+{
+    assert(mock_vpp_start(API_SOCK) == 0);
+    danos_vpp_api_init();
+    danos_vpp_api_set_sock_path(API_SOCK);
+    assert(danos_vpp_api_connect() == 0);
+    uint8_t reply[64];
+    assert(danos_vpp_api_query("not_advertised_crc", "also_missing", NULL, 0,
+                               reply, sizeof(reply)) == -2);
+    assert(danos_vpp_api_is_connected());
+    /* The fixture advertises plain names rather than CRCs; force a reply
+     * type other than its ping reply while keeping context correlation valid. */
+    assert(danos_vpp_api_query("control_ping", "ip_route_add_del", NULL, 0,
+                               reply, sizeof(reply)) == -1);
+    assert(!danos_vpp_api_is_connected());
+    mock_vpp_stop();
+    puts("[PASS] query rejects unknown schema and wrong same-context message type");
+    return 0;
+}
+
 static int test_wire_layouts(void)
 {
     /* VPP 26.10 fixed name[64], not a length-prefixed api_string. */
@@ -217,6 +253,8 @@ int main(void)
     if (test_handshake() != 0) failed++;
     if (test_transaction() != 0) failed++;
     if (test_transaction_uses_one_deadline() != 0) failed++;
+    if (test_truncated_reply_disconnects() != 0) failed++;
+    if (test_query_checks_reply_type() != 0) failed++;
     if (test_wire_layouts() != 0) failed++;
     if (test_stat_segment() != 0) failed++;
     mock_statseg_stop();

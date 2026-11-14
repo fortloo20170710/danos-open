@@ -35,6 +35,18 @@ static void make_route(unsigned i, danos_route_t *r)
     r->nhgroup_id = 1;   /* a usable path */
 }
 
+static danos_status_t fail_iface_withdraw(danos_ifindex_t id, bool up, void *user)
+{
+    (void)id; (void)up; (void)user;
+    return DANOS_ERR_BACKEND_IO;
+}
+
+static danos_status_t fail_route_observation(const danos_resolved_route_t *route, void *out, void *user)
+{
+    (void)route; (void)out; (void)user;
+    return DANOS_ERR_BACKEND_IO;
+}
+
 static int test_vpp_adapter_pipeline(void);
 
 /* Installing the backend must make it visible to capability selection.
@@ -238,6 +250,27 @@ static void test_oper_readback(const danos_route_t *route)
                                            route->prefix.prefix_len,
                                            route->vrf_id));
     assert(danos_oper_count(DANOS_OBJ_ROUTE) == 1);
+
+    /* A probe timeout is unknown state, not confirmed drift. Preserve the
+     * ledger, remove stale OPER, and back off instead of reprogramming. */
+    danos_backend_ops_t timeout_ops = *ops;
+    timeout_ops.route_readback = fail_route_observation;
+    danos_backend_ops_set(&timeout_ops);
+    danos_programming_set_policy(1, 20, 40, 5000, 0);
+    uint64_t route_records = danos_programming_programmed_count(DANOS_OBJ_ROUTE);
+    assert(danos_programming_run(&attempted, &failed) == 0 && failed == 1);
+    assert(danos_programming_programmed_count(DANOS_OBJ_ROUTE) == route_records);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 0);
+    assert(danos_programming_run(&attempted, &failed) == 0 && attempted == 0);
+    usleep(30000);
+    /* Even after max_retries, read-only observation may recover. It must not
+     * permanently exhaust a programmed route's ability to report state. */
+    assert(danos_programming_run(&attempted, &failed) == 0 && failed == 1);
+    danos_backend_ops_set(ops);
+    usleep(50000);
+    assert(danos_programming_run(&attempted, &failed) == 0 && failed == 0);
+    assert(danos_oper_count(DANOS_OBJ_ROUTE) == 1);
+    danos_programming_set_policy(5, 1000, 60000, 5000, 3);
 
     /* Carrier down with an unchanged desired object. The next pass returns
      * 0 newly programmed objects but must still refresh OPER. */
@@ -514,6 +547,17 @@ int main(void)
     assert(danos_tx_begin(&tx, "pipe", NULL) == DANOS_OK);
     assert(danos_iface_delete(&tx, 5) == DANOS_OK);
     assert(danos_tx_commit_atomic(&tx) == DANOS_OK);
+    const danos_backend_ops_t *original_ops = danos_backend_ops_get();
+    danos_backend_ops_t fault_ops = *original_ops;
+    fault_ops.iface_up = fail_iface_withdraw;
+    danos_backend_ops_set(&fault_ops);
+    uint64_t iface_records = danos_programming_programmed_count(DANOS_OBJ_IFACE);
+    assert(iface_records >= 1);
+    (void)danos_programming_sweep(&failed);
+    assert(failed >= 1);
+    assert(danos_programming_programmed_count(DANOS_OBJ_IFACE) == iface_records);
+    assert(danos_netlink_mock_iface_up(5));
+    danos_backend_ops_set(original_ops);
     uint64_t swept2 = danos_programming_sweep(&failed);
     assert(swept2 >= 1 && failed == 0);
     assert(!danos_netlink_mock_iface_up(5));

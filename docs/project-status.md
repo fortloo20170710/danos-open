@@ -1,6 +1,6 @@
 # DANOS-Open 项目状态
 
-> 版本：v0.16.0-rc1 ｜ 更新：2026-11-03
+> 版本：v0.16.0-rc1 ｜ 更新：2026-11-14
 >
 > 本页只保留**当前状态**。按日期追加的完整验证记录已归档到
 > [`docs/archive/project-status-log.md`](archive/project-status-log.md)。
@@ -8,6 +8,32 @@
 > 发布判定逐行清单见 [`v0.16-release-decision.md`](v0.16-release-decision.md)，
 > 待办见 [`outstanding-work-plan.md`](outstanding-work-plan.md) 与
 > [`../TODO.md`](../TODO.md)。
+
+## 分支整合（2026-11-14）
+
+本轮在主线 `916491a` 上先快进文档修正 `ca37022`，再合入开发分支 `30ff960`。
+`agent/advance-v016-tracks-34e6fd0a7534` 的末端 `6bb6bf3` 已包含于主线，未重复应用。
+冲突解决统一了 `route_readback`，保留主线 NETCONF/事务、地址与 VRF 能力，以及开发分支的
+严格映射、有界 IO、状态未知语义和发布链修复。集成候选 Release 与 ASan/UBSan CTest 均100/100、隔离真实
+VPP/Linux回归通过。历史整版 gate 仍只绑定原记录的提交，不因合并自动升级。
+详见 [分支整合记录](branch-integration-20261114.md)。
+
+## 开发基线与推进顺序（2026-11-14 用户授权）
+
+权威开发目录为 `/home/aikon/src/danos-open`。`/home/aikon/danos-open`
+保留为独立历史 checkout，不自动同步、不引用其产物作为当前提交的验收证据。
+本轮起点为 `d771a5a`；下面历史验证数字不自动升级为新改动的验证结果。
+首批工作区完成 Release 构建、CTest 86/86、软件 release_check 与 OCI 冒烟，
+证据在 `/home/aikon/src/danos-open-evidence/20261114-convergence/`。
+后续独立读回分支的历史验证见 [后端读回](backend-readback.md)：当时 CTest 89 项，
+新增严格 VPP map、CRC 校验读回、有界 IO、下一跳/ECMP 漂移修复和状态未知语义。
+隔离 VPP 26.10 与 Linux 表257真实读回/修复脚本通过；这不是物理转发或性能资格。
+新证据目录：`/home/aikon/src/danos-open-evidence/20261114-backend-readback/`。
+上述证据采集于未提交工作区；后续分组提交不改变证据身份。源码与远程 CI 状态以 Git/GitHub 为准，未做正式发布。
+
+按顺序推进：发布链与基线 → 后端正确性及实际读回 → 限定 L3 场景的恢复与
+升级回滚 → 性能资格 → 场景驱动的功能扩展。执行与验收见
+[开发收敛计划](development-convergence.md)。这不改变既有正式发布门槛。
 
 ## 1. 发布判定
 
@@ -17,7 +43,7 @@
 已通过的工程验证：
 
 - x86_64 / aarch64 构建，`-Wall -Wextra -Wpedantic -Werror`
-- 全量 CTest **96/96**（Release；CI 的 ASan+UBSan 同套件通过）
+- 当前集成候选 Release CTest **100/100**；历史主线96/96及其CI结果保持原提交绑定
 - gNMI 互通 I1–I9（gnmic），32 并发连接
 - 内核 netns 路由编程 K4/K5，真实 VPP API V1–V5
 - YANG 模型校验、WAL 磁盘基线

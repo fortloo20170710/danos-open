@@ -12,8 +12,11 @@ reproduction steps or PoC, and the release/tag affected.
 
 ## Scope notes
 
-- The gNMI/gRPC server runs h2c by default; deploy TLS termination
-  in front (see docs/threading.md notes) for untrusted networks.
+- mgrd requires configured mTLS on TCP by default; see
+  [management-mtls](docs/management-mtls.md). `DANOS_ALLOW_INSECURE=1`
+  explicitly permits plaintext only for isolated laboratory runs. Invalid TLS
+  configuration must not fall back to plaintext. Standalone test servers are
+  laboratory fixtures, not deployment defaults.
 - mgrd requires elevated privileges for kernel programming; run it
   in a container or dedicated namespace.
 

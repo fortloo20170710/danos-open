@@ -19,15 +19,14 @@ int main(void)
     danos_route_t route;
     danos_route_t oper;
 
-    /* The default prefix is not reachable through RTM_F_FIB_MATCH on current
-     * kernels; report it unsupported rather than absent so the reconciler
-     * does not drop and churn the ledger every pass. */
+    /* A filtered complete table dump can now observe the default prefix;
+     * it is present or absent, never a policy-selected covering route. */
     memset(&route, 0, sizeof(route));
     route.prefix.addr.af = DANOS_AF_IPV4;
     route.prefix.prefix_len = 0;
     danos_status_t st = ops->readback(DANOS_OBJ_ROUTE, 1, &route,
                                       sizeof(route), &oper, ops->user);
-    assert(st == DANOS_ERR_NOT_SUPPORTED);
+    assert(st == DANOS_OK || st == DANOS_ERR_NOT_FOUND);
 
     /* Choose a real non-default route from /proc/net/route.  This is a
      * positive live readback assertion, so a lookup that reports dst_len=32
@@ -112,7 +111,7 @@ int main(void)
     assert(st == DANOS_ERR_NOT_FOUND);
 
     danos_netlink_shutdown();
-    puts("[PASS] rtnetlink FIB_MATCH readback: default unsupported, loopback "
+    puts("[PASS] rtnetlink exact-table readback: default supported, selected route "
          "present, metric mismatch detected, absent prefix reported");
     return 0;
 }

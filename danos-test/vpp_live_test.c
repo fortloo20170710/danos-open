@@ -17,6 +17,7 @@
 #include "../danos-vpp/src/api/vpp_api.h"
 #include "../danos-vpp/src/vpp_adapter.h"
 #include <stdint.h>
+#include <assert.h>
 #include "../danos-vpp/src/api/vpp_msgs.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -86,6 +87,10 @@ int main(void)
         printf("V3 API route add accepted (table %u, %u paths)\n", table, paths);
 
         /* V6: OPER readback from real VPP multipart dumps. */
+        /* The fixture explicitly creates sw_if_index 1/2. This identity
+         * map is a test contract, not an implicit production fallback. */
+        if (!getenv("DANOS_VPP_IFINDEX_MAP"))
+            assert(setenv("DANOS_VPP_IFINDEX_MAP", "1:1,2:2", 1) == 0);
         if (danos_vpp_adapter_install(true, sock) != 0) {
             fprintf(stderr, "V6 FAIL: adapter install on live connection\n");
             failed++;

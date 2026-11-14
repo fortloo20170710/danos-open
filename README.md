@@ -8,9 +8,13 @@
 ## Current v0.16 status
 
 `v0.16.0-rc1` remains the current release candidate; a final `v0.16.0`
-release has not been qualified. The current tree passes Release CTest
-**96/96**, the deterministic backend contract gate, and GitHub CI (including
-ASan/UBSan, TSan, Coverage and Interop). Production line coverage is 81.1%
+release has not been qualified. The authoritative development checkout is
+`/home/aikon/src/danos-open`. The 2026-11-14 branch integration passes local
+Release and ASan/UBSan CTest **100/100**, plus isolated real VPP/Linux readback regression;
+remote CI and full release qualification remain separate checks.
+The prior main checkpoint `916491a` recorded 96/96 and CI results including
+ASan/UBSan, TSan, Coverage and Interop; those records are not rebound to the
+new merge. Production line coverage is 81.1%
 (functions 91.6%, branches 60.3%). The full unified QEMU/VMware release gate
 was not rerun on this checkpoint.
 
@@ -23,9 +27,9 @@ Recent merged control-plane work:
   restart/reboot; unconfirmed commits roll back at startup.
 - A corrupt or unreadable running snapshot fails closed; the explicit override
   is `DANOS_NETCONF_ALLOW_CORRUPT_RUNNING=1`.
-- Netlink verifies route metric and ECMP members; VPP exposes interface, VRF
-  and route/ECMP OPER data from `sw_interface_dump`, `ip_table_dump` and
-  `ip_route_dump`. VPP dumps carry no metric, so non-zero metrics return an
+- Netlink verifies exact-table route metrics and ECMP members; supported VPP
+  schemas expose interface/VRF dumps and exact route lookup. Both use the
+  shared `route_readback` contract. VPP dumps carry no metric, so non-zero metrics return an
   explicit `NOT_SUPPORTED` result.
 
 QEMU, VMware and physical I211 evidence demonstrates scoped functional

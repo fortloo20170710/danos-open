@@ -36,25 +36,30 @@ int  danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
                             uint32_t payload_size, uint8_t *reply,
                             uint32_t reply_size);
 
-/* Multipart dump request.  Sends `request_name` (payload excludes
- * client_index/context), then a control_ping, and invokes `cb` for every
- * `detail_name` message with its struct body (starting at the context field).
- * Returns the number of entries, or -1 on transport/table failure. */
-typedef int (*danos_vpp_dump_cb)(const uint8_t *body, uint32_t len,
-                                 void *user);
+/* Bounded operation budget (1..60000ms); defaults to 5000ms. */
+int danos_vpp_api_set_io_timeout_ms(uint32_t timeout_ms);
+/* Body callbacks start at context. Strict dump_query below uses full frames. */
+typedef int (*danos_vpp_dump_cb)(const uint8_t *, uint32_t, void *);
 int danos_vpp_api_dump(const char *request_name, const char *detail_name,
-                       const uint8_t *payload, uint32_t payload_size,
+                       const uint8_t *payload, uint32_t size,
                        danos_vpp_dump_cb cb, void *user);
-
-/* Mock dump storage used by unit tests.  `danos_vpp_api_dump` replays these
- * entries in mock mode; a mock with no injected entries reports zero. */
-void danos_vpp_api_mock_dump_add(const char *detail_name,
-                                 const void *body, uint32_t len);
+void danos_vpp_api_mock_dump_add(const char *detail_name, const void *body, uint32_t len);
 void danos_vpp_api_mock_dump_clear(void);
 uint32_t danos_vpp_api_mock_dump_total(void);
 
+/* CRC resolution and IO use one connection lock, including across reconnects.
+ * Returns -2 for unsupported schema, -1 for IO, otherwise reply bytes / dump 0. */
+int danos_vpp_api_query(const char *request_schema, const char *reply_schema,
+                        const uint8_t *payload, uint32_t size,
+                        uint8_t *reply, uint32_t capacity);
+int danos_vpp_api_dump_query(const char *request_schema, const char *detail_schema,
+                             const uint8_t *payload, uint32_t size,
+                             danos_vpp_dump_cb cb, void *user);
+
 /* Name -> msg_id resolution (from the handshake message table) */
 bool danos_vpp_api_lookup_msg_id(const char *name, uint16_t *msg_id);
+/* Require the exact advertised name_CRC before decoding a fixed schema. */
+bool danos_vpp_api_lookup_schema(const char *name_crc, uint16_t *msg_id);
 uint32_t danos_vpp_api_client_index(void);
 uint32_t danos_vpp_api_msg_table_count(void);
 const char *danos_vpp_api_sock_path(void);

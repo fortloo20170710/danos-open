@@ -688,7 +688,7 @@ static int obj_to_json(danos_obj_type_t type, const void *data, size_t size,
 
 /* Operational copy of an interface, when the backend has reported one.
  * Returns false when the object has not been programmed or the active
- * backend cannot read it back; callers then use the desired copy. */
+ * backend cannot read it back; an absent observation is never desired state. */
 static bool iface_oper_copy(const danos_iface_t *desired, danos_iface_t *out)
 {
     size_t n = sizeof(*out);
@@ -1814,7 +1814,10 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
             const void *obj = NULL; size_t size = 0;
             if (mb.obj_type == DANOS_OBJ_IFACE && find_iface_by_name(ss, p->elems[1].key_value, &iface)) {
                 obj = &iface; size = sizeof(iface);
-                if (state_read && iface_oper_copy(&iface, &oper)) obj = &oper;
+                if (state_read) {
+                    if (!iface_oper_copy(&iface, &oper)) return -(int)DANOS_ERR_NOT_FOUND;
+                    obj = &oper;
+                }
             } else if (mb.obj_type == DANOS_OBJ_VRF) {
                 uint32_t id; size_t n = sizeof(vrf);
                 if (path_uint(p->elems[1].key_value, &id) != DANOS_OK) return -(int)DANOS_ERR_INVALID_ARG;
@@ -1844,7 +1847,10 @@ int gnmi_handle_get(danos_state_store_t *store, const uint8_t *req, size_t req_l
                 const danos_iface_t *iface = obj;
                 danos_iface_t oper;
                 snprintf(key, sizeof(key), "%s", iface->name);
-                if (state_read && iface_oper_copy(iface, &oper)) iface = &oper;
+                if (state_read) {
+                    if (!iface_oper_copy(iface, &oper)) continue;
+                    iface = &oper;
+                }
                 if (state_read)
                     obj_to_state_json(mb.obj_type, iface, elem_size, json,
                                       sizeof(json));

@@ -54,8 +54,8 @@ typedef struct danos_backend_ops {
     /* Optional operational readback. `out` receives a copy of the desired
      * object with device-reported fields filled in (same size as `size`).
      * Backends that cannot read one type return DANOS_ERR_NOT_SUPPORTED;
-     * that is a normal answer for routes, VRFs and every VPP object until
-     * an interface dump binding exists. Called for PROGRAMMED objects on
+     * types without a query binding contribute no operational snapshot.
+     * Routes can instead use route_readback below. Called for PROGRAMMED objects on
      * each programming pass and after a successful program operation. */
     danos_status_t (*readback)(danos_obj_type_t type, danos_obj_id_t id,
                                const void *desired, size_t size,

@@ -8,9 +8,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <errno.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <time.h>
+#include <poll.h>
 
 /* =========================================================================
  * Shared state
@@ -107,6 +108,8 @@ bool danos_netlink_is_real(void)
  * ========================================================================= */
 
 static int nl_fd = -1;
+static uint32_t nl_sequence;
+#define NL_IO_TIMEOUT_MS 1000
 int danos_netlink_last_kernel_error = 0;
 
 #include <sys/socket.h>
@@ -121,11 +124,58 @@ int danos_netlink_last_kernel_error = 0;
 #define IF_OPER_UP 6
 #endif
 
+static uint64_t nl_now_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+}
+static void nl_reset(void)
+{
+    if (nl_fd >= 0) close(nl_fd);
+    nl_fd = -1;
+}
 static int nl_open(void)
 {
     if (nl_fd >= 0) return 0;
     nl_fd = socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
-    return nl_fd < 0 ? -1 : 0;
+    if (nl_fd < 0) return -1;
+    struct timeval timeout = { .tv_sec = NL_IO_TIMEOUT_MS / 1000 };
+    int strict = 1;
+    if (setsockopt(nl_fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0 ||
+        setsockopt(nl_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
+        setsockopt(nl_fd, SOL_NETLINK, NETLINK_GET_STRICT_CHK, &strict, sizeof(strict)) != 0) {
+        nl_reset();
+        return -1;
+    }
+    return 0;
+}
+static int nl_send(void *buf, size_t size)
+{
+    if (nl_open() != 0) return -1;
+    struct nlmsghdr *nh = buf;
+    if (++nl_sequence == 0) ++nl_sequence;
+    nh->nlmsg_seq = nl_sequence;
+    if (send(nl_fd, buf, size, 0) != (ssize_t)size) { nl_reset(); return -1; }
+    return 0;
+}
+static ssize_t nl_receive(void *buf, size_t size, uint64_t deadline)
+{
+    for (;;) {
+        uint64_t now = nl_now_ms();
+        if (now >= deadline) break;
+        struct pollfd pfd = { .fd = nl_fd, .events = POLLIN };
+        int rc = poll(&pfd, 1, (int)(deadline - now));
+        if (rc < 0 && errno == EINTR) continue;
+        if (rc <= 0 || !(pfd.revents & POLLIN)) break;
+        ssize_t n = recv(nl_fd, buf, size, MSG_DONTWAIT | MSG_TRUNC);
+        if (n < 0 && (errno == EINTR || errno == EAGAIN)) continue;
+        if (n > 0 && (size_t)n <= size) return n;
+        break;
+    }
+    /* Discard the whole socket: a late reply must not become the next ACK. */
+    nl_reset();
+    return -1;
 }
 
 /* Read and validate one netlink ACK. The kernel replies with NLMSG_ERROR
@@ -135,11 +185,11 @@ static int nl_open(void)
 static int nl_read_ack(void)
 {
     char resp[1024];
-    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
+    ssize_t n = nl_receive(resp, sizeof(resp), nl_now_ms() + NL_IO_TIMEOUT_MS);
     if (n < (ssize_t)sizeof(struct nlmsghdr)) return -1;
     struct nlmsghdr *nh = (struct nlmsghdr *)resp;
     if (nh->nlmsg_len < sizeof(*nh) || nh->nlmsg_len > (size_t)n) return -1;
-    if (nh->nlmsg_type != NLMSG_ERROR) return -1;
+    if (nh->nlmsg_seq != nl_sequence || nh->nlmsg_type != NLMSG_ERROR) { nl_reset(); return -1; }
     if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) return -1;
     struct nlmsgerr *err = (struct nlmsgerr *)NLMSG_DATA(nh);
     danos_netlink_last_kernel_error = err->error;
@@ -154,11 +204,10 @@ static bool gateway_is_set(const uint8_t gw[4])
 /* Build and send RTM_NEWROUTE for an IPv4 route (kernel table_id). */
 static int nl_route_msg(const danos_resolved_route_t *res, int add)
 {
-    if (res->nh_count > DANOS_NHGROUP_MAX_NH) return -1;
     struct {
         struct nlmsghdr nh;
         struct rtmsg    rt;
-        char            attrbuf[2048];
+        char            attrbuf[4096];
     } msg;
     memset(&msg, 0, sizeof(msg));
 
@@ -173,7 +222,8 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
     msg.rt.rtm_family = AF_INET;
     const danos_route_t *r = &res->route;
     msg.rt.rtm_dst_len = r->prefix.prefix_len;
-    msg.rt.rtm_table = (r->vrf_id == 0 || r->vrf_id >= 256) ? RT_TABLE_MAIN : r->vrf_id;
+    uint32_t table = r->vrf_id == 0 ? RT_TABLE_MAIN : r->vrf_id;
+    msg.rt.rtm_table = table < 256 ? (uint8_t)table : RT_TABLE_UNSPEC;
     msg.rt.rtm_type = (r->flags & DANOS_ROUTE_FLAG_BLACKHOLE)
                           ? RTN_BLACKHOLE : RTN_UNICAST;
     msg.rt.rtm_protocol = RTPROT_STATIC;
@@ -185,69 +235,57 @@ static int nl_route_msg(const danos_resolved_route_t *res, int add)
     memcpy(RTA_DATA(rta), r->prefix.addr.addr, 4);
     msg.nh.nlmsg_len += RTA_LENGTH(4);
 
-    /* RTA_PRIORITY carries the route metric so readback can compare the
-     * attribute instead of only the prefix. */
     if (add && r->metric) {
-        rta = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
-        rta->rta_type = RTA_PRIORITY;
-        rta->rta_len = RTA_LENGTH(4);
+        rta = (struct rtattr *)((char *)&msg + NLMSG_ALIGN(msg.nh.nlmsg_len));
+        rta->rta_type = RTA_PRIORITY; rta->rta_len = RTA_LENGTH(4);
         memcpy(RTA_DATA(rta), &r->metric, 4);
-        msg.nh.nlmsg_len += RTA_LENGTH(4);
+        msg.nh.nlmsg_len = NLMSG_ALIGN(msg.nh.nlmsg_len) + RTA_SPACE(4);
+    }
+    if (table >= 256) {
+        rta = (struct rtattr *)((char *)&msg + NLMSG_ALIGN(msg.nh.nlmsg_len));
+        rta->rta_type = RTA_TABLE;
+        rta->rta_len = RTA_LENGTH(sizeof(table));
+        memcpy(RTA_DATA(rta), &table, sizeof(table));
+        msg.nh.nlmsg_len = NLMSG_ALIGN(msg.nh.nlmsg_len) + RTA_SPACE(sizeof(table));
     }
 
-    /* ECMP: install every resolved next hop as an RTA_MULTIPATH member.
-     * A single next hop keeps the simple RTA_GATEWAY/RTA_OIF form. */
-    uint32_t nh_count = res->nh_count;
-    if (add && !(r->flags & DANOS_ROUTE_FLAG_BLACKHOLE)) {
-        if (nh_count > 1) {
-            struct rtattr *mp = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
-            char *pos = (char *)RTA_DATA(mp);
-            for (uint32_t i = 0; i < nh_count; i++) {
-                struct rtnexthop *nhx = (struct rtnexthop *)pos;
-                bool has_gw = gateway_is_set(res->nh_gw[i]);
-                nhx->rtnh_len = (unsigned short)(sizeof(*nhx) +
-                    (has_gw ? RTA_LENGTH(4) : 0));
-                nhx->rtnh_flags = 0;
-                nhx->rtnh_hops = 0;
-                nhx->rtnh_ifindex = (int)res->nh_oif[i];
-                if (has_gw) {
-                    struct rtattr *gw = RTNH_DATA(nhx);
-                    gw->rta_type = RTA_GATEWAY;
-                    gw->rta_len = RTA_LENGTH(4);
-                    memcpy(RTA_DATA(gw), res->nh_gw[i], 4);
-                }
-                pos += NLMSG_ALIGN(nhx->rtnh_len);
+    if (add && res->nh_count > 1 && !(r->flags & DANOS_ROUTE_FLAG_BLACKHOLE)) {
+        if (res->nh_count > 64) return -1;
+        rta = (struct rtattr *)((char *)&msg + NLMSG_ALIGN(msg.nh.nlmsg_len));
+        rta->rta_type = RTA_MULTIPATH;
+        rta->rta_len = RTA_LENGTH(0);
+        for (uint32_t i = 0; i < res->nh_count; i++) {
+            struct rtnexthop *nh = (struct rtnexthop *)((char *)rta + rta->rta_len);
+            nh->rtnh_len = sizeof(*nh);
+            nh->rtnh_ifindex = (int)res->nh_oif[i];
+            if (gateway_is_set(res->nh_gw[i])) {
+            struct rtattr *gw = (struct rtattr *)((char *)nh + sizeof(*nh));
+            gw->rta_type = RTA_GATEWAY;
+            gw->rta_len = RTA_LENGTH(4);
+            memcpy(RTA_DATA(gw), res->nh_gw[i], 4);
+            nh->rtnh_len += RTA_SPACE(4);
             }
-            mp->rta_type = RTA_MULTIPATH;
-            mp->rta_len = (unsigned short)(pos - (char *)mp);
-            msg.nh.nlmsg_len += mp->rta_len;
-        } else if (res->has_gw) {
-            rta = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
-            rta->rta_type = RTA_GATEWAY;
-            rta->rta_len = RTA_LENGTH(4);
-            memcpy(RTA_DATA(rta), res->gw, 4);
-            msg.nh.nlmsg_len += RTA_LENGTH(4);
-
-            if (res->oif) {
-                rta = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
-                rta->rta_type = RTA_OIF;
-                rta->rta_len = RTA_LENGTH(4);
-                uint32_t oif = res->oif;
-                memcpy(RTA_DATA(rta), &oif, 4);
-                msg.nh.nlmsg_len += RTA_LENGTH(4);
-            }
-        } else if (res->oif) {
-            /* Interface-only next hop (no gateway): RTA_OIF is the path. */
-            rta = (struct rtattr *)((char *)rta + RTA_LENGTH(4));
+            rta->rta_len += RTNH_ALIGN(nh->rtnh_len);
+        }
+        msg.nh.nlmsg_len = NLMSG_ALIGN(msg.nh.nlmsg_len) + RTA_ALIGN(rta->rta_len);
+    } else if (add && !(r->flags & DANOS_ROUTE_FLAG_BLACKHOLE)) {
+        if (res->has_gw && gateway_is_set(res->gw)) {
+        rta = (struct rtattr *)((char *)&msg + NLMSG_ALIGN(msg.nh.nlmsg_len));
+        rta->rta_type = RTA_GATEWAY;
+        rta->rta_len = RTA_LENGTH(4);
+        memcpy(RTA_DATA(rta), res->gw, 4);
+        msg.nh.nlmsg_len = NLMSG_ALIGN(msg.nh.nlmsg_len) + RTA_SPACE(4);
+        }
+        if (res->oif) {
+            rta = (struct rtattr *)((char *)&msg + NLMSG_ALIGN(msg.nh.nlmsg_len));
             rta->rta_type = RTA_OIF;
             rta->rta_len = RTA_LENGTH(4);
-            uint32_t oif = res->oif;
-            memcpy(RTA_DATA(rta), &oif, 4);
-            msg.nh.nlmsg_len += RTA_LENGTH(4);
+            memcpy(RTA_DATA(rta), &res->oif, 4);
+            msg.nh.nlmsg_len = NLMSG_ALIGN(msg.nh.nlmsg_len) + RTA_SPACE(4);
         }
     }
 
-    if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
+    if (nl_send(&msg, msg.nh.nlmsg_len) != 0) return -1;
 
     /* read ACK (or error) */
     return nl_read_ack();
@@ -268,7 +306,7 @@ static int nl_iface_up(danos_ifindex_t ifindex, bool up)
     msg.ifi.ifi_flags = up ? IFF_UP : 0;
     msg.ifi.ifi_change = IFF_UP;
 
-    if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
+    if (nl_send(&msg, msg.nh.nlmsg_len) != 0) return -1;
     return nl_read_ack();
 }
 
@@ -291,10 +329,10 @@ static int nl_iface_read(danos_ifindex_t ifindex, danos_iface_t *out)
     req.nh.nlmsg_seq = 2;
     req.ifi.ifi_family = AF_UNSPEC;
     req.ifi.ifi_index = (int)ifindex;
-    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0) return -1;
+    if (nl_send(&req, req.nh.nlmsg_len) != 0) return -1;
 
     char resp[4096];
-    ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
+    ssize_t n = nl_receive(resp, sizeof(resp), nl_now_ms() + NL_IO_TIMEOUT_MS);
     if (n < (ssize_t)sizeof(struct nlmsghdr)) return -1;
 
     int rem = (int)n;
@@ -315,7 +353,9 @@ static int nl_iface_read(danos_ifindex_t ifindex, danos_iface_t *out)
             continue;
 
         const struct ifinfomsg *ifi = NLMSG_DATA(nh);
+        if ((danos_ifindex_t)ifi->ifi_index != ifindex) return -1;
         out->ifindex = (danos_ifindex_t)ifi->ifi_index;
+        out->admin_up = (ifi->ifi_flags & IFF_UP) != 0;
         bool up = (ifi->ifi_flags & IFF_UP) && (ifi->ifi_flags & IFF_RUNNING);
         int alen = (int)nh->nlmsg_len - NLMSG_LENGTH(sizeof(struct ifinfomsg));
         for (struct rtattr *rta = IFLA_RTA(ifi); RTA_OK(rta, alen);
@@ -357,105 +397,160 @@ static bool ipv4_prefix_equal(const uint8_t lhs[4], const uint8_t rhs[4],
     return true;
 }
 
-/* Confirm an exact IPv4 prefix is present in the expected kernel table and
- * has the expected unicast/blackhole disposition. This intentionally does
- * not claim next-hop-group readback: the DPA NH identity is not encoded in
- * rtnetlink, and the adapter's current resolved-route callback is one-way. */
-static danos_status_t nl_route_read(const danos_route_t *desired)
+/* A GETROUTE lookup follows policy rules and can return a covering host route,
+ * ignoring the requested table. Use a strict table-filtered multipart dump and
+ * compare exact prefixes; consume DONE before publishing any observation. */
+static danos_status_t route_observation(const struct nlmsghdr *nh,
+                                         const danos_route_t *desired,
+                                         const danos_resolved_route_t *resolved)
 {
-    /* RTM_F_FIB_MATCH asks for the FIB entry with its real prefix length and
-     * attributes.  A plain lookup reply reports dst_len=32 and one selected
-     * next hop, which cannot answer an attribute/presence comparison.  The
-     * default prefix is not reachable through FIB_MATCH on current kernels,
-     * so report it unsupported rather than absent. */
-    if (desired->prefix.prefix_len == 0) return DANOS_ERR_NOT_SUPPORTED;
+    if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct rtmsg))) return DANOS_ERR_BACKEND_IO;
+    const struct rtmsg *rt = NLMSG_DATA(nh);
+    if (rt->rtm_family != AF_INET || rt->rtm_dst_len != desired->prefix.prefix_len)
+        return DANOS_ERR_NOT_FOUND;
+    uint32_t metric = 0;
+    uint32_t table = rt->rtm_table;
+    uint8_t dst[4] = {0}, gateways[64][4] = {{0}};
+    uint32_t interfaces[64] = {0};
+    unsigned count = 1;
+    bool multipath = false, nondefault_weight = false, unsupported = false;
+    int remaining = (int)nh->nlmsg_len - NLMSG_LENGTH(sizeof(*rt));
+    for (struct rtattr *a = RTM_RTA(rt); RTA_OK(a, remaining); a = RTA_NEXT(a, remaining)) {
+        switch (a->rta_type) {
+        case RTA_PRIORITY:
+            if (RTA_PAYLOAD(a) != 4) return DANOS_ERR_BACKEND_IO;
+            memcpy(&metric, RTA_DATA(a), 4); break;
+        case RTA_TABLE:
+            if (RTA_PAYLOAD(a) != 4) return DANOS_ERR_BACKEND_IO;
+            memcpy(&table, RTA_DATA(a), 4); break;
+        case RTA_DST:
+            if (RTA_PAYLOAD(a) != 4) return DANOS_ERR_BACKEND_IO;
+            memcpy(dst, RTA_DATA(a), 4); break;
+        case RTA_GATEWAY:
+            if (RTA_PAYLOAD(a) != 4 || multipath) return DANOS_ERR_BACKEND_IO;
+            memcpy(gateways[0], RTA_DATA(a), 4); break;
+        case RTA_OIF:
+            if (RTA_PAYLOAD(a) != 4 || multipath) return DANOS_ERR_BACKEND_IO;
+            memcpy(&interfaces[0], RTA_DATA(a), 4); break;
+        case RTA_MULTIPATH: {
+            if (multipath) return DANOS_ERR_BACKEND_IO;
+            multipath = true; count = 0;
+            int left = RTA_PAYLOAD(a);
+            struct rtnexthop *path = RTA_DATA(a);
+            while (RTNH_OK(path, left)) {
+                if (count >= 64) { unsupported = true; break; }
+                interfaces[count] = (uint32_t)path->rtnh_ifindex;
+                if (path->rtnh_hops != 0) nondefault_weight = true;
+                int attrs = path->rtnh_len - sizeof(*path);
+                for (struct rtattr *gw = RTNH_DATA(path); RTA_OK(gw, attrs); gw = RTA_NEXT(gw, attrs)) {
+                    if (gw->rta_type == RTA_GATEWAY) {
+                        if (RTA_PAYLOAD(gw) != 4) return DANOS_ERR_BACKEND_IO;
+                        memcpy(gateways[count], RTA_DATA(gw), 4);
+                    } else if (gw->rta_type == RTA_VIA || gw->rta_type == RTA_ENCAP)
+                        unsupported = true;
+                }
+                if (attrs) return DANOS_ERR_BACKEND_IO;
+                if (path->rtnh_flags & (RTNH_F_DEAD | RTNH_F_LINKDOWN)) unsupported = true;
+                count++;
+                left -= RTNH_ALIGN(path->rtnh_len);
+                path = RTNH_NEXT(path);
+            }
+            if (left && !unsupported) return DANOS_ERR_BACKEND_IO;
+            break;
+        }
+        case RTA_NH_ID: case RTA_VIA: case RTA_ENCAP:
+            unsupported = true; break;
+        default: break;
+        }
+    }
+    if (remaining) return DANOS_ERR_BACKEND_IO;
+    uint32_t expected = desired->vrf_id ? desired->vrf_id : RT_TABLE_MAIN;
+    if (table != expected || !ipv4_prefix_equal(dst, desired->prefix.addr.addr, desired->prefix.prefix_len))
+        return DANOS_ERR_NOT_FOUND;
+    bool blackhole = (desired->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
+    if (rt->rtm_type != (blackhole ? RTN_BLACKHOLE : RTN_UNICAST)) return DANOS_ERR_VERIFY_FAIL;
+    if (resolved && metric != desired->metric) return DANOS_ERR_VERIFY_FAIL;
+    if (!resolved) return DANOS_OK; /* presence-only public compatibility probe */
+    if (blackhole) return DANOS_OK;
+    unsigned expected_count = resolved->nh_count ? resolved->nh_count : 1;
+    if (count != expected_count || nondefault_weight || unsupported) return DANOS_ERR_VERIFY_FAIL;
+    bool matched[64] = {false};
+    for (unsigned i = 0; i < expected_count; i++) {
+        const uint8_t *gw = resolved->nh_count ? resolved->nh_gw[i] : resolved->gw;
+        uint32_t oif = resolved->nh_count ? resolved->nh_oif[i] : resolved->oif;
+        bool found = false;
+        for (unsigned j = 0; j < count; j++)
+            if (!matched[j] && memcmp(gateways[j], gw, 4) == 0 && (!oif || interfaces[j] == oif)) {
+                matched[j] = true; found = true; break;
+            }
+        if (!found) return DANOS_ERR_VERIFY_FAIL;
+    }
+    return DANOS_OK;
+}
+
+static danos_status_t nl_route_read(const danos_route_t *desired,
+                                     const danos_resolved_route_t *resolved)
+{
     struct {
         struct nlmsghdr nh;
         struct rtmsg rt;
         char attrbuf[RTA_SPACE(4)];
     } req;
     memset(&req, 0, sizeof(req));
-    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-    req.nh.nlmsg_flags = NLM_F_REQUEST;
+    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(req.rt));
+    req.nh.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
     req.nh.nlmsg_type = RTM_GETROUTE;
-    req.nh.nlmsg_seq = 3;
     req.rt.rtm_family = AF_INET;
-    req.rt.rtm_flags = RTM_F_FIB_MATCH;
-    req.rt.rtm_dst_len = desired->prefix.prefix_len;
-    req.rt.rtm_table = (desired->vrf_id == 0 || desired->vrf_id >= 256)
-                           ? RT_TABLE_MAIN : (uint8_t)desired->vrf_id;
-    if (desired->prefix.prefix_len != 0) {
-        struct rtattr *dst = (struct rtattr *)req.attrbuf;
-        dst->rta_type = RTA_DST;
-        dst->rta_len = RTA_LENGTH(4);
-        memcpy(RTA_DATA(dst), desired->prefix.addr.addr, 4);
-        req.nh.nlmsg_len += RTA_LENGTH(4);
+    uint32_t table = desired->vrf_id ? desired->vrf_id : RT_TABLE_MAIN;
+    req.rt.rtm_table = table < 256 ? (uint8_t)table : RT_TABLE_UNSPEC;
+    if (table >= 256) {
+        struct rtattr *a = (struct rtattr *)req.attrbuf;
+        a->rta_type = RTA_TABLE; a->rta_len = RTA_LENGTH(4);
+        memcpy(RTA_DATA(a), &table, 4);
+        req.nh.nlmsg_len += RTA_SPACE(4);
     }
-    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0)
-        return DANOS_ERR_BACKEND_IO;
-
-    char response[8192];
-    ssize_t n = recv(nl_fd, response, sizeof(response), 0);
-    if (n < (ssize_t)sizeof(struct nlmsghdr))
-        return DANOS_ERR_BACKEND_IO;
-    int rem = (int)n;
-    for (struct nlmsghdr *nh = (struct nlmsghdr *)response;
-         NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem)) {
-        if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
-        if (nh->nlmsg_type == NLMSG_ERROR) {
-            if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
-                return DANOS_ERR_BACKEND_IO;
-            const struct nlmsgerr *err = NLMSG_DATA(nh);
-            danos_netlink_last_kernel_error = err->error;
-            if (err->error == -ESRCH || err->error == -ENOENT ||
-                err->error == -ENETUNREACH || err->error == -EHOSTUNREACH)
-                return DANOS_ERR_NOT_FOUND;
-            return err->error == 0 ? DANOS_ERR_NOT_FOUND
-                                   : DANOS_ERR_BACKEND_IO;
+    if (nl_send(&req, req.nh.nlmsg_len) != 0) return DANOS_ERR_BACKEND_IO;
+    uint64_t deadline = nl_now_ms() + NL_IO_TIMEOUT_MS;
+    danos_status_t observation = DANOS_ERR_NOT_FOUND;
+    bool found = false;
+    _Alignas(struct nlmsghdr) char response[32768];
+    for (unsigned frame = 0; frame < 65536; frame++) {
+        ssize_t n = nl_receive(response, sizeof(response), deadline);
+        if (n < (ssize_t)sizeof(struct nlmsghdr)) break;
+        int remaining = (int)n;
+        for (struct nlmsghdr *nh = (struct nlmsghdr *)response; NLMSG_OK(nh, remaining);
+             nh = NLMSG_NEXT(nh, remaining)) {
+            if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
+            if (nh->nlmsg_flags & NLM_F_DUMP_INTR) goto incomplete;
+            if (nh->nlmsg_type == NLMSG_DONE) {
+                if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(int))) goto incomplete;
+                int error;
+                memcpy(&error, NLMSG_DATA(nh), sizeof(error));
+                if (error) goto incomplete;
+                return observation;
+            }
+            if (nh->nlmsg_type == NLMSG_ERROR) {
+                if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr))) goto incomplete;
+                const struct nlmsgerr *err = NLMSG_DATA(nh);
+                danos_netlink_last_kernel_error = err->error;
+                if (err->error == -ENOENT) return DANOS_ERR_NOT_FOUND;
+                goto incomplete;
+            }
+            if (nh->nlmsg_type != RTM_NEWROUTE) continue;
+            danos_status_t st = route_observation(nh, desired, resolved);
+            if (st == DANOS_ERR_BACKEND_IO) goto incomplete;
+            if (st != DANOS_ERR_NOT_FOUND) {
+                if (found) observation = DANOS_ERR_VERIFY_FAIL; /* ambiguous same-prefix routes */
+                else observation = st;
+                found = true;
+            }
         }
-        if (nh->nlmsg_type != RTM_NEWROUTE ||
-            nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct rtmsg)))
-            continue;
-
-        const struct rtmsg *rt = NLMSG_DATA(nh);
-        if (rt->rtm_family != AF_INET ||
-            rt->rtm_dst_len != desired->prefix.prefix_len)
-            continue;
-        uint32_t table = rt->rtm_table;
-        uint8_t dst_addr[4] = {0};
-        int alen = (int)nh->nlmsg_len - NLMSG_LENGTH(sizeof(*rt));
-        for (struct rtattr *rta = RTM_RTA(rt); RTA_OK(rta, alen);
-             rta = RTA_NEXT(rta, alen)) {
-            if (rta->rta_type == RTA_TABLE &&
-                RTA_PAYLOAD(rta) >= sizeof(table))
-                memcpy(&table, RTA_DATA(rta), sizeof(table));
-            else if (rta->rta_type == RTA_DST && RTA_PAYLOAD(rta) >= 4)
-                memcpy(dst_addr, RTA_DATA(rta), sizeof(dst_addr));
-        }
-        uint32_t expected_table =
-            (desired->vrf_id == 0 || desired->vrf_id >= 256)
-                ? RT_TABLE_MAIN : desired->vrf_id;
-        bool expected_blackhole =
-            (desired->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
-        bool route_type_matches = expected_blackhole
-            ? rt->rtm_type == RTN_BLACKHOLE
-            : rt->rtm_type == RTN_UNICAST;
-        if (table != expected_table ||
-            !ipv4_prefix_equal(dst_addr, desired->prefix.addr.addr,
-                               desired->prefix.prefix_len) ||
-            !route_type_matches)
-            continue;
-        return DANOS_OK;
+        if (remaining) break;
     }
-    return DANOS_ERR_NOT_FOUND;
+incomplete:
+    nl_reset();
+    return DANOS_ERR_BACKEND_IO;
 }
-
-/* Route-specific operational verification.  The kernel route lookup returns
- * one entry for the exact prefix/table; compare its disposition, metric and
- * complete next-hop set (single gateway or RTA_MULTIPATH ECMP members) with
- * the resolved route the pipeline programmed.  Presence alone is not a
- * match: a partially withdrawn ECMP group must be reported as drift. */
-#define NL_ROUTE_VERIFY_MAX_NH 64
 
 struct nl_verify_expected {
     uint8_t  gw[4];
@@ -478,173 +573,6 @@ static bool nl_verify_nh(struct nl_verify_expected *exp, uint32_t count,
         return true;
     }
     return false;
-}
-
-static danos_status_t nl_route_verify(const danos_resolved_route_t *resolved)
-{
-    const danos_route_t *desired = &resolved->route;
-    if (desired->prefix.prefix_len == 0) return DANOS_ERR_NOT_SUPPORTED;
-    struct {
-        struct nlmsghdr nh;
-        struct rtmsg rt;
-        char attrbuf[RTA_SPACE(4)];
-    } req;
-    memset(&req, 0, sizeof(req));
-    req.nh.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-    req.nh.nlmsg_flags = NLM_F_REQUEST;
-    req.nh.nlmsg_type = RTM_GETROUTE;
-    req.nh.nlmsg_seq = 4;
-    req.rt.rtm_family = AF_INET;
-    req.rt.rtm_flags = RTM_F_FIB_MATCH;
-    req.rt.rtm_dst_len = desired->prefix.prefix_len;
-    req.rt.rtm_table = (desired->vrf_id == 0 || desired->vrf_id >= 256)
-                           ? RT_TABLE_MAIN : (uint8_t)desired->vrf_id;
-    if (desired->prefix.prefix_len != 0) {
-        struct rtattr *dst = (struct rtattr *)req.attrbuf;
-        dst->rta_type = RTA_DST;
-        dst->rta_len = RTA_LENGTH(4);
-        memcpy(RTA_DATA(dst), desired->prefix.addr.addr, 4);
-        req.nh.nlmsg_len += RTA_LENGTH(4);
-    }
-    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0)
-        return DANOS_ERR_BACKEND_IO;
-
-    char response[8192];
-    ssize_t n = recv(nl_fd, response, sizeof(response), 0);
-    if (n < (ssize_t)sizeof(struct nlmsghdr))
-        return DANOS_ERR_BACKEND_IO;
-
-    const uint32_t expected_table =
-        (desired->vrf_id == 0 || desired->vrf_id >= 256)
-            ? RT_TABLE_MAIN : desired->vrf_id;
-    const bool expected_blackhole =
-        (desired->flags & DANOS_ROUTE_FLAG_BLACKHOLE) != 0;
-
-    int rem = (int)n;
-    for (struct nlmsghdr *nh = (struct nlmsghdr *)response;
-         NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem)) {
-        if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
-        if (nh->nlmsg_type == NLMSG_ERROR) {
-            if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
-                return DANOS_ERR_BACKEND_IO;
-            const struct nlmsgerr *err = NLMSG_DATA(nh);
-            danos_netlink_last_kernel_error = err->error;
-            if (err->error == -ESRCH || err->error == -ENOENT ||
-                err->error == -ENETUNREACH || err->error == -EHOSTUNREACH)
-                return DANOS_ERR_NOT_FOUND;
-            return err->error == 0 ? DANOS_ERR_NOT_FOUND
-                                   : DANOS_ERR_BACKEND_IO;
-        }
-        if (nh->nlmsg_type != RTM_NEWROUTE ||
-            nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct rtmsg)))
-            continue;
-
-        const struct rtmsg *rt = NLMSG_DATA(nh);
-        if (rt->rtm_family != AF_INET ||
-            rt->rtm_dst_len != desired->prefix.prefix_len)
-            continue;
-
-        uint32_t table = rt->rtm_table;
-        uint32_t metric = 0;
-        uint8_t dst_addr[4] = {0};
-        bool route_type_matches = expected_blackhole
-            ? rt->rtm_type == RTN_BLACKHOLE
-            : rt->rtm_type == RTN_UNICAST;
-
-        struct nl_verify_expected expected[NL_ROUTE_VERIFY_MAX_NH];
-        uint32_t expected_count = 0;
-        if (!expected_blackhole) {
-            if (resolved->nh_count > 0) {
-                expected_count = resolved->nh_count > NL_ROUTE_VERIFY_MAX_NH
-                                     ? NL_ROUTE_VERIFY_MAX_NH
-                                     : resolved->nh_count;
-                for (uint32_t i = 0; i < expected_count; i++) {
-                    memcpy(expected[i].gw, resolved->nh_gw[i], 4);
-                    expected[i].oif = resolved->nh_oif[i];
-                    expected[i].used = false;
-                }
-            } else if (resolved->has_gw) {
-                expected_count = 1;
-                memcpy(expected[0].gw, resolved->gw, 4);
-                expected[0].oif = resolved->oif;
-                expected[0].used = false;
-            }
-        }
-
-        uint32_t observed_count = 0;
-        uint32_t unmatched = 0;
-        bool have_gateway = false;
-        bool have_oif = false;
-        uint8_t single_gw[4] = {0};
-        uint32_t single_oif = 0;
-
-        int alen = (int)nh->nlmsg_len - NLMSG_LENGTH(sizeof(*rt));
-        for (struct rtattr *rta = RTM_RTA(rt); RTA_OK(rta, alen);
-             rta = RTA_NEXT(rta, alen)) {
-            if (rta->rta_type == RTA_TABLE &&
-                RTA_PAYLOAD(rta) >= sizeof(table))
-                memcpy(&table, RTA_DATA(rta), sizeof(table));
-            else if (rta->rta_type == RTA_DST && RTA_PAYLOAD(rta) >= 4)
-                memcpy(dst_addr, RTA_DATA(rta), sizeof(dst_addr));
-            else if (rta->rta_type == RTA_PRIORITY &&
-                     RTA_PAYLOAD(rta) >= sizeof(metric))
-                memcpy(&metric, RTA_DATA(rta), sizeof(metric));
-            else if (rta->rta_type == RTA_GATEWAY && RTA_PAYLOAD(rta) >= 4) {
-                memcpy(single_gw, RTA_DATA(rta), 4);
-                have_gateway = true;
-            } else if (rta->rta_type == RTA_OIF &&
-                       RTA_PAYLOAD(rta) >= sizeof(uint32_t)) {
-                memcpy(&single_oif, RTA_DATA(rta), sizeof(single_oif));
-                have_oif = true;
-            }
-            else if (rta->rta_type == RTA_MULTIPATH) {
-                int mlen = (int)RTA_PAYLOAD(rta);
-                for (struct rtnexthop *nhx = (struct rtnexthop *)RTA_DATA(rta);
-                     RTNH_OK(nhx, mlen); nhx = RTNH_NEXT(nhx)) {
-                    uint8_t gw[4] = {0};
-                    uint32_t oif = (uint32_t)nhx->rtnh_ifindex;
-                    int nlen = (int)nhx->rtnh_len - (int)sizeof(*nhx);
-                    for (struct rtattr *na = RTNH_DATA(nhx); RTA_OK(na, nlen);
-                         na = RTA_NEXT(na, nlen)) {
-                        if (na->rta_type == RTA_GATEWAY &&
-                            RTA_PAYLOAD(na) >= 4)
-                            memcpy(gw, RTA_DATA(na), 4);
-                    }
-                    observed_count++;
-                    if (!nl_verify_nh(expected, expected_count, gw, oif))
-                        unmatched++;
-                }
-            }
-        }
-
-        if (!expected_blackhole && !have_gateway && !have_oif &&
-            observed_count == 0 && expected_count > 0)
-            return DANOS_ERR_VERIFY_FAIL;   /* unicast route without a path */
-
-        /* A single-path route is reported with RTA_GATEWAY/RTA_OIF rather
-         * than RTA_MULTIPATH. */
-        if (observed_count == 0 && have_gateway) {
-            observed_count = 1;
-            if (!nl_verify_nh(expected, expected_count, single_gw, single_oif))
-                unmatched++;
-        } else if (observed_count == 0 && have_oif && expected_count > 0) {
-            /* Interface-only next hop: the kernel reports RTA_OIF without a
-             * gateway, which is still an observed path to match. */
-            static const uint8_t zero_gw[4] = {0, 0, 0, 0};
-            observed_count = 1;
-            if (!nl_verify_nh(expected, expected_count, zero_gw, single_oif))
-                unmatched++;
-        }
-
-        if (table != expected_table ||
-            !ipv4_prefix_equal(dst_addr, desired->prefix.addr.addr,
-                               desired->prefix.prefix_len) ||
-            !route_type_matches || metric != desired->metric ||
-            observed_count != expected_count || unmatched != 0)
-            return DANOS_ERR_VERIFY_FAIL;
-        return DANOS_OK;
-    }
-    return DANOS_ERR_NOT_FOUND;
 }
 
 static bool prefix_is_valid(const danos_ip_prefix_t *p)
@@ -694,7 +622,7 @@ static int nl_iface_addr_msg(danos_ifindex_t ifindex,
         msg.nh.nlmsg_len += RTA_LENGTH(16);
     }
     (void)alen;
-    if (send(nl_fd, &msg, msg.nh.nlmsg_len, 0) < 0) return -1;
+    if (nl_send(&msg, msg.nh.nlmsg_len) != 0) return -1;
     return nl_read_ack();
 }
 
@@ -714,18 +642,25 @@ static int nl_iface_addr_read(danos_ifindex_t ifindex, danos_iface_t *out)
     req.nh.nlmsg_seq = 4;
     req.ifa.ifa_family = AF_UNSPEC;
     req.ifa.ifa_index = (int)ifindex;
-    if (send(nl_fd, &req, req.nh.nlmsg_len, 0) < 0) return -1;
+    if (nl_send(&req, req.nh.nlmsg_len) != 0) return -1;
 
     int best_v4 = -1, best_v6 = -1;
+    uint64_t deadline = nl_now_ms() + NL_IO_TIMEOUT_MS;
     for (;;) {
         char resp[8192];
-        ssize_t n = recv(nl_fd, resp, sizeof(resp), 0);
+        ssize_t n = nl_receive(resp, sizeof(resp), deadline);
         if (n < (ssize_t)sizeof(struct nlmsghdr)) return -1;
         int rem = (int)n;
         for (struct nlmsghdr *nh = (struct nlmsghdr *)resp;
              NLMSG_OK(nh, rem); nh = NLMSG_NEXT(nh, rem)) {
             if (nh->nlmsg_seq != req.nh.nlmsg_seq) continue;
-            if (nh->nlmsg_type == NLMSG_DONE) return 0;
+            if (nh->nlmsg_flags & NLM_F_DUMP_INTR) { nl_reset(); return -1; }
+            if (nh->nlmsg_type == NLMSG_DONE) {
+                int error = -1;
+                if (nh->nlmsg_len >= NLMSG_LENGTH(sizeof(error)))
+                    memcpy(&error, NLMSG_DATA(nh), sizeof(error));
+                return error == 0 ? 0 : -1;
+            }
             if (nh->nlmsg_type == NLMSG_ERROR) return -1;
             if (nh->nlmsg_type != RTM_NEWADDR) continue;
             if (nh->nlmsg_len < NLMSG_LENGTH(sizeof(struct ifaddrmsg)))
@@ -852,8 +787,9 @@ static danos_status_t ops_route_add(const danos_resolved_route_t *res,
                                     void *user)
 {
     (void)user;
+    if (!res) return DANOS_ERR_INVALID_ARG;
     const danos_route_t *route = &res->route;
-    if (!route || route->prefix.addr.af != DANOS_AF_IPV4)
+    if (route->prefix.addr.af != DANOS_AF_IPV4)
         return DANOS_ERR_INVALID_ARG;
     if (route->prefix.prefix_len > 32) return DANOS_ERR_INVALID_ARG;
 
@@ -904,8 +840,9 @@ static danos_status_t ops_route_del(const danos_resolved_route_t *res,
                                     void *user)
 {
     (void)user;
+    if (!res) return DANOS_ERR_INVALID_ARG;
     const danos_route_t *route = &res->route;
-    if (!route || route->prefix.addr.af != DANOS_AF_IPV4)
+    if (route->prefix.addr.af != DANOS_AF_IPV4)
         return DANOS_ERR_INVALID_ARG;
     if (res->nh_count > DANOS_NHGROUP_MAX_NH)
         return DANOS_ERR_INVALID_ARG;
@@ -923,15 +860,13 @@ static danos_status_t ops_route_del(const danos_resolved_route_t *res,
 static danos_status_t ops_vrf_add(const danos_vrf_t *vrf, void *user)
 {
     (void)user; (void)vrf;
-    /* kernel VRF devices are a platform concern; v0.9 accepts and
-     * tracks only */
-    return DANOS_OK;
+    return g_nl.real ? DANOS_ERR_NOT_SUPPORTED : DANOS_OK;
 }
 
 static danos_status_t ops_vrf_del(danos_vrf_id_t vrf_id, void *user)
 {
     (void)user; (void)vrf_id;
-    return DANOS_OK;
+    return g_nl.real ? DANOS_ERR_NOT_SUPPORTED : DANOS_OK;
 }
 
 /* Route-specific OPER readback: full attribute/ECMP equality. */
@@ -946,7 +881,7 @@ static danos_status_t ops_route_readback(
         return DANOS_ERR_NOT_SUPPORTED;
 
     if (g_nl.real && g_nl.initialized) {
-        danos_status_t st = nl_route_verify(resolved);
+        danos_status_t st = nl_route_read(route, resolved);
         if (st != DANOS_OK) return st;
         memcpy(out, route, sizeof(*route));
         return DANOS_OK;
@@ -1005,7 +940,7 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
             route->prefix.prefix_len > 32)
             return DANOS_ERR_NOT_SUPPORTED;
         if (g_nl.real && g_nl.initialized) {
-            danos_status_t st = nl_route_read(route);
+            danos_status_t st = nl_route_read(route, NULL);
             if (st != DANOS_OK) return st;
         } else if (!mock_find(route->prefix.addr.addr,
                               route->prefix.prefix_len, route->vrf_id)) {
@@ -1028,7 +963,6 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
          * attributes it does not report from the desired copy. */
         if (!o->name[0]) snprintf(o->name, sizeof(o->name), "%s", d->name);
         o->type = d->type;
-        o->admin_up = d->admin_up;
         memcpy(o->mac, d->mac, sizeof(o->mac));
         o->parent_ifindex = d->parent_ifindex;
         o->outer_vlan = d->outer_vlan;
@@ -1043,6 +977,7 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
     *o = *d;
     o->ipv4_address = g_mock.iface_v4[id];
     o->ipv6_address = g_mock.iface_v6[id];
+    o->admin_up = g_mock.iface_up[id];
     o->link_up = g_mock.iface_link_known[id] ? g_mock.iface_link[id]
                                              : g_mock.iface_up[id];
     return DANOS_OK;

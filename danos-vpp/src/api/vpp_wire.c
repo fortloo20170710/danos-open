@@ -9,6 +9,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <poll.h>
+#include <time.h>
+#include <limits.h>
+#include <fcntl.h>
 
 /* =========================================================================
  * Growable buffer
@@ -194,28 +198,58 @@ char *vpp_rd_string(vpp_reader_t *r, uint32_t max_len)
  * Socket framing
  * ========================================================================= */
 
-static bool send_all(int fd, const void *p, uint32_t n)
+uint64_t vpp_wire_now_ms(void)
 {
-    const uint8_t *b = p;
-    while (n > 0) {
-        ssize_t k = send(fd, b, n, MSG_NOSIGNAL);
-        if (k <= 0) {
-            if (k < 0 && errno == EINTR) continue;
-            return false;
-        }
-        b += k;
-        n -= (uint32_t)k;
-    }
-    return true;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
 }
 
-static bool recv_all(int fd, void *p, uint32_t n)
+int vpp_wire_wait(int fd, short events, uint64_t deadline_ms)
+{
+    for (;;) {
+        uint64_t now = vpp_wire_now_ms();
+        if (now >= deadline_ms) { errno = ETIMEDOUT; return -1; }
+        uint64_t remaining = deadline_ms - now;
+        struct pollfd pfd = { .fd = fd, .events = events };
+        int rc = poll(&pfd, 1, remaining > INT_MAX ? INT_MAX : (int)remaining);
+        if (rc < 0 && errno == EINTR) continue;
+        if (rc > 0 && (pfd.revents & events)) return 0;
+        if (rc == 0) errno = ETIMEDOUT;
+        return -1;
+    }
+}
+
+/* Nonblocking connect shares the operation deadline with registration. */
+int vpp_wire_connect_until(int fd, const struct sockaddr *addr, socklen_t len,
+                          uint64_t deadline_ms)
+{
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
+    if (connect(fd, addr, len) == 0) return 0;
+    if (errno != EINPROGRESS && errno != EAGAIN) return -1;
+    if (vpp_wire_wait(fd, POLLOUT, deadline_ms) != 0) return -1;
+    int error = 0;
+    socklen_t error_len = sizeof(error);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &error, &error_len) != 0 || error) {
+        if (error) errno = error;
+        return -1;
+    }
+    return 0;
+}
+
+static bool transfer_all(int fd, void *p, uint32_t n, bool writing,
+                          uint64_t deadline_ms)
 {
     uint8_t *b = p;
     while (n > 0) {
-        ssize_t k = recv(fd, b, n, 0);
+        if (vpp_wire_wait(fd, writing ? POLLOUT : POLLIN, deadline_ms) != 0)
+            return false;
+        ssize_t k = writing ? send(fd, b, n, MSG_NOSIGNAL | MSG_DONTWAIT)
+                            : recv(fd, b, n, MSG_DONTWAIT);
         if (k <= 0) {
-            if (k < 0 && errno == EINTR) continue;
+            if (k < 0 && (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK))
+                continue;
             return false;
         }
         b += k;
@@ -224,36 +258,45 @@ static bool recv_all(int fd, void *p, uint32_t n)
     return true;
 }
 
-int vpp_wire_send_fd(int fd, uint16_t msg_id, const uint8_t *body, uint32_t body_len)
+int vpp_wire_send_until(int fd, uint16_t msg_id, const uint8_t *body,
+                        uint32_t body_len, uint64_t deadline_ms)
 {
-    if (fd < 0) return -1;
-    uint32_t data_len = 2 + body_len;  /* msg_id + struct */
-    if (data_len > 0xFFFFFFFFU - 16U) return -1;
-
-    /* VPP msgbuf_t on 64-bit platforms: q pointer, data_len, gc timestamp. */
+    if (fd < 0 || (!body && body_len) || body_len > UINT32_MAX - 18U) return -1;
+    uint32_t data_len = 2 + body_len;
     uint8_t hdr[16] = {0};
     hdr[8] = (uint8_t)(data_len >> 24);
     hdr[9] = (uint8_t)(data_len >> 16);
     hdr[10] = (uint8_t)(data_len >> 8);
     hdr[11] = (uint8_t)data_len;
-    if (!send_all(fd, hdr, sizeof(hdr))) return -1;
     uint8_t id[2] = {(uint8_t)(msg_id >> 8), (uint8_t)msg_id};
-    if (!send_all(fd, id, sizeof(id))) return -1;
-    if (body_len > 0 && body && !send_all(fd, body, body_len)) return -1;
+    if (!transfer_all(fd, hdr, sizeof(hdr), true, deadline_ms) ||
+        !transfer_all(fd, id, sizeof(id), true, deadline_ms) ||
+        (body_len && !transfer_all(fd, (void *)body, body_len, true, deadline_ms)))
+        return -1;
     return 0;
+}
+
+int vpp_wire_recv_until(int fd, uint8_t *buf, uint32_t buf_size,
+                        uint64_t deadline_ms)
+{
+    if (fd < 0 || !buf || buf_size < 4) return -1;
+    uint8_t hdr[16];
+    if (!transfer_all(fd, hdr, sizeof(hdr), false, deadline_ms)) return -1;
+    uint32_t data_len = ((uint32_t)hdr[8] << 24) | ((uint32_t)hdr[9] << 16) |
+                        ((uint32_t)hdr[10] << 8) | hdr[11];
+    if (data_len < 2 || data_len > buf_size || data_len > INT_MAX) return -1;
+    if (!transfer_all(fd, buf, data_len, false, deadline_ms)) return -1;
+    return (int)data_len;
+}
+
+int vpp_wire_send_fd(int fd, uint16_t msg_id, const uint8_t *body, uint32_t body_len)
+{
+    return vpp_wire_send_until(fd, msg_id, body, body_len, vpp_wire_now_ms() + 5000);
 }
 
 int vpp_wire_recv_fd(int fd, uint8_t *buf, uint32_t buf_size)
 {
-    if (fd < 0 || !buf || buf_size < 4) return -1;
-
-    uint8_t hdr[16];
-    if (!recv_all(fd, hdr, sizeof(hdr))) return -1;
-    uint32_t data_len = ((uint32_t)hdr[8] << 24) | ((uint32_t)hdr[9] << 16) |
-                        ((uint32_t)hdr[10] << 8) | hdr[11];
-    if (data_len == 0 || data_len > buf_size) return -1;
-    if (!recv_all(fd, buf, data_len)) return -1;
-    return (int)data_len;
+    return vpp_wire_recv_until(fd, buf, buf_size, vpp_wire_now_ms() + 5000);
 }
 
 /* =========================================================================
