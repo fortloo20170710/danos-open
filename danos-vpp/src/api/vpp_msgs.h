@@ -40,6 +40,26 @@ typedef struct {
     uint8_t  len;       /* prefix length */
 } vpp_prefix_t;
 
+/* Actual API observations, never synthesized from desired state. */
+typedef struct {
+    bool admin_up, link_up;
+    uint16_t mtu;
+    uint8_t mac[6];
+} vpp_iface_state_t;
+typedef struct {
+    uint32_t table_id;
+    vpp_prefix_t prefix;
+    uint32_t n_paths;
+    vpp_ip_t nhs[64];
+    uint32_t nh_ifs[64];
+    uint8_t weights[64], preferences[64];
+    uint32_t types[64], flags[64], protocols[64], nh_tables[64];
+    uint8_t n_labels[64];
+} vpp_route_state_t;
+danos_status_t vpp_msg_iface_read(uint32_t sw_if_index, vpp_iface_state_t *out);
+danos_status_t vpp_msg_route_read(uint32_t table_id, const vpp_prefix_t *prefix,
+                                  vpp_route_state_t *out);
+
 /* --- encode-only variants (used by tests to verify wire layout) ------ */
 
 /* ip_route_add_del body (after client_index+context):

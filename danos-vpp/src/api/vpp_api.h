@@ -36,8 +36,28 @@ int  danos_vpp_api_transact(uint16_t msg_id, const uint8_t *payload,
                             uint32_t payload_size, uint8_t *reply,
                             uint32_t reply_size);
 
+/* Bounded operation budget (1..60000ms); defaults to 5000ms. */
+int danos_vpp_api_set_io_timeout_ms(uint32_t timeout_ms);
+/* One dump plus control_ping barrier, serialized on the shared socket.
+ * Callback sees message bytes (including id/context), only for the dump's
+ * context. No result is complete until the matching ping reply arrives. */
+typedef int (*danos_vpp_dump_cb)(const uint8_t *, uint32_t, void *);
+int danos_vpp_api_dump(uint16_t msg_id, const uint8_t *payload, uint32_t size,
+                       uint16_t details_id, danos_vpp_dump_cb cb, void *user);
+
+/* CRC resolution and IO use one connection lock, including across reconnects.
+ * Returns -2 for unsupported schema, -1 for IO, otherwise reply bytes / dump 0. */
+int danos_vpp_api_query(const char *request_schema, const char *reply_schema,
+                        const uint8_t *payload, uint32_t size,
+                        uint8_t *reply, uint32_t capacity);
+int danos_vpp_api_dump_query(const char *request_schema, const char *detail_schema,
+                             const uint8_t *payload, uint32_t size,
+                             danos_vpp_dump_cb cb, void *user);
+
 /* Name -> msg_id resolution (from the handshake message table) */
 bool danos_vpp_api_lookup_msg_id(const char *name, uint16_t *msg_id);
+/* Require the exact advertised name_CRC before decoding a fixed schema. */
+bool danos_vpp_api_lookup_schema(const char *name_crc, uint16_t *msg_id);
 uint32_t danos_vpp_api_client_index(void);
 uint32_t danos_vpp_api_msg_table_count(void);
 const char *danos_vpp_api_sock_path(void);

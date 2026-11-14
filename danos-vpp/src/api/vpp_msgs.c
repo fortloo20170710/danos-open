@@ -229,8 +229,8 @@ int vpp_encode_ip_neighbor_add_del(uint8_t is_add, uint32_t sw_if_index,
 static danos_status_t retval_to_status(int32_t retval)
 {
     if (retval == 0) return DANOS_OK;
-    if (retval == -18 /* VNET_API_ERROR_INVALID_SW_IF_INDEX */ ||
-        retval == -18)
+    if (retval == -2 /* INVALID_SW_IF_INDEX */ || retval == -3 /* NO_SUCH_FIB */ ||
+        retval == -6 /* NO_SUCH_ENTRY */)
         return DANOS_ERR_NOT_FOUND;
     return DANOS_ERR_BACKEND_IO;
 }
@@ -398,4 +398,110 @@ danos_status_t vpp_msg_policer_add_del(bool is_add, const char *name,
                                        body, sizeof(body));
     if (n < 0) return DANOS_ERR_INVALID_ARG;
     return transact_named("policer_add_del", body, (uint32_t)n);
+}
+
+/* Layout verified against the deployed VPP 26.10 API JSON. Lookup uses exact=1
+ * so a covering route cannot be mistaken for the configured prefix.
+ * Upstream behavior: FDio/vpp src/vnet/ip/ip_api.c ip_route_lookup handler. */
+danos_status_t vpp_msg_route_read(uint32_t table_id, const vpp_prefix_t *prefix,
+                                  vpp_route_state_t *out)
+{
+    if (!prefix || !out || prefix->addr.is_ipv6 || prefix->len > 32)
+        return DANOS_ERR_INVALID_ARG;
+    if (danos_vpp_api_is_mock()) return DANOS_ERR_NOT_SUPPORTED;
+    if (!danos_vpp_api_is_connected()) return DANOS_ERR_BACKEND_DOWN;
+    vpp_buf_t b;
+    vpp_buf_init(&b, 32);
+    vpp_buf_put_u32(&b, table_id);
+    vpp_buf_put_u8(&b, 1);
+    encode_prefix(&b, prefix);
+    uint8_t reply[64 * 1024];
+    int n = danos_vpp_api_query("ip_route_lookup_710d6471", "ip_route_lookup_reply_5d8febcb",
+                                b.data, b.len, reply, sizeof(reply));
+    vpp_buf_free(&b);
+    if (n == -2) return DANOS_ERR_NOT_SUPPORTED;
+    if (n < 10) return DANOS_ERR_BACKEND_IO;
+    vpp_reader_t r;
+    vpp_reader_init(&r, reply + 2, (uint32_t)n - 2);
+    (void)vpp_rd_u32(&r);
+    danos_status_t status = retval_to_status((int32_t)vpp_rd_u32(&r));
+    if (status != DANOS_OK) return status;
+    memset(out, 0, sizeof(*out));
+    out->table_id = vpp_rd_u32(&r);
+    (void)vpp_rd_u32(&r); /* stats index */
+    uint8_t af = vpp_rd_u8(&r);
+    if (af > 1) return DANOS_ERR_BACKEND_IO;
+    out->prefix.addr.is_ipv6 = af != 0;
+    vpp_rd_bytes(&r, out->prefix.addr.addr, 16);
+    out->prefix.len = vpp_rd_u8(&r);
+    uint8_t paths = vpp_rd_u8(&r);
+    if (!vpp_reader_ok(&r) || r.len - r.pos != (uint32_t)paths * FIB_PATH_SIZE)
+        return DANOS_ERR_BACKEND_IO;
+    if (paths > 64) return DANOS_ERR_VERIFY_FAIL;
+    out->n_paths = paths;
+    for (unsigned i = 0; i < paths; i++) {
+        out->nh_ifs[i] = vpp_rd_u32(&r);
+        out->nh_tables[i] = vpp_rd_u32(&r);
+        (void)vpp_rd_u32(&r); /* rpf id */
+        out->weights[i] = vpp_rd_u8(&r);
+        out->preferences[i] = vpp_rd_u8(&r);
+        out->types[i] = vpp_rd_u32(&r);
+        out->flags[i] = vpp_rd_u32(&r);
+        out->protocols[i] = vpp_rd_u32(&r);
+        out->nhs[i].is_ipv6 = out->protocols[i] == 1;
+        vpp_rd_bytes(&r, out->nhs[i].addr, 16);
+        vpp_rd_bytes(&r, NULL, 12); /* remaining nh union fields */
+        out->n_labels[i] = vpp_rd_u8(&r);
+        vpp_rd_bytes(&r, NULL, FIB_PATH_MAX_LABELS * FIB_MPLS_LABEL_SIZE);
+    }
+    return vpp_reader_ok(&r) ? DANOS_OK : DANOS_ERR_BACKEND_IO;
+}
+
+typedef struct {
+    uint32_t index;
+    bool found;
+    vpp_iface_state_t state;
+} iface_dump_t;
+static int iface_detail(const uint8_t *buf, uint32_t n, void *user)
+{
+    /* id/context/index/super-index/mac/flags/type/duplex/speed/link_mtu */
+    if (n != 295) return -1; /* fixed VPP 26.10 details schema */
+    iface_dump_t *dump = user;
+    vpp_reader_t r;
+    vpp_reader_init(&r, buf + 2, n - 2);
+    (void)vpp_rd_u32(&r);
+    uint32_t index = vpp_rd_u32(&r);
+    (void)vpp_rd_u32(&r);
+    vpp_iface_state_t state = {0};
+    vpp_rd_bytes(&r, state.mac, 6);
+    uint32_t flags = vpp_rd_u32(&r);
+    (void)vpp_rd_u32(&r); (void)vpp_rd_u32(&r); (void)vpp_rd_u32(&r);
+    state.mtu = vpp_rd_u16(&r);
+    state.admin_up = (flags & 1) != 0;
+    state.link_up = state.admin_up && (flags & 2) != 0;
+    if (!vpp_reader_ok(&r)) return -1;
+    if (index == dump->index) {
+        if (dump->found) return -1;
+        dump->found = true;
+        dump->state = state;
+    }
+    return 0;
+}
+
+danos_status_t vpp_msg_iface_read(uint32_t index, vpp_iface_state_t *out)
+{
+    if (!out || index == UINT32_MAX) return DANOS_ERR_INVALID_ARG;
+    if (danos_vpp_api_is_mock()) return DANOS_ERR_NOT_SUPPORTED;
+    if (!danos_vpp_api_is_connected()) return DANOS_ERR_BACKEND_DOWN;
+    /* sw_if_index u32, name_filter_valid bool, api string length u32 */
+    uint8_t body[9] = {(uint8_t)(index >> 24), (uint8_t)(index >> 16),
+                       (uint8_t)(index >> 8), (uint8_t)index, 0, 0, 0, 0, 0};
+    iface_dump_t dump = { .index = index };
+    int rc = danos_vpp_api_dump_query("sw_interface_dump_aa610c27", "sw_interface_details_6c221fc7",
+                                     body, sizeof(body), iface_detail, &dump);
+    if (rc == -2) return DANOS_ERR_NOT_SUPPORTED;
+    if (rc != 0) return DANOS_ERR_BACKEND_IO;
+    if (!dump.found) return DANOS_ERR_NOT_FOUND;
+    *out = dump.state;
+    return DANOS_OK;
 }
