@@ -81,7 +81,7 @@ ctest --output-on-failure
 ```
 
 Expected: CTest reports 100% tests passed. The registered test count varies
-by build configuration; the current source checkpoint reports 96/96.
+by build configuration; the 2026-11-14 integration checkpoint reports 100/100.
 The suite includes the v0.3 vertical stack suites:
 ```
 vpp_proto     — VPP binary API handshake + typed messages + stat segment (mock VPP server)
@@ -139,6 +139,17 @@ gnmic interop, 32-connection scale test — see
 `.github/workflows/{ci,interop}.yml` and `docs/threading.md`.
 
 ## Architecture
+
+The diagram below summarizes the intended DANOS-Open architecture: mature
+open-source control-plane components, a capability-based DPA, and optional
+hardware acceleration behind backend interfaces. It is an architectural
+overview, not a claim that every illustrated module is implemented or release
+qualified; see the repository status table and [project status](docs/project-status.md)
+for implementation state and scope.
+
+![DANOS-Open architecture: management, control plane, DPA, backends, and hardware acceleration](docs/images/danos-open-architecture.png)
+
+*DANOS-Open architecture overview (2026-09-15).*
 
 ```
 Management (CLI/gNMI/NETCONF)
