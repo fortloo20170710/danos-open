@@ -157,11 +157,7 @@ jobs:
           cmake --build build -j$(nproc) --target danos-mgrd
       - name: Stage image context
         run: |
-          # The repository ignores build/ in .dockerignore, so mirror the
-          # layout the Dockerfile expects into a small dedicated context.
-          mkdir -p oci-context/build/danos-mgrd oci-context/danos-mgrd
-          cp build/danos-mgrd/danos-mgrd oci-context/build/danos-mgrd/
-          cp danos-mgrd/danos-mgrd.service oci-context/danos-mgrd/
+          bash danos-build/stage_mgrd_oci.sh oci-context
       - name: Build OCI image
         run: docker build -f danos-build/Dockerfile.mgrd -t danos-mgrd:${{ github.sha }} oci-context
       - name: Smoke test image

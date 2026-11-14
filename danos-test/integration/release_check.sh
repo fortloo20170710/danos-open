@@ -31,7 +31,7 @@ FAILED=0
 echo "=== DANOS-Open release acceptance ==="
 
 # --- gate 1: full test suite ----------------------------------------------
-(cd "$BUILD_DIR" && ctest -Q) && pass "gate1: ctest all green" \
+(cd "$BUILD_DIR" && ctest --output-on-failure --no-tests=error) && pass "gate1: ctest all green" \
     || fail "gate1: ctest"
 
 # --- gate 2: external interop ---------------------------------------------
