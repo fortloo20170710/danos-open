@@ -105,7 +105,7 @@ reachability via the danos-frr-test image).
 
 ```bash
 cmake -B build && cmake --build build -j$(nproc)
-./build/danos-mgrd/danos-mgrd --seed --port 59200 --metrics-port 59201
+DANOS_ALLOW_INSECURE=1 ./build/danos-mgrd/danos-mgrd --netlink-mode mock --seed --port 59200 --metrics-port 59201
 # another shell:
 gnmic -a 127.0.0.1:59200 --insecure get --path /interfaces
 curl http://127.0.0.1:59201/metrics

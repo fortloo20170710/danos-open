@@ -15,7 +15,8 @@
  *
  * Usage:
  *   danos-mgrd [--port N] [--metrics-port N] [--wal PATH]
- *              [--seed] [--vpp-sock PATH] [--no-vpp] [--backend netlink|vpp]
+ *              [--seed] [--vpp-sock PATH] [--no-vpp]
+ *              [--backend netlink|vpp] [--netlink-mode real|mock]
  */
 
 #include <danos/core/persist.h>
@@ -134,6 +135,7 @@ int main(int argc, char **argv)
     const char *wal = "/var/lib/danos/mgrd.wal";
     const char *vpp_sock = NULL;
     const char *backend = "netlink";
+    const char *netlink_mode = NULL;
     bool seed = false, use_vpp = true;
 
     static struct option opts[] = {
@@ -144,6 +146,7 @@ int main(int argc, char **argv)
         {"vpp-sock",    required_argument, 0, 'v'},
         {"no-vpp",      no_argument,       0, 'n'},
         {"backend",     required_argument, 0, 'b'},
+        {"netlink-mode",required_argument, 0, 'M'},
         {0, 0, 0, 0},
     };
     /* 0. authorization + audit, before opening any listener. */
@@ -218,7 +221,7 @@ int main(int argc, char **argv)
     }
 
     int c;
-    while ((c = getopt_long(argc, argv, "p:m:w:sv:nb:", opts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "p:m:w:sv:nb:M:", opts, NULL)) != -1) {
         switch (c) {
         case 'p': gnmi_port = (uint16_t)atoi(optarg); break;
         case 'm': metrics_port = (uint16_t)atoi(optarg); break;
@@ -227,9 +230,11 @@ int main(int argc, char **argv)
         case 'v': vpp_sock = optarg; break;
         case 'n': use_vpp = false; break;
         case 'b': backend = optarg; break;
+        case 'M': netlink_mode = optarg; break;
         default:
             fprintf(stderr, "usage: mgrd [--port N] [--metrics-port N] "
-                    "[--wal PATH] [--seed] [--vpp-sock PATH] [--no-vpp] [--backend netlink|vpp]\n");
+                    "[--wal PATH] [--seed] [--vpp-sock PATH] [--no-vpp] "
+                    "[--backend netlink|vpp] [--netlink-mode real|mock]\n");
             danos_gnmi_tls_free(tls);
             return 2;
         }
@@ -238,6 +243,62 @@ int main(int argc, char **argv)
     if ((strcmp(backend, "netlink") != 0 && !program_vpp) ||
         (program_vpp && !use_vpp) || optind != argc) {
         fprintf(stderr, "mgrd: invalid backend arguments (vpp requires VPP connectivity)\n");
+        danos_gnmi_tls_free(tls);
+        return 2;
+    }
+    bool nl_real = false;
+    if (!program_vpp) {
+        const char *mode_env = getenv("DANOS_NETLINK_MODE");
+        const char *real_env = getenv("MGRD_NETLINK_REAL");
+        const char *mock_env = getenv("MGRD_NETLINK_MOCK");
+        if (netlink_mode) {
+            if (strcmp(netlink_mode, "real") == 0) nl_real = true;
+            else if (strcmp(netlink_mode, "mock") == 0) nl_real = false;
+            else {
+                fprintf(stderr, "mgrd: invalid netlink mode '%s' (expected real or mock)\n",
+                        netlink_mode);
+                danos_gnmi_tls_free(tls);
+                return 2;
+            }
+        } else if (mode_env) {
+            if (strcmp(mode_env, "real") == 0) nl_real = true;
+            else if (strcmp(mode_env, "mock") == 0) nl_real = false;
+            else {
+                fprintf(stderr, "mgrd: invalid DANOS_NETLINK_MODE '%s' (expected real or mock)\n",
+                        mode_env);
+                danos_gnmi_tls_free(tls);
+                return 2;
+            }
+        } else if (real_env && mock_env &&
+                   strcmp(real_env, "1") == 0 && strcmp(mock_env, "1") == 0) {
+            fprintf(stderr, "mgrd: conflicting MGRD_NETLINK_REAL=1 and MGRD_NETLINK_MOCK=1\n");
+            danos_gnmi_tls_free(tls);
+            return 2;
+        } else if (real_env) {
+            if (strcmp(real_env, "1") == 0) nl_real = true;
+            else if (strcmp(real_env, "0") == 0) nl_real = false;
+            else {
+                fprintf(stderr, "mgrd: invalid MGRD_NETLINK_REAL '%s' (expected 1 or 0)\n",
+                        real_env);
+                danos_gnmi_tls_free(tls);
+                return 2;
+            }
+        } else if (mock_env) {
+            if (strcmp(mock_env, "1") == 0) nl_real = false;
+            else {
+                fprintf(stderr, "mgrd: invalid MGRD_NETLINK_MOCK '%s' (expected 1)\n",
+                        mock_env);
+                danos_gnmi_tls_free(tls);
+                return 2;
+            }
+        } else {
+            fprintf(stderr, "mgrd: netlink mode required; specify --netlink-mode real|mock "
+                    "or DANOS_NETLINK_MODE=real|mock (or MGRD_NETLINK_REAL=1 / MGRD_NETLINK_MOCK=1)\n");
+            danos_gnmi_tls_free(tls);
+            return 2;
+        }
+    } else if (netlink_mode) {
+        fprintf(stderr, "mgrd: invalid backend arguments (--netlink-mode requires --backend netlink)\n");
         danos_gnmi_tls_free(tls);
         return 2;
     }
@@ -276,21 +337,23 @@ int main(int argc, char **argv)
     /* 1b. backend programming pipeline (ADR-0007): the netlink adapter
      * programs desired state into the kernel FIB; the reconciler thread
      * re-issues anything not yet PROGRAMMED. */
-    bool nl_real = (getenv("MGRD_NETLINK_REAL") != NULL);
-    if (program_vpp || danos_netlink_init(nl_real) == 0) {
-        if (!program_vpp) danos_netlink_register_backend();
-        danos_reconcile_config_t rcfg;
-        memset(&rcfg, 0, sizeof(rcfg));
-        rcfg.reconcile_period_ms = 1000;   /* fast pipeline convergence */
-        if (danos_reconciler_init(NULL, &rcfg) != 0) {
-            fprintf(stderr, "mgrd: programming reconciler initialization failed\n");
-            danos_vpp_api_disconnect();
-            danos_netlink_shutdown();
-            danos_gnmi_tls_free(tls);
-            return 1;
-        }
-    } else {
-        printf("mgrd: netlink adapter unavailable — no programming\n");
+    if (!program_vpp && danos_netlink_init(nl_real) != 0) {
+        fprintf(stderr, "mgrd: requested %s netlink backend unavailable; refusing fallback\n",
+                nl_real ? "real" : "mock");
+        danos_vpp_api_disconnect();
+        danos_gnmi_tls_free(tls);
+        return 1;
+    }
+    if (!program_vpp) danos_netlink_register_backend();
+    danos_reconcile_config_t rcfg;
+    memset(&rcfg, 0, sizeof(rcfg));
+    rcfg.reconcile_period_ms = 1000;   /* fast pipeline convergence */
+    if (danos_reconciler_init(NULL, &rcfg) != 0) {
+        fprintf(stderr, "mgrd: programming reconciler initialization failed\n");
+        danos_vpp_api_disconnect();
+        danos_netlink_shutdown();
+        danos_gnmi_tls_free(tls);
+        return 1;
     }
 
     /* 2. persistence: boot with the last durable configuration */

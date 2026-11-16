@@ -5,10 +5,12 @@
  * rtnetlink — the "kernel backend" of the DPA. Two modes:
  *
  *   mock  — in-memory FIB/interface tables, queryable for tests;
- *           no privileges required (default)
+ *           no privileges required (explicit real=false)
  *   real  — rtnetlink to the local kernel (requires CAP_NET_ADMIN);
- *           intended for container/namespace deployments
+ *           intended for container/namespace deployments (explicit real=true)
  *
+ * Mode selection is explicit: danos_netlink_init(real) must be called before
+ * backend operations, and real=true never silently falls back to mock.
  * The adapter implements danos_backend_ops_t and is idempotent.
  */
 

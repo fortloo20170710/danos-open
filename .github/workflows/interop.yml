@@ -187,7 +187,7 @@ jobs:
           docker run -d --name mgrd-smoke -e DANOS_ALLOW_INSECURE=1 \
             -e DANOS_METRICS_BIND=0.0.0.0 \
             -p 127.0.0.1:59201:59201 danos-mgrd:${{ github.sha }} \
-            --port 59200 --metrics-port 59201 --wal /tmp/smoke.wal --seed
+            --netlink-mode mock --port 59200 --metrics-port 59201 --wal /tmp/smoke.wal --seed
           sleep 2
           curl -sf http://127.0.0.1:59201/metrics | grep -q danos_
           docker logs mgrd-smoke | grep -q "gNMI"
@@ -205,7 +205,7 @@ jobs:
         run: |
           docker run -d --name danos-smoke -e DANOS_ALLOW_INSECURE=1 \
             -p 127.0.0.1:59201:59201 danos-open:${{ github.sha }} \
-            --port 59200 --metrics-port 59201 --wal /var/lib/danos/mgrd.wal --seed
+            --netlink-mode mock --port 59200 --metrics-port 59201 --wal /var/lib/danos/mgrd.wal --seed
           for i in $(seq 1 20); do
             docker exec danos-smoke nc -z 127.0.0.1 59201 && break
             sleep 1

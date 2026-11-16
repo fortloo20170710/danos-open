@@ -33,10 +33,35 @@ static danos_resolved_route_t make_route(uint8_t third, uint8_t nh_count)
 
 int main(void)
 {
-    assert(danos_netlink_init(false) == 0);
     danos_netlink_register_backend();
     const danos_backend_ops_t *ops = danos_backend_ops_get();
     assert(ops && ops->readback && ops->route_readback);
+
+    /* Uninitialized backend operations must fail closed rather than silently
+     * mutating or reading mock tables before mode selection. */
+    danos_iface_t pre_iface;
+    memset(&pre_iface, 0, sizeof(pre_iface));
+    pre_iface.ifindex = 5;
+    pre_iface.ipv4_address.addr.af = DANOS_AF_IPV4;
+    pre_iface.ipv4_address.prefix_len = 24;
+    danos_resolved_route_t pre_rr = make_route(0, 1);
+    danos_route_t pre_oper_route;
+    danos_vrf_t pre_vrf;
+    memset(&pre_vrf, 0, sizeof(pre_vrf));
+    pre_vrf.vrf_id = 1;
+    assert(ops->iface_up(5, true, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->iface_addr_set(&pre_iface, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->iface_addr_del(&pre_iface, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->route_add(&pre_rr, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->route_del(&pre_rr, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->vrf_add(&pre_vrf, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->vrf_del(1, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->readback(DANOS_OBJ_IFACE, 5, &pre_iface, sizeof(pre_iface),
+                         &pre_iface, ops->user) == DANOS_ERR_BACKEND_IO);
+    assert(ops->route_readback(&pre_rr, &pre_oper_route, ops->user)
+           == DANOS_ERR_BACKEND_IO);
+
+    assert(danos_netlink_init(false) == 0);
 
     /* Interface OPER state, including carrier changes and unknown ids. */
     danos_iface_t desired;

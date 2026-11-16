@@ -12,7 +12,7 @@
 - [x] 接口撤销失败保留 ledger 重试
 - [x] VPP 映射严格校验和受支持 API schema 的实际状态读回
 - [x] 有界 IO、IPv4 下一跳/ECMP 漂移检测及隔离真实后端回归
-- [ ] 默认 Netlink 模式显式化（当前仍默认 mock）
+- [x] 默认 Netlink 模式显式化（`danos-mgrd` 要求显式指定 `--netlink-mode real|mock` 或 `DANOS_NETLINK_MODE=real|mock`；未初始化 adapter 操作 fail-closed）
 - [ ] 真实内核/主后端转发与故障恢复重新验收
 - [ ] 安装、升级、回滚及持续性能资格
 

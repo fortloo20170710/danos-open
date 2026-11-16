@@ -276,11 +276,14 @@ def rpc(s, method, stream=1, authorization=None, responses=None, request_overrid
 def daemon(root, config, real_vpp=False, program_vpp=False, wal=None, seed=False):
     p = config.get("DANOS_GNMI_UNIX_SOCKET") or port()
     env = {k: v for k, v in os.environ.items()
-           if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
+           if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_", "DANOS_NETLINK_", "MGRD_NETLINK_"))
+           and k != "DANOS_ALLOW_INSECURE"}
     env.update(config)
     env["DANOS_AUDIT_LOG"] = str(root / "audit.log")
+    backend_args = (["--backend", "vpp"] if program_vpp else
+                    (["--netlink-mode", "mock"] if real_vpp else ["--no-vpp", "--netlink-mode", "mock"]))
     with tempfile.TemporaryFile() as log:
-        proc = subprocess.Popen([BINARY, *(["--seed"] if seed else []), *(["--backend", "vpp"] if program_vpp else ([] if real_vpp else ["--no-vpp"])), "--port", str(p if isinstance(p, int) else port()), "--metrics-port", str(port()),
+        proc = subprocess.Popen([BINARY, *(["--seed"] if seed else []), *backend_args, "--port", str(p if isinstance(p, int) else port()), "--metrics-port", str(port()),
                                  "--wal", str(wal or root / (str(p) + ".wal"))], env=env,
                                 stdout=log, stderr=log)
         try:
@@ -492,12 +495,13 @@ def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
             assert rpc(client, "Capabilities", 1) == "16"
             assert rpc(client, "Get", 3) == "16"
     for extra in ({"DANOS_AUTHZ_PEERCRED": "0"}, {"DANOS_TLS_CERT": str(root / "server.pem")}):
-        result = subprocess.run([BINARY, "--no-vpp"], env=dict(os.environ, **(local_config | extra)),
+        result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock"],
+                                env=dict(os.environ, **(local_config | extra)),
                                 capture_output=True, timeout=5)
         assert result.returncode != 0
     # Existing paths must never be removed to make room for a socket.
     Path(local_path).write_text("preserve")
-    result = subprocess.run([BINARY, "--no-vpp", "--wal", str(root / "local.wal")],
+    result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock", "--wal", str(root / "local.wal")],
                             env=dict(os.environ, **local_config), capture_output=True, timeout=5)
     assert result.returncode != 0 and Path(local_path).read_text() == "preserve"
     Path(local_path).unlink()
@@ -524,29 +528,47 @@ def main(root, real_vpp_readonly=False, program_vpp=False, routes=False):
                     {"DANOS_TLS_CERT": ""}):
         env = dict(os.environ, **config, DANOS_ALLOW_INSECURE="1")
         env.update(changes)
-        result = subprocess.run([BINARY, "--no-vpp"], env=env, capture_output=True, timeout=5)
+        result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock"],
+                                env=env, capture_output=True, timeout=5)
         assert result.returncode != 0
-    clean = {k: v for k, v in os.environ.items() if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_")) and k != "DANOS_ALLOW_INSECURE"}
+    clean = {k: v for k, v in os.environ.items()
+             if not k.startswith(("DANOS_TLS_", "DANOS_AUTHZ_", "DANOS_NETLINK_", "MGRD_NETLINK_"))
+             and k != "DANOS_ALLOW_INSECURE"}
     for arguments in (("--backend", "unknown"), ("--backend", "vpp", "--no-vpp"),
-                      ("--no-vpp", "--backend", "vpp")):
+                      ("--no-vpp", "--backend", "vpp"),
+                      ("--backend", "vpp", "--netlink-mode", "mock")):
         result = subprocess.run([BINARY, *arguments], env=dict(clean, **config), capture_output=True, timeout=5)
         assert result.returncode == 2 and b"invalid backend arguments" in result.stderr
+    # Netlink backend requires an explicit mode (real or mock) and rejects invalid values.
+    result = subprocess.run([BINARY, "--no-vpp"], env=dict(clean, **config), capture_output=True, timeout=5)
+    assert result.returncode == 2 and b"netlink mode required" in result.stderr
+    result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "invalid"],
+                            env=dict(clean, **config), capture_output=True, timeout=5)
+    assert result.returncode == 2 and b"invalid netlink mode" in result.stderr
+    result = subprocess.run([BINARY, "--no-vpp"],
+                            env=dict(clean, **config, DANOS_NETLINK_MODE="invalid"),
+                            capture_output=True, timeout=5)
+    assert result.returncode == 2 and b"invalid DANOS_NETLINK_MODE" in result.stderr
+    result = subprocess.run([BINARY, "--no-vpp"],
+                            env=dict(clean, **config, MGRD_NETLINK_REAL="1", MGRD_NETLINK_MOCK="1"),
+                            capture_output=True, timeout=5)
+    assert result.returncode == 2 and b"conflicting MGRD_NETLINK_REAL=1 and MGRD_NETLINK_MOCK=1" in result.stderr
     result = subprocess.run([BINARY, "--backend", "vpp", "--vpp-sock", str(root / "absent-api.sock")],
                             env=dict(clean, **config), capture_output=True, timeout=5)
     assert result.returncode != 0 and b"refusing fallback" in result.stderr
     assert b"gNMI (" not in result.stdout
-    result = subprocess.run([BINARY, "--no-vpp"], env=clean, capture_output=True, timeout=5)
+    result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock"], env=clean, capture_output=True, timeout=5)
     assert result.returncode != 0 and b"mTLS required" in result.stderr
     # Permission mistakes and ambiguous/malformed authorization tables fail closed.
     key = root / "server.key"
     os.chmod(key, 0o644)
-    result = subprocess.run([BINARY, "--no-vpp"], env=dict(clean, **config), capture_output=True, timeout=5)
+    result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock"], env=dict(clean, **config), capture_output=True, timeout=5)
     assert result.returncode != 0
     os.chmod(key, 0o600)
     for content in ("", lines[0] + "\n" + lines[0] + "\n", "z" * 64 + " admin\n",
                     lines[0].split()[0] + " unknown-role\n"):
         roles.write_text(content)
-        result = subprocess.run([BINARY, "--no-vpp"], env=dict(clean, **config), capture_output=True, timeout=5)
+        result = subprocess.run([BINARY, "--no-vpp", "--netlink-mode", "mock"], env=dict(clean, **config), capture_output=True, timeout=5)
         assert result.returncode != 0
     with daemon(root, {"DANOS_ALLOW_INSECURE": "1"}) as p:
         with socket.create_connection(("127.0.0.1", p), timeout=3) as s:

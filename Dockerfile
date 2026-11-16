@@ -58,4 +58,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
     CMD nc -z 127.0.0.1 59201 || exit 1
 
 ENTRYPOINT ["/usr/bin/danos-mgrd"]
-CMD ["--port", "59200", "--metrics-port", "59201", "--wal", "/var/lib/danos/mgrd.wal"]
+CMD ["--netlink-mode", "real", "--port", "59200", "--metrics-port", "59201", "--wal", "/var/lib/danos/mgrd.wal"]

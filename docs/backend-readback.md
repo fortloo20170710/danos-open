@@ -30,7 +30,7 @@
 仍不支持/未验收：VPP blackhole 编码（现在明确拒绝，避免伪成功）、
 完整 IPv6 下一跳验证、接口地址/MTU自动纠偏、规模路由性能与物理 NIC 持续转发。
 Linux 当前逐路由 dump 所选 table，需要后续批量快照优化；本轮不宣称大 FIB 性能资格。
-默认 Netlink mock 的选择方式也仍待显式化。本轮没有升级或重打部署 ISO。
+Netlink 运行模式现已显式化（`--netlink-mode real|mock` 或 `DANOS_NETLINK_MODE=real|mock`，未初始化调用 fail-closed）。本轮没有升级或重打部署 ISO。
 
 ## 重跑
 

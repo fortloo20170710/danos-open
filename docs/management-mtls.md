@@ -127,8 +127,10 @@ API/stat connectivity. `--backend vpp` explicitly installs the existing VPP
 adapter and does not subsequently overwrite it with netlink. If the requested
 VPP API cannot connect, startup fails before WAL recovery or listeners;
 there is no silent netlink fallback. Unknown backend names and combining
-`--backend vpp` with `--no-vpp` are rejected. `--backend netlink` preserves
-the existing behaviour; MGRD_NETLINK_REAL controls only that backend.
+`--backend vpp` with `--no-vpp` or `--netlink-mode` are rejected. `--backend netlink` requires
+an explicit mode via `--netlink-mode real|mock` or `DANOS_NETLINK_MODE=real|mock`
+(or `MGRD_NETLINK_REAL=1` / `MGRD_NETLINK_MOCK=1`), and fails closed if the
+requested mode cannot initialize; it never silently falls back to mock.
 
 Real VPP programming now also requires a complete, valid
 `DANOS_VPP_IFINDEX_MAP=linux_index:vpp_index,...` in the protected environment

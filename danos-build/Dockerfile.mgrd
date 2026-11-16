@@ -23,4 +23,4 @@ VOLUME /var/lib/danos
 
 # Control plane only: gNMI mTLS (mount/configure certificates) + /metrics
 ENTRYPOINT ["/usr/bin/danos-mgrd"]
-CMD ["--port", "59200", "--metrics-port", "59201", "--wal", "/var/lib/danos/mgrd.wal", "--seed"]
+CMD ["--netlink-mode", "real", "--port", "59200", "--metrics-port", "59201", "--wal", "/var/lib/danos/mgrd.wal", "--seed"]

@@ -712,6 +712,7 @@ static int nl_iface_addr_read(danos_ifindex_t ifindex, danos_iface_t *out)
 static danos_status_t ops_iface_up(danos_ifindex_t ifindex, bool up, void *user)
 {
     (void)user;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (ifindex == 0) return DANOS_ERR_INVALID_ARG;
     if (!g_nl.real) {
         if (ifindex >= MOCK_MAX_IFACES) return DANOS_ERR_INVALID_ARG;
@@ -724,6 +725,7 @@ static danos_status_t ops_iface_up(danos_ifindex_t ifindex, bool up, void *user)
 
 static danos_status_t iface_addr_apply(const danos_iface_t *iface, int add)
 {
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (!iface || iface->ifindex == 0) return DANOS_ERR_INVALID_ARG;
     bool have_v4 = iface->ipv4_address.addr.af != DANOS_AF_UNSPEC;
     bool have_v6 = iface->ipv6_address.addr.af != DANOS_AF_UNSPEC;
@@ -787,6 +789,7 @@ static danos_status_t ops_route_add(const danos_resolved_route_t *res,
                                     void *user)
 {
     (void)user;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (!res) return DANOS_ERR_INVALID_ARG;
     const danos_route_t *route = &res->route;
     if (route->prefix.addr.af != DANOS_AF_IPV4)
@@ -840,6 +843,7 @@ static danos_status_t ops_route_del(const danos_resolved_route_t *res,
                                     void *user)
 {
     (void)user;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (!res) return DANOS_ERR_INVALID_ARG;
     const danos_route_t *route = &res->route;
     if (route->prefix.addr.af != DANOS_AF_IPV4)
@@ -860,12 +864,14 @@ static danos_status_t ops_route_del(const danos_resolved_route_t *res,
 static danos_status_t ops_vrf_add(const danos_vrf_t *vrf, void *user)
 {
     (void)user; (void)vrf;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     return g_nl.real ? DANOS_ERR_NOT_SUPPORTED : DANOS_OK;
 }
 
 static danos_status_t ops_vrf_del(danos_vrf_id_t vrf_id, void *user)
 {
     (void)user; (void)vrf_id;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     return g_nl.real ? DANOS_ERR_NOT_SUPPORTED : DANOS_OK;
 }
 
@@ -874,13 +880,14 @@ static danos_status_t ops_route_readback(
     const danos_resolved_route_t *resolved, void *out, void *user)
 {
     (void)user;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (!resolved || !out) return DANOS_ERR_INVALID_ARG;
     const danos_route_t *route = &resolved->route;
     if (route->prefix.addr.af != DANOS_AF_IPV4 ||
         route->prefix.prefix_len > 32)
         return DANOS_ERR_NOT_SUPPORTED;
 
-    if (g_nl.real && g_nl.initialized) {
+    if (g_nl.real) {
         danos_status_t st = nl_route_read(route, resolved);
         if (st != DANOS_OK) return st;
         memcpy(out, route, sizeof(*route));
@@ -932,6 +939,7 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
                                    void *out, void *user)
 {
     (void)user;
+    if (!g_nl.initialized) return DANOS_ERR_BACKEND_IO;
     if (type == DANOS_OBJ_ROUTE) {
         if (!desired || !out || size < sizeof(danos_route_t))
             return DANOS_ERR_INVALID_ARG;
@@ -939,7 +947,7 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
         if (route->prefix.addr.af != DANOS_AF_IPV4 ||
             route->prefix.prefix_len > 32)
             return DANOS_ERR_NOT_SUPPORTED;
-        if (g_nl.real && g_nl.initialized) {
+        if (g_nl.real) {
             danos_status_t st = nl_route_read(route, NULL);
             if (st != DANOS_OK) return st;
         } else if (!mock_find(route->prefix.addr.addr,
@@ -956,7 +964,7 @@ static danos_status_t ops_readback(danos_obj_type_t type, danos_obj_id_t id,
     const danos_iface_t *d = desired;
     danos_iface_t *o = out;
     memset(o, 0, sizeof(*o));
-    if (g_nl.real && g_nl.initialized) {
+    if (g_nl.real) {
         if (nl_iface_read((danos_ifindex_t)id, o) != 0)
             return DANOS_ERR_BACKEND_IO;
         /* The kernel carries identity and state; keep the configured
@@ -1005,14 +1013,15 @@ int danos_netlink_init(bool real)
 {
     memset(&g_mock, 0, sizeof(g_mock));
     g_nl.real = real;
-    g_nl.initialized = true;
+    g_nl.initialized = false;
     if (real) {
         if (nl_open() != 0) {
-            /* fall back to mock when rtnetlink is unavailable */
+            /* Never silently fall back to mock when real rtnetlink was requested */
             g_nl.real = false;
             return -1;
         }
     }
+    g_nl.initialized = true;
     return 0;
 }
 
@@ -1027,5 +1036,6 @@ void danos_netlink_shutdown(void)
         close(nl_fd);
         nl_fd = -1;
     }
+    g_nl.real = false;
     g_nl.initialized = false;
 }

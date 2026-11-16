@@ -147,7 +147,8 @@ def main() -> int:
                 # than only the persistence unit tests.
                 restart_command = (
                     "kill $(pidof mgrd); sleep 2; "
-                    "mgrd --port 59200 --metrics-port 59201 "
+                    "MGRD_NETLINK_REAL=1 DANOS_ALLOW_INSECURE=1 "
+                    "mgrd --netlink-mode real --port 59200 --metrics-port 59201 "
                     "--wal /tmp/mgrd.wal --seed >/tmp/mgrd-restart.log 2>&1 & "
                     "sleep 8; wget -qO- http://127.0.0.1:59201/metrics "
                     ">/tmp/mgrd-restart-metrics.log; "

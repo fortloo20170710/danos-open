@@ -45,7 +45,7 @@ fi
 
 # --- gate 3: mgrd system smoke ---------------------------------------------
 WAL=$(mktemp /tmp/rel-mgrd-XXXXXX.wal)
-DANOS_ALLOW_INSECURE=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" --port 59360 --metrics-port 59361 \
+DANOS_ALLOW_INSECURE=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" --netlink-mode mock --port 59360 --metrics-port 59361 \
     --wal "$WAL" --seed > /tmp/rel-mgrd.log 2>&1 &
 MGRD=$!
 sleep 2
@@ -67,7 +67,7 @@ fi
 
 # crash + restart: config must survive
 kill -9 $MGRD 2>/dev/null; wait $MGRD 2>/dev/null
-DANOS_ALLOW_INSECURE=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" --port 59362 --metrics-port 59363 \
+DANOS_ALLOW_INSECURE=1 "$BUILD_DIR/danos-mgrd/danos-mgrd" --netlink-mode mock --port 59362 --metrics-port 59363 \
     --wal "$WAL" > /tmp/rel-mgrd2.log 2>&1 &
 MGRD=$!
 sleep 2
