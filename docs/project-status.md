@@ -20,8 +20,7 @@ VPP/Linux回归通过。历史整版 gate 仍只绑定原记录的提交，不�
 
 ## 开发基线与推进顺序（2026-11-14 用户授权）
 
-权威开发目录为 `/home/aikon/src/danos-open`。`/home/aikon/danos-open`
-保留为独立历史 checkout，不自动同步、不引用其产物作为当前提交的验收证据。
+权威开发目录为 `/home/aikon/src/danos-open`（旧历史 checkout `/home/aikon/danos-open` 已于 2026-11-16 经用户确认清理删除）。
 本轮起点为 `d771a5a`；下面历史验证数字不自动升级为新改动的验证结果。
 首批工作区完成 Release 构建、CTest 86/86、软件 release_check 与 OCI 冒烟，
 证据在 `/home/aikon/src/danos-open-evidence/20261114-convergence/`。
